@@ -8,8 +8,31 @@ export { registerStories } from "./registry";
 // appear without editing a central list.
 import.meta.glob("./stories/*.stories.tsx", { eager: true });
 
-export function Gallery({ filter }: { filter?: string }) {
+export function Gallery({
+  filter,
+  story,
+}: {
+  filter?: string;
+  /** Exact story id: render only that story at a fixed position (screenshots). */
+  story?: string;
+}) {
   const groups = getStoryGroups();
+  if (story) {
+    const match = groups.flatMap((g) => g.stories).find((s) => s.id === story);
+    return (
+      <div className="min-h-screen font-ui text-white">
+        <Scene variant="dusk" />
+        {match ? (
+          <div
+            data-story={match.id}
+            className="absolute top-8 left-8 inline-block p-4"
+          >
+            {match.render()}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen p-8 font-ui text-white">
       <Scene variant="dusk" />

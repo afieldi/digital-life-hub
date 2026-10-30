@@ -1,11 +1,7 @@
 import { type ReactNode, useState } from "react";
+import { UNSAFE_PortalProvider } from "react-aria";
 import { Button } from "../../primitives/Button";
-import {
-  Dialog,
-  DialogTrigger,
-  modalBackdropClass,
-  modalPanelClass,
-} from "../../primitives/Dialog";
+import { Dialog, DialogTrigger, Modal } from "../../primitives/Dialog";
 import {
   Menu,
   MenuItem,
@@ -14,20 +10,21 @@ import {
 } from "../../primitives/Menu";
 import { Popover } from "../../primitives/Popover";
 import { Tab, TabList, TabPanel, Tabs } from "../../primitives/Tabs";
-import { toastClass } from "../../primitives/Toast";
+import {
+  addToast,
+  createToastQueue,
+  ToastRegion,
+} from "../../primitives/Toast";
 import { Tooltip, TooltipTrigger } from "../../primitives/Tooltip";
 import { registerStories } from "../registry";
 
 const noop = () => {};
 
-// The dialog story is static (the real Modal disables the rest of the page while
-// open, which would break every other story); open/close behaviour is covered by
-// the interaction tests. Menu/popover/tooltip use controlled isOpen with a no-op
-// onOpenChange so outside pointer events from other stories can't close them.
-// Overlays are portalled into this box (via each component's portalContainer
-// prop) instead of document.body, so the open overlay lives inside the story's
-// [data-story] element and is captured by its screenshot. `transform` makes the
-// box the containing block for fixed/absolute children.
+// Each story renders alone (?story=<id>), so overlays can be really open.
+// Overlays are portalled into this box (UNSAFE_PortalProvider for RAC's own
+// portals such as ToastRegion, plus each component's portalContainer prop) so the
+// open overlay lives inside the story's [data-story] element and is captured.
+// `transform` makes the box the containing block for fixed/absolute children.
 function OverlayBox({
   height = 280,
   children,
@@ -42,29 +39,32 @@ function OverlayBox({
       style={{ height, transform: "translateZ(0)" }}
       className="relative w-[440px] overflow-hidden rounded-18"
     >
-      {el ? children(el) : null}
+      {el ? (
+        <UNSAFE_PortalProvider getContainer={() => el}>
+          {children(el)}
+        </UNSAFE_PortalProvider>
+      ) : null}
     </div>
   );
 }
 
-// RAC's ToastRegion always portals to document.body, so the story renders the
-// same surface classes statically; queue behaviour is covered by the test.
 function ToastDemo() {
+  const [queue] = useState(() => {
+    const q = createToastQueue();
+    addToast(q, "Couldn't reach the server", "error");
+    addToast(q, "Saved", "success");
+    addToast(q, "Syncing in the background", "info");
+    return q;
+  });
   return (
-    <div className="flex w-[360px] flex-col gap-2 p-4">
-      <div className={toastClass("success")}>
-        <span className="flex-1">Saved</span>
-        <Button variant="ghost" aria-label="Dismiss">
-          ✕
-        </Button>
-      </div>
-      <div className={toastClass("error")}>
-        <span className="flex-1">Couldn't reach the server</span>
-        <Button variant="ghost" aria-label="Dismiss">
-          ✕
-        </Button>
-      </div>
-    </div>
+    <OverlayBox height={260}>
+      {() => (
+        <ToastRegion
+          queue={queue}
+          className="absolute right-3 bottom-3 left-3 flex flex-col gap-2 outline-hidden"
+        />
+      )}
+    </OverlayBox>
   );
 }
 
@@ -153,23 +153,25 @@ registerStories("primitives-b", [
     title: "Dialog (open)",
     render: () => (
       <OverlayBox height={320}>
-        {() => (
-          <div className="p-4">
-            <Button>Rename</Button>
-            <div className={`absolute ${modalBackdropClass}`}>
-              <div className={modalPanelClass}>
-                <Dialog title="Rename card" aria-label="Rename card">
-                  <p className="text-sm text-ink-secondary">
-                    Pick a name your future self will recognise.
-                  </p>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="ghost">Cancel</Button>
-                    <Button variant="solid">Save</Button>
-                  </div>
-                </Dialog>
-              </div>
-            </div>
-          </div>
+        {(c) => (
+          <DialogTrigger isOpen onOpenChange={noop}>
+            <Button className="m-4">Rename</Button>
+            <Modal portalContainer={c} contained isDismissable={false}>
+              <Dialog title="Rename card">
+                <p className="text-sm text-ink-secondary">
+                  Pick a name your future self will recognise.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" slot="close">
+                    Cancel
+                  </Button>
+                  <Button variant="solid" slot="close">
+                    Save
+                  </Button>
+                </div>
+              </Dialog>
+            </Modal>
+          </DialogTrigger>
         )}
       </OverlayBox>
     ),
