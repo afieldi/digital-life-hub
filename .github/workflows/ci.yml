@@ -5,8 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -37,7 +45,7 @@ jobs:
 
       - run: pnpm --filter @dlh/ui exec playwright install --with-deps webkit chromium
         if: runner.os == 'macOS'
-      - run: pnpm --filter @dlh/desktop exec playwright install --with-deps chromium
+      - run: pnpm --filter @dlh/desktop exec playwright install --with-deps webkit chromium
         if: runner.os == 'macOS'
 
       # Screenshot baselines and desktop e2e exist for darwin only.
