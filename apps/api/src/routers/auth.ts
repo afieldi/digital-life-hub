@@ -81,11 +81,23 @@ export const authRouter = router({
           message: "Sign-in expired — try again.",
         });
       }
-      const identity = await ctx.deps.google.exchange({
-        code: input.code,
-        codeVerifier: attempt.codeVerifier,
-        redirectUri: attempt.redirectUri,
-      });
+      let identity: { email: string; emailVerified: boolean };
+      try {
+        identity = await ctx.deps.google.exchange({
+          code: input.code,
+          codeVerifier: attempt.codeVerifier,
+          redirectUri: attempt.redirectUri,
+        });
+      } catch (err) {
+        console.error(
+          "Google exchange failed:",
+          err instanceof Error ? err.message : "unknown error",
+        );
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Google sign-in failed — try again.",
+        });
+      }
       const email = identity.email.trim().toLowerCase();
       if (!identity.emailVerified || email !== ctx.deps.config.allowedEmail) {
         throw new TRPCError({

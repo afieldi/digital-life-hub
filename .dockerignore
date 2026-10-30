@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.env
+**/.env
+.env.*
+**/.env.*
+.superpowers
+dist
+**/dist
+target
+**/target
+test-results
+.turbo

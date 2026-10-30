@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "cross-env NODE_ENV=development tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "build": "tsup",
+    "sessions": "tsx --env-file-if-exists=.env src/cli/sessions.ts",
+    "docker:build": "docker build -f Dockerfile -t dlh-api ../..",
     "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
     "test:db": "vitest run --passWithNoTests '.db.test.ts'",
     "typecheck": "tsc --noEmit -p ."
@@ -11,14 +16,20 @@
   "dependencies": {
     "@dlh/api-contract": "workspace:*",
     "@dlh/db": "workspace:*",
+    "@hono/node-server": "^2.1.5",
     "@hono/trpc-server": "^0.4.2",
     "@trpc/client": "^11.22.1",
     "@trpc/server": "^11.22.1",
+    "drizzle-orm": "^0.45.4",
     "hono": "^4.13.14",
+    "jose": "^6.2.14",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "cross-env": "^10.1.0",
+    "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
     "vitest": "^5.0.5"
   },
   "exports": {

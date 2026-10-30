@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate as drizzleMigrate } from "drizzle-orm/postgres-js/migrator";
 import { createDb, DEFAULT_DATABASE_URL } from "./client";
 
@@ -18,6 +18,9 @@ export async function migrate(
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await migrate(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
 }

@@ -20,6 +20,7 @@ const session = (tokenHash: string, lastUsedAt: Date, expiresAt: Date) => ({
   expiresAt,
 });
 
+/** `make` must return an empty, isolated store for every call. */
 export function describeAuthStore(
   name: string,
   make: () => Promise<{ store: AuthStore; done: () => Promise<void> }>,

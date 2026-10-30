@@ -26,6 +26,14 @@ export function createApp(deps: AppDeps): Hono {
     trpcServer({
       endpoint: "/trpc",
       router: appRouter,
+      onError: ({ error, path }) => {
+        if (
+          error.code === "INTERNAL_SERVER_ERROR" ||
+          error.code === "BAD_GATEWAY"
+        ) {
+          console.error(`tRPC ${error.code} on ${path ?? "<unknown>"}`);
+        }
+      },
       createContext: (_opts, c) =>
         createContext(deps, c.req.header("Authorization")),
     }),

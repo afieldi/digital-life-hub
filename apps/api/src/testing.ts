@@ -12,11 +12,18 @@ export class FakeGoogle implements GoogleOAuth {
     this.identity = { email, emailVerified: true };
   }
 
-  authUrl(p: { state: string }): string {
+  lastAuthUrlArgs: Parameters<GoogleOAuth["authUrl"]>[0] | null = null;
+  lastExchangeArgs: Parameters<GoogleOAuth["exchange"]>[0] | null = null;
+
+  authUrl(p: Parameters<GoogleOAuth["authUrl"]>[0]): string {
+    this.lastAuthUrlArgs = p;
     return `https://accounts.google.com/o/oauth2/v2/auth?state=${p.state}`;
   }
 
-  async exchange(): Promise<{ email: string; emailVerified: boolean }> {
+  async exchange(
+    p: Parameters<GoogleOAuth["exchange"]>[0],
+  ): Promise<{ email: string; emailVerified: boolean }> {
+    this.lastExchangeArgs = p;
     return this.identity;
   }
 }

@@ -24,7 +24,14 @@ export async function createContext(
   return { deps, session };
 }
 
-const t = initTRPC.context<Context>().create();
+// isDev is fixed at init, so strip the stack per request from devAuth instead.
+const t = initTRPC.context<Context>().create({
+  errorFormatter: ({ shape, ctx }) => {
+    if (ctx?.deps.config.devAuth) return shape;
+    const { stack: _stack, ...data } = shape.data;
+    return { ...shape, data };
+  },
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;

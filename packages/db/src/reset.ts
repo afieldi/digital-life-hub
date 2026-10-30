@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { sql } from "drizzle-orm";
 import { createDb, DEFAULT_DATABASE_URL } from "./client";
 import { migrate } from "./migrate";
@@ -15,6 +16,9 @@ export async function resetDatabase(url: string): Promise<void> {
   await migrate(url);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await resetDatabase(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
 }

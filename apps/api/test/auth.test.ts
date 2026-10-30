@@ -1,3 +1,4 @@
+import { codeChallengeS256 } from "../src/auth/tokens";
 import { createTestApi } from "../src/testing";
 
 const device = { name: "Arek's Mac", platform: "macos" as const };
@@ -13,13 +14,87 @@ test("start → exchange issues a token that auth.me accepts", async () => {
   });
 });
 
-test("auth.start rejects non-loopback redirect URIs", async () => {
+test("auth.start accepts only http://127.0.0.1:<1-65535>/callback", async () => {
   const api = createTestApi();
+  const start = (uri: string) =>
+    api.client().auth.start.mutate({ redirectUri: uri });
+  for (const bad of [
+    "http://localhost:5000/callback",
+    "https://127.0.0.1:5000/callback",
+    "http://127.0.0.1:0/callback",
+    "http://127.0.0.1:65536/callback",
+    "http://127.0.0.1:5000/other",
+  ]) {
+    await expect(start(bad)).rejects.toMatchObject({
+      data: { code: "BAD_REQUEST" },
+    });
+  }
   await expect(
-    api
-      .client()
-      .auth.start.mutate({ redirectUri: "http://localhost:5000/callback" }),
-  ).rejects.toMatchObject({ data: { code: "BAD_REQUEST" } });
+    start("http://127.0.0.1:65535/callback"),
+  ).resolves.toHaveProperty("state");
+});
+
+test("the attempt's verifier and redirectUri reach Google", async () => {
+  const api = createTestApi();
+  const client = api.client();
+  const { state } = await client.auth.start.mutate({ redirectUri });
+  const attempt = await api.store.takeLoginAttempt(state, api.clock.now());
+  if (!attempt) throw new Error("attempt missing");
+  expect(api.google.lastAuthUrlArgs).toEqual({
+    state,
+    codeChallenge: codeChallengeS256(attempt.codeVerifier),
+    redirectUri,
+  });
+  // put it back, since taking it consumed it
+  await api.store.putLoginAttempt(attempt, api.clock.now());
+  await client.auth.exchange.mutate({ state, code: "the-code", device });
+  expect(api.google.lastExchangeArgs).toEqual({
+    code: "the-code",
+    codeVerifier: attempt.codeVerifier,
+    redirectUri,
+  });
+});
+
+test("a Google failure becomes BAD_GATEWAY with no internals, logged server-side", async () => {
+  const api = createTestApi({ devAuth: false });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  api.google.exchange = async () => {
+    throw new Error("secret-internal invalid_grant");
+  };
+  const client = api.client();
+  const { state } = await client.auth.start.mutate({ redirectUri });
+  const err = await client.auth.exchange
+    .mutate({ state, code: "c", device })
+    .catch((e: unknown) => e);
+  expect(err).toMatchObject({
+    message: "Google sign-in failed — try again.",
+    data: { code: "BAD_GATEWAY" },
+  });
+  expect((err as { data: Record<string, unknown> }).data).not.toHaveProperty(
+    "stack",
+  );
+  expect(JSON.stringify(err)).not.toContain("secret-internal");
+  expect(log).toHaveBeenCalled();
+  log.mockRestore();
+});
+
+test("internal errors carry no stack when devAuth is off", async () => {
+  const api = createTestApi({ devAuth: false });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  api.store.listActiveSessions = async () => {
+    throw new Error("db exploded");
+  };
+  const token = await api.signIn(device);
+  const err = await api
+    .client(token)
+    .devices.list.query()
+    .catch((e: unknown) => e);
+  expect(err).toMatchObject({ data: { code: "INTERNAL_SERVER_ERROR" } });
+  expect((err as { data: Record<string, unknown> }).data).not.toHaveProperty(
+    "stack",
+  );
+  expect(log).toHaveBeenCalled();
+  log.mockRestore();
 });
 
 test("a state can be exchanged only once", async () => {
