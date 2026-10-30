@@ -181,14 +181,22 @@ pub struct LoopbackState {
     generation: AtomicU64,
 }
 
+/// Returned by `auth_loopback_start`; `attempt` must be passed back to `auth_loopback_wait`.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoopbackStart {
+    pub port: u16,
+    pub attempt: u64,
+}
+
 impl LoopbackState {
-    pub fn start(&self) -> Result<u16, String> {
+    pub fn start(&self) -> Result<LoopbackStart, String> {
         let listener = bind().map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         let mut slot = self.listener.lock().map_err(|e| e.to_string())?;
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         *slot = Some((listener, generation));
-        Ok(port)
+        Ok(LoopbackStart { port, attempt: generation })
     }
 
     #[cfg(test)]
@@ -196,34 +204,38 @@ impl LoopbackState {
         self.listener.lock().unwrap().is_some()
     }
 
-    /// Takes the pending listener with its generation. `None` if there is none.
-    fn take(&self) -> Option<(TcpListener, u64)> {
+    /// Takes the pending listener only if it belongs to `attempt`.
+    fn take(&self, attempt: u64) -> Option<TcpListener> {
         let mut slot = self.listener.lock().ok()?;
-        slot.take()
+        match slot.as_ref() {
+            Some((_, g)) if *g == attempt => slot.take().map(|(l, _)| l),
+            _ => None,
+        }
     }
 
-    pub fn wait(&self, expected_state: &str, timeout: Duration) -> Result<String, String> {
-        let (listener, generation) = self.take().ok_or_else(|| "cancelled".to_string())?;
+    pub fn wait(&self, attempt: u64, expected_state: &str, timeout: Duration) -> Result<String, String> {
+        let listener = self.take(attempt).ok_or_else(|| "cancelled".to_string())?;
         let deadline = Instant::now() + timeout;
         wait_for_code(listener, expected_state, deadline, &|| {
-            self.generation.load(Ordering::SeqCst) != generation
+            self.generation.load(Ordering::SeqCst) != attempt
         })
     }
 }
 
 #[tauri::command]
-pub fn auth_loopback_start(state: tauri::State<'_, std::sync::Arc<LoopbackState>>) -> Result<u16, String> {
+pub fn auth_loopback_start(state: tauri::State<'_, std::sync::Arc<LoopbackState>>) -> Result<LoopbackStart, String> {
     state.start()
 }
 
 #[tauri::command]
 pub async fn auth_loopback_wait(
     state: tauri::State<'_, std::sync::Arc<LoopbackState>>,
+    attempt: u64,
     expected_state: String,
 ) -> Result<String, String> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        state.wait(&expected_state, Duration::from_secs(WAIT_SECS))
+        state.wait(attempt, &expected_state, Duration::from_secs(WAIT_SECS))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -295,11 +307,13 @@ mod tests {
     #[test]
     fn second_start_cancels_inflight_wait() {
         let state = Arc::new(LoopbackState::default());
-        state.start().unwrap();
+        let a1 = state.start().unwrap().attempt;
         let s2 = state.clone();
-        let waiter = thread::spawn(move || s2.wait("s", Duration::from_secs(60)));
+        let waiter = thread::spawn(move || s2.wait(a1, "s", Duration::from_secs(60)));
         // Deterministic: the slot is empty once the waiter has taken its listener.
+        let spin_until = Instant::now() + Duration::from_secs(10);
         while state.has_pending() {
+            assert!(Instant::now() < spin_until, "waiter never took its listener");
             thread::yield_now();
         }
         let began = Instant::now();
@@ -362,17 +376,31 @@ mod tests {
     #[test]
     fn two_starts_leave_the_second_listener_waitable() {
         let state = Arc::new(LoopbackState::default());
-        let p1 = state.start().unwrap();
-        let p2 = state.start().unwrap();
+        let p1 = state.start().unwrap().port;
+        let LoopbackStart { port: p2, attempt: a2 } = state.start().unwrap();
         assert!(TcpStream::connect(("127.0.0.1", p1)).is_err());
         let client = thread::spawn(move || send(p2, "GET /callback?code=c&state=s HTTP/1.1"));
-        assert_eq!(state.wait("s", Duration::from_secs(10)), Ok("c".to_string()));
+        assert_eq!(state.wait(a2, "s", Duration::from_secs(10)), Ok("c".to_string()));
+        client.join().unwrap();
+    }
+
+    #[test]
+    fn stale_attempt_wait_is_cancelled_and_newest_still_works() {
+        let state = LoopbackState::default();
+        let a1 = state.start().unwrap().attempt;
+        let LoopbackStart { port: p2, attempt: a2 } = state.start().unwrap();
+        // Stale wait: cancelled at once (short timeout so a bug fails, not hangs).
+        let began = Instant::now();
+        assert_eq!(state.wait(a1, "s1", Duration::from_millis(300)), Err("cancelled".to_string()));
+        assert!(began.elapsed() < Duration::from_millis(200));
+        let client = thread::spawn(move || send(p2, "GET /callback?code=c2&state=s2 HTTP/1.1"));
+        assert_eq!(state.wait(a2, "s2", Duration::from_secs(10)), Ok("c2".to_string()));
         client.join().unwrap();
     }
 
     #[test]
     fn wait_without_start_is_cancelled() {
         let state = LoopbackState::default();
-        assert_eq!(state.wait("s", Duration::from_secs(1)), Err("cancelled".to_string()));
+        assert_eq!(state.wait(1, "s", Duration::from_secs(1)), Err("cancelled".to_string()));
     }
 }
