@@ -2,7 +2,6 @@ import {
   type CheckboxProps,
   Checkbox as RACCheckbox,
 } from "react-aria-components";
-import { focusRing } from "./focus";
 
 export type { CheckboxProps };
 
@@ -23,7 +22,7 @@ export function Checkbox({
               renderProps.isSelected || renderProps.isIndeterminate
                 ? "border-check bg-check text-app"
                 : "border-ink-muted bg-transparent text-transparent"
-            } ${renderProps.isFocusVisible ? "outline-2 outline-offset-2 outline-link" : ""} ${focusRing}`}
+            } ${renderProps.isFocusVisible ? "outline-2 outline-solid outline-offset-2 outline-link" : ""}`}
           >
             {renderProps.isIndeterminate
               ? "–"

@@ -67,3 +67,43 @@ test("Switch exposes role switch", () => {
   render(<Switch>Use 24h</Switch>);
   expect(screen.getByRole("switch", { name: "Use 24h" })).toBeInTheDocument();
 });
+
+test("Switch toggles with click and with Space", async () => {
+  const onChange = vi.fn();
+  render(<Switch onChange={onChange}>Use 24h</Switch>);
+  const sw = screen.getByRole("switch", { name: "Use 24h" });
+  await userEvent.click(sw);
+  expect(onChange).toHaveBeenLastCalledWith(true);
+  expect(sw).toBeChecked();
+  sw.focus();
+  await userEvent.keyboard(" ");
+  expect(onChange).toHaveBeenLastCalledWith(false);
+});
+
+test("SearchField clear button empties the input", async () => {
+  render(<SearchField label="Search" defaultValue="vendor" />);
+  await userEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(screen.getByRole("searchbox")).toHaveValue("");
+});
+
+test("disabled Button does not fire onPress", async () => {
+  const onPress = vi.fn();
+  render(
+    <Button isDisabled onPress={onPress}>
+      Nope
+    </Button>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Nope" }));
+  expect(onPress).not.toHaveBeenCalled();
+});
+
+test("icon Button requires aria-label at the type level", () => {
+  // @ts-expect-error icon variant without aria-label must not compile
+  const bad = <Button variant="icon">x</Button>;
+  const good = (
+    <Button variant="icon" aria-label="Settings">
+      x
+    </Button>
+  );
+  expect([bad, good]).toHaveLength(2);
+});

@@ -8,9 +8,24 @@ import { registerStories } from "../registry";
 
 // Static stories cover default and disabled; hover/pressed/focus are runtime
 // states React Aria owns and are exercised by the interaction tests.
-const forced = { default: {}, disabled: { isDisabled: true } } as const;
+// Focus is real, not faked: Focus marks the element and the screenshot spec
+// keyboard-focuses it (Tab, then focus()) before capturing, so isFocusVisible
+// and focus-visible genuinely match. Only one element can hold focus at a time,
+// so each story marks one. Hover and pressed need a live pointer and cannot be
+// forced statically (React Aria owns those data attributes); tests cover them.
+const forced = {
+  default: {},
+  focus: {},
+  disabled: { isDisabled: true },
+} as const;
 type State = keyof typeof forced;
 const states = Object.keys(forced) as State[];
+
+function Focus({ children }: { children: ReactNode }) {
+  return <span data-force-focus>{children}</span>;
+}
+const wrap = (s: State, node: ReactNode) =>
+  s === "focus" ? <Focus key={s}>{node}</Focus> : node;
 
 function Row({ children }: { children: ReactNode }) {
   return (
@@ -27,19 +42,22 @@ registerStories("primitives", [
     render: () => (
       <Row>
         {states.map((s) =>
-          variant === "icon" ? (
-            <Button
-              key={s}
-              variant="icon"
-              aria-label={`Settings (${s})`}
-              {...forced[s]}
-            >
-              ⚙
-            </Button>
-          ) : (
-            <Button key={s} variant={variant} {...forced[s]}>
-              {variant === "dashed" ? "+ Add card" : `Button ${s}`}
-            </Button>
+          wrap(
+            s,
+            variant === "icon" ? (
+              <Button
+                key={s}
+                variant="icon"
+                aria-label={`Settings (${s})`}
+                {...forced[s]}
+              >
+                ⚙
+              </Button>
+            ) : (
+              <Button key={s} variant={variant} {...forced[s]}>
+                {variant === "dashed" ? "+ Add card" : `Button ${s}`}
+              </Button>
+            ),
           ),
         )}
       </Row>
@@ -52,6 +70,9 @@ registerStories("primitives", [
       <Row>
         <Checkbox>Unchecked</Checkbox>
         <Checkbox defaultSelected>Checked</Checkbox>
+        <Focus>
+          <Checkbox>Focused</Checkbox>
+        </Focus>
         <Checkbox isIndeterminate>Indeterminate</Checkbox>
         <Checkbox isDisabled>Disabled</Checkbox>
         <Checkbox defaultSelected isDisabled>
@@ -120,6 +141,9 @@ registerStories("primitives", [
       <Row>
         <Switch>Off</Switch>
         <Switch defaultSelected>On</Switch>
+        <Focus>
+          <Switch>Focused</Switch>
+        </Focus>
         <Switch isDisabled>Disabled</Switch>
         <Switch defaultSelected isDisabled>
           Disabled on

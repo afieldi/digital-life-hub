@@ -34,12 +34,12 @@ export function SearchField({
       <div className="relative flex items-center">
         <Input
           placeholder={placeholder}
-          className={`min-h-11 w-full rounded-14 border border-white/14 bg-white/8 pl-4 pr-20 font-ui text-ink-primary placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-45 [&::-webkit-search-cancel-button]:hidden ${focusRing}`}
+          className={`min-h-11 w-full rounded-14 border border-white/14 bg-white/8 pl-4 pr-24 font-ui text-ink-primary placeholder:text-ink-muted disabled:cursor-not-allowed disabled:opacity-45 [&::-webkit-search-cancel-button]:hidden ${focusRing}`}
         />
-        <div className="absolute right-2 flex items-center gap-1">
+        <div className="absolute right-0 flex items-center gap-1">
           <Button
             aria-label="Clear search"
-            className={`hidden size-8 items-center justify-center rounded-full text-ink-secondary group-data-[empty]:hidden group-not-data-[empty]:flex ${focusRing}`}
+            className={`hidden size-11 items-center justify-center rounded-full text-xs text-ink-secondary group-data-[empty]:hidden group-not-data-[empty]:flex ${focusRing}`}
           >
             ✕
           </Button>

@@ -14,7 +14,7 @@ export function Switch({ children, ...props }: Omit<SwitchProps, "className">) {
             aria-hidden="true"
             className={`flex h-[26px] w-[44px] shrink-0 items-center rounded-full border border-white/14 px-[3px] transition-colors ${
               renderProps.isSelected ? "bg-check" : "bg-white/12"
-            } ${renderProps.isFocusVisible ? "outline-2 outline-offset-2 outline-link" : ""}`}
+            } ${renderProps.isFocusVisible ? "outline-2 outline-solid outline-offset-2 outline-link" : ""}`}
           >
             <span
               className={`size-5 rounded-full bg-white shadow transition-transform ${
