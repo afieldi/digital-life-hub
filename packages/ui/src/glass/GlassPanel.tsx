@@ -1,4 +1,4 @@
-import type { ElementType, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react";
 
 export type GlassLevel = "panel" | "card" | "nav" | "dialog" | "raised";
 
@@ -16,14 +16,16 @@ export function GlassPanel({
   as: Tag = "div",
   className,
   children,
+  ...rest
 }: {
   level: GlassLevel;
   as?: ElementType;
   className?: string;
   children?: ReactNode;
-}) {
+} & Omit<ComponentPropsWithoutRef<"div">, "className" | "children">) {
   return (
     <Tag
+      {...rest}
       className={className ? `${recipes[level]} ${className}` : recipes[level]}
     >
       {children}

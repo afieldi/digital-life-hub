@@ -5,6 +5,7 @@ import {
   SearchField as RACSearchField,
   type SearchFieldProps as RACSearchFieldProps,
 } from "react-aria-components";
+import { Kbd } from "../dusk/Kbd";
 import { focusRing } from "./focus";
 
 export type SearchFieldProps = Omit<
@@ -13,8 +14,8 @@ export type SearchFieldProps = Omit<
 > & {
   label: string;
   placeholder?: string;
-  /** Shortcut hint, e.g. "⌘K". Rendered as plain text until Kbd lands. */
-  shortcut?: string;
+  /** Shortcut hint: a literal string such as "⌘K", or keys such as ["mod", "K"]. */
+  shortcut?: string | string[];
   className?: string;
 };
 
@@ -44,9 +45,7 @@ export function SearchField({
             ✕
           </Button>
           {shortcut ? (
-            <span className="font-ui text-xs text-ink-tertiary">
-              {shortcut}
-            </span>
+            <Kbd keys={Array.isArray(shortcut) ? shortcut : [shortcut]} />
           ) : null}
         </div>
       </div>

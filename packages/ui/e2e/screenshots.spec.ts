@@ -8,7 +8,7 @@ test("every registered story matches its screenshot", async ({ page }) => {
     .locator("[data-story]")
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-story") ?? ""));
   expect(ids.length).toBeGreaterThan(0);
-  const interactive = ":is(button, input, [role=tab], [role=spinbutton])";
+  const interactive = ":is(button, input, a, [role=tab], [role=spinbutton])";
   for (const id of ids) {
     // Each story loads alone at a fixed position over the Scene, so screenshots
     // never depend on page layout or on state left by another story. Stories mark

@@ -4,7 +4,14 @@ export {
   parseTime,
   Time,
 } from "@internationalized/date";
+export * from "./dusk/Breadcrumb";
+export * from "./dusk/Chip";
+export * from "./dusk/Dock";
+export * from "./dusk/Kbd";
+export * from "./dusk/ProgressBar";
+export * from "./dusk/TypeTile";
 export * from "./glass/GlassPanel";
+export * from "./platform";
 export * from "./primitives/Button";
 export * from "./primitives/Checkbox";
 export * from "./primitives/ComboBox";
