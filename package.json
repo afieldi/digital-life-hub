@@ -12,7 +12,10 @@
     "test": "turbo run test && vitest run --root . scripts",
     "typecheck": "turbo run typecheck",
     "lint": "biome check . && tsx scripts/check-module-classes.ts",
-    "test:scripts": "vitest run scripts"
+    "test:scripts": "vitest run scripts",
+    "test:db": "turbo run test:db --concurrency=1",
+    "dev:down": "docker compose down",
+    "db:reset": "pnpm --filter @dlh/db reset"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

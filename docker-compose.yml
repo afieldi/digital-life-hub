@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: dlh
+      POSTGRES_PASSWORD: dlh
+      POSTGRES_DB: dlh
+    ports:
+      - "54329:5432"
+    volumes:
+      - dlh-pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dlh -d dlh"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  dlh-pg:
