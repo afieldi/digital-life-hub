@@ -9,10 +9,11 @@ edition = "2021"
 name = "digital_life_hub_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
-# Pinned ~2.12 (not caret): ^2.12 would resolve 2.13+ and break the CLI major/minor match.
-# Cargo.lock must be committed after the first real build.
+# tauri is pinned ~2.12 (not caret) to match @tauri-apps/api and the CLI; ^2.12 would
+# resolve 2.13+ and break their major/minor match. tauri-build has its own version line
+# (2.7.x alongside tauri 2.12), so it takes any 2.x and Cargo.lock holds the exact version.
 [build-dependencies]
-tauri-build = { version = "~2.12", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "~2.12", features = [] }
