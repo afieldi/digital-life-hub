@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { freshTestDb, sessions } from "../src";
+import { sessions } from "../src";
+import { freshTestDb } from "../src/testing";
 
 test("migrations create sessions with uuidv7 ids", async () => {
   const { db, close } = await freshTestDb();

@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts",
-    "reset": "tsx src/reset.ts",
+    "migrate": "tsx src/cli/migrate.ts",
+    "reset": "tsx src/cli/reset.ts",
     "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
     "test:db": "vitest run '.db.test.ts'",
     "typecheck": "tsc --noEmit -p ."

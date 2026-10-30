@@ -1,4 +1,4 @@
-import { freshTestDb } from "@dlh/db";
+import { freshTestDb } from "@dlh/db/testing";
 import { drizzleAuthStore } from "../src/auth/drizzleStore";
 import { describeAuthStore } from "./storeContract";
 

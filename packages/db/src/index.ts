@@ -6,4 +6,3 @@ export {
 } from "./client";
 export { migrate } from "./migrate";
 export { loginAttempts, sessions } from "./schema";
-export { freshTestDb } from "./testing";
