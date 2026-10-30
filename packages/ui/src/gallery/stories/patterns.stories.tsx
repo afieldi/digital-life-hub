@@ -19,56 +19,65 @@ type Card = {
   id: string;
   title: string;
   tag: string;
-  due?: string;
+  meta?: string;
   col: string;
 };
 
+// Column dots from the Project board frame, as tokens.
 const columns: BoardColumnDef[] = [
-  { id: "todo", title: "To do", dot: "var(--color-ink-muted)" },
+  { id: "todo", title: "To do", dot: "var(--color-ink-tertiary)" },
   { id: "in_progress", title: "In progress", dot: statusColors.in_progress },
   { id: "review", title: "Review", dot: statusColors.review },
   { id: "done", title: "Done", dot: typeColors.task },
 ];
 
+// Website relaunch, exactly as in the Project board frame.
 const websiteRelaunch: Card[] = [
   {
     id: "t1",
-    title: "Write homepage copy",
+    title: "Migrate blog posts",
     tag: "Content",
-    due: "Fri",
+    meta: "¶ 1 note",
     col: "todo",
   },
-  { id: "t2", title: "Pick a font pairing", tag: "Design", col: "todo" },
   {
-    id: "t3",
+    id: "t2",
     title: "Set up redirects",
-    tag: "Dev",
-    due: "Nov 8",
+    tag: "Infra",
+    meta: "Fri",
     col: "todo",
   },
+  { id: "t3", title: "Write launch announcement", tag: "Content", col: "todo" },
   {
     id: "p1",
-    title: "Build the hero section",
-    tag: "Dev",
-    due: "Today",
+    title: "Bundle splitting",
+    tag: "Perf",
+    meta: "PR in review · today 14:30",
     col: "in_progress",
   },
   {
     id: "p2",
-    title: "Photo shoot shortlist",
-    tag: "Design",
+    title: "Image pipeline",
+    tag: "Infra",
+    meta: "¶ 2 notes",
     col: "in_progress",
   },
   {
     id: "r1",
-    title: "About page draft",
-    tag: "Content",
-    due: "Mon",
+    title: "New nav — accessibility pass",
+    tag: "Design",
+    meta: "Waiting on Dana",
     col: "review",
   },
-  { id: "r2", title: "Accessibility pass", tag: "Dev", col: "review" },
-  { id: "d1", title: "Sitemap", tag: "Content", col: "done" },
-  { id: "d2", title: "Moodboard", tag: "Design", col: "done" },
+  { id: "r2", title: "Lighthouse budget in CI", tag: "Perf", col: "review" },
+  { id: "d1", title: "New nav", tag: "Design", meta: "Oct 22", col: "done" },
+  {
+    id: "d2",
+    title: "Pick hosting",
+    tag: "Infra",
+    meta: "Oct 15",
+    col: "done",
+  },
 ];
 
 function CardBody({ card }: { card: Card }) {
@@ -82,7 +91,7 @@ function CardBody({ card }: { card: Card }) {
       </span>
       <span className="flex items-center gap-2 text-xs text-ink-tertiary">
         <span className="rounded-full bg-white/10 px-2 py-0.5">{card.tag}</span>
-        {card.due ? <span>{card.due}</span> : null}
+        {card.meta ? <span>{card.meta}</span> : null}
       </span>
     </>
   );
@@ -90,7 +99,10 @@ function CardBody({ card }: { card: Card }) {
 
 function BoardDemo() {
   const [cards, setCards] = useState(websiteRelaunch);
-  const onMove = (id: string, to: string, index: number) =>
+  // Last onMove call, exposed for the e2e "board keyboard move" test.
+  const [lastMove, setLastMove] = useState("");
+  const onMove = (id: string, to: string, index: number) => {
+    setLastMove(JSON.stringify([id, to, index]));
     setCards((all) => {
       const card = all.find((c) => c.id === id);
       if (!card) return all;
@@ -101,16 +113,19 @@ function BoardDemo() {
       rest.splice(at, 0, { ...card, col: to });
       return rest;
     });
+  };
   return (
-    <Board
-      columns={columns}
-      items={cards}
-      columnOf={(c) => c.col}
-      renderCard={(c) => <CardBody card={c} />}
-      textValue={(c) => c.title}
-      onMove={onMove}
-      onAdd={noop}
-    />
+    <div data-last-move={lastMove}>
+      <Board
+        columns={columns}
+        items={cards}
+        columnOf={(c) => c.col}
+        renderCard={(c) => <CardBody card={c} />}
+        textValue={(c) => c.title}
+        onMove={onMove}
+        onAdd={noop}
+      />
+    </div>
   );
 }
 

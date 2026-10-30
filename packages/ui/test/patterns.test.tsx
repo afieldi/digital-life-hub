@@ -95,6 +95,30 @@ test("CommandBar: ↑↓ move across groups, Enter runs and closes, empty groups
   expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
+test("CommandBar scrolls the highlighted row into view", async () => {
+  const scroll = vi.fn();
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = scroll;
+  try {
+    render(
+      <CommandBar
+        isOpen
+        onOpenChange={noop}
+        query=""
+        onQueryChange={noop}
+        groups={fourGroups(noop)}
+      />,
+    );
+    scroll.mockClear();
+    await userEvent.keyboard("{ArrowDown}");
+    const second = screen.getByRole("option", { name: /New task/ });
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scroll.mock.contexts.at(-1)).toBe(second);
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
+});
+
 test("CommandBar: typing reports the query and Escape closes", async () => {
   const onQueryChange = vi.fn();
   const onOpenChange = vi.fn();

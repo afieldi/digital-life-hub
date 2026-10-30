@@ -79,7 +79,7 @@ test("board keyboard move", async ({ page }) => {
   const todo = story.getByRole("grid", { name: "To do" });
   const inProgress = story.getByRole("grid", { name: "In progress" });
   const first = todo.getByRole("row").first();
-  const title = "Write homepage copy"; // first To do card in the story
+  const title = "Migrate blog posts"; // first To do card (id t1) in the story
   await expect(first).toContainText(title);
   // RAC GridList starts keyboard drags from the card's drag button.
   await page.keyboard.press("Tab");
@@ -100,4 +100,11 @@ test("board keyboard move", async ({ page }) => {
   await page.keyboard.press("Enter"); // drop
   await expect(inProgress.getByText(title, { exact: true })).toBeVisible();
   await expect(todo.getByText(title, { exact: true })).toHaveCount(0);
+  // The first drop target Tab reaches in "In progress" appends the card:
+  // index 2, after its two cards.
+  await expect(story.locator("[data-last-move]")).toHaveAttribute(
+    "data-last-move",
+    JSON.stringify(["t1", "in_progress", 2]),
+  );
+  await expect(inProgress.getByRole("row").last()).toContainText(title);
 });

@@ -88,6 +88,13 @@ export function CommandBar({
   useEffect(() => setActive(0), [query]);
   const activeIndex = Math.min(active, Math.max(flat.length - 1, 0));
   const activeItem = flat[activeIndex];
+  const activeId = activeItem ? optionId(activeItem.id) : undefined;
+
+  // The list scrolls (panel is height-capped): keep the highlighted row visible.
+  useEffect(() => {
+    if (!activeId) return;
+    document.getElementById(activeId)?.scrollIntoView?.({ block: "nearest" });
+  }, [activeId]);
 
   const run = (item: CommandItem) => {
     item.onAction();
@@ -134,9 +141,7 @@ export function CommandBar({
               aria-expanded={flat.length > 0}
               aria-controls={listId}
               aria-autocomplete="list"
-              aria-activedescendant={
-                activeItem ? optionId(activeItem.id) : undefined
-              }
+              aria-activedescendant={activeId}
               aria-label={placeholder}
               placeholder={placeholder}
               value={query}

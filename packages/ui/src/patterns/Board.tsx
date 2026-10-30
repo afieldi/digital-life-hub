@@ -13,6 +13,7 @@ import {
 } from "react-aria-components";
 import { Button } from "../primitives/Button";
 import { focusRing } from "../primitives/focus";
+import { indexFor } from "./boardMath";
 
 export type BoardColumnDef = { id: string; title: string; dot: string };
 
@@ -62,15 +63,6 @@ async function draggedIds(items: DropItem[]): Promise<string[]> {
   return Promise.all(
     items.filter(isTextDropItem).map((item) => item.getText(CARD_TYPE)),
   );
-}
-
-/** Index in `ids` (with `moving` removed) where a drop on `target` lands. */
-function indexFor(ids: string[], moving: string[], target: DropTarget): number {
-  const rest = ids.filter((id) => !moving.includes(id));
-  if (target.type !== "item") return rest.length;
-  const at = rest.indexOf(String(target.key));
-  if (at === -1) return rest.length;
-  return target.dropPosition === "after" ? at + 1 : at;
 }
 
 function BoardColumn<T extends { id: string }>({
