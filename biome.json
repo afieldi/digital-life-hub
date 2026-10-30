@@ -1,0 +1,36 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      "!**/docs",
+      "!**/.superpowers",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/.turbo",
+      "!**/src-tauri/target"
+    ]
+  },
+  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
+  "linter": { "enabled": true },
+  "overrides": [
+    {
+      "includes": ["modules/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react-aria-components": "Modules must use @dlh/ui, not react-aria-components directly."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

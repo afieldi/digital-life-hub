@@ -1,0 +1,7 @@
+node_modules
+dist
+.turbo
+src-tauri/target
+test-results
+playwright-report
+.superpowers/

@@ -1,0 +1,22 @@
+{
+  "name": "digital-life-hub",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx scripts/dev.ts",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.10",
+    "typescript": "^7.0.2"
+  }
+}
