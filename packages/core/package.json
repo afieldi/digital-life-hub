@@ -1,0 +1,21 @@
+{
+  "name": "@dlh/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "*"
+  },
+  "devDependencies": {
+    "@tanstack/react-router": "^1",
+    "@types/node": "^26.6.6",
+    "vitest": "^5.0.5"
+  }
+}
