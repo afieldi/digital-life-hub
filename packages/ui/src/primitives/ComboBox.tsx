@@ -47,7 +47,7 @@ export function ComboBox<T extends object>({
     <RACComboBox
       {...props}
       defaultItems={items}
-      className={`flex flex-col gap-1.5${className ? ` ${className}` : ""}`}
+      className={`flex flex-col gap-1.5 ${className ?? ""}`}
     >
       <Label className="font-ui text-sm text-ink-secondary">{label}</Label>
       <div className="relative flex items-center">
@@ -83,7 +83,7 @@ export function ComboBox<T extends object>({
       <Popover
         {...popoverProps}
         portalContainer={portalContainer}
-        className={`w-(--trigger-width) p-1.5${popoverProps?.className ? ` ${popoverProps.className}` : ""}`}
+        className={`w-(--trigger-width) p-1.5 ${popoverProps?.className ?? ""}`}
       >
         <ListBox className="flex max-h-72 flex-col gap-0.5 overflow-auto outline-hidden">
           {children}
@@ -104,7 +104,7 @@ export function ComboBoxItem({ className, ...props }: ComboBoxItemProps) {
         typeof props.children === "string" ? props.children : undefined
       }
       {...props}
-      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-10 px-3 font-ui text-sm text-ink-primary outline-hidden focused:bg-white/15 pressed:bg-white/20 selected:font-semibold focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-link disabled:cursor-not-allowed disabled:opacity-45${className ? ` ${className}` : ""}`}
+      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-10 px-3 font-ui text-sm text-ink-primary outline-hidden focused:bg-white/15 pressed:bg-white/20 selected:font-semibold focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-link disabled:cursor-not-allowed disabled:opacity-45 ${className ?? ""}`}
     />
   );
 }

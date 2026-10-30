@@ -14,8 +14,8 @@ export type SearchFieldProps = Omit<
 > & {
   label: string;
   placeholder?: string;
-  /** Shortcut hint: a literal string such as "⌘K", or keys such as ["mod", "K"]. */
-  shortcut?: string | string[];
+  /** Shortcut hint as Kbd keys, e.g. ["mod", "K"]; "mod" follows the platform. */
+  shortcut?: string[];
   className?: string;
 };
 
@@ -29,7 +29,7 @@ export function SearchField({
   return (
     <RACSearchField
       {...props}
-      className={`group flex flex-col gap-1.5${className ? ` ${className}` : ""}`}
+      className={`group flex flex-col gap-1.5 ${className ?? ""}`}
     >
       <Label className="sr-only">{label}</Label>
       <div className="relative flex items-center">
@@ -44,9 +44,7 @@ export function SearchField({
           >
             ✕
           </Button>
-          {shortcut ? (
-            <Kbd keys={Array.isArray(shortcut) ? shortcut : [shortcut]} />
-          ) : null}
+          {shortcut?.length ? <Kbd keys={shortcut} /> : null}
         </div>
       </div>
     </RACSearchField>

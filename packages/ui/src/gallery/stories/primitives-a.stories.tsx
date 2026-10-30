@@ -166,7 +166,7 @@ registerStories("primitives", [
         <SearchField
           label="Search"
           placeholder="Search…"
-          shortcut="⌘K"
+          shortcut={["mod", "K"]}
           className="w-72"
         />
         <SearchField label="Search" defaultValue="vendor" className="w-72" />
@@ -188,7 +188,7 @@ registerStories("primitives", [
           <SearchField
             label="Search"
             placeholder="Search…"
-            shortcut="⌘K"
+            shortcut={["mod", "K"]}
             className="w-72"
           />
         </Focus>

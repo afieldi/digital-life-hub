@@ -1,5 +1,7 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Home, ListChecks } from "lucide-react";
+import { RouterProvider } from "react-aria-components";
 import { Breadcrumb } from "../src/dusk/Breadcrumb";
 import { Chip } from "../src/dusk/Chip";
 import { Dock } from "../src/dusk/Dock";
@@ -75,4 +77,72 @@ test("TypeTile uses the type colour", () => {
   expect(screen.getByTestId("type-tile")).toHaveStyle({
     backgroundColor: "#F5CF7E",
   });
+});
+
+const dockItems = [
+  { id: "home", label: "Home", icon: Home, href: "/" },
+  { id: "tasks", label: "Tasks", icon: ListChecks, href: "/tasks" },
+];
+
+test("Dock: Tab moves through the links then the trailing slot; Enter navigates", async () => {
+  const navigate = vi.fn();
+  render(
+    <RouterProvider navigate={navigate}>
+      <Dock
+        currentHref="/"
+        items={dockItems}
+        trailing={<button type="button">Quick add</button>}
+      />
+    </RouterProvider>,
+  );
+  await userEvent.tab();
+  expect(screen.getByRole("link", { name: "Home" })).toHaveFocus();
+  await userEvent.tab();
+  expect(screen.getByRole("link", { name: "Tasks" })).toHaveFocus();
+  await userEvent.keyboard("{Enter}");
+  expect(navigate).toHaveBeenCalledWith("/tasks", undefined);
+  await userEvent.tab();
+  expect(screen.getByRole("button", { name: "Quick add" })).toHaveFocus();
+});
+
+test("Breadcrumb: Enter on a link navigates; the current item is not focusable", async () => {
+  const navigate = vi.fn();
+  render(
+    <RouterProvider navigate={navigate}>
+      <Breadcrumb
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Projects", href: "/projects" },
+          { label: "Website relaunch" },
+        ]}
+      />
+    </RouterProvider>,
+  );
+  await userEvent.tab();
+  expect(screen.getByRole("link", { name: "Home" })).toHaveFocus();
+  await userEvent.tab();
+  expect(screen.getByRole("link", { name: "Projects" })).toHaveFocus();
+  await userEvent.keyboard("{Enter}");
+  expect(navigate).toHaveBeenCalledWith("/projects", undefined);
+  await userEvent.tab();
+  expect(screen.getByText("Website relaunch")).not.toHaveFocus();
+  expect(document.body).toHaveFocus();
+});
+
+test("linked Chip is focusable and Enter follows it; unlinked Chip is not focusable", async () => {
+  const navigate = vi.fn();
+  render(
+    <RouterProvider navigate={navigate}>
+      <Chip kind="project" color="#9EC2FF">
+        Plain
+      </Chip>
+      <Chip kind="project" color="#9EC2FF" href="/projects/web">
+        Website
+      </Chip>
+    </RouterProvider>,
+  );
+  await userEvent.tab();
+  expect(screen.getByRole("link", { name: "Website" })).toHaveFocus();
+  await userEvent.keyboard("{Enter}");
+  expect(navigate).toHaveBeenCalledWith("/projects/web", undefined);
 });

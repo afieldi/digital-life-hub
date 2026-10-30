@@ -80,6 +80,47 @@ registerStories("dusk", [
     ),
   },
   {
+    id: "dusk/chip-link",
+    title: "Linked chips",
+    render: () => (
+      <div className="flex items-center gap-3 p-4">
+        <Chip kind="project" color="#9EC2FF" href="/projects/website">
+          Website relaunch
+        </Chip>
+        <Chip kind="status" status="review" href="/tasks?status=review" />
+        <Chip kind="type" color="#9FD9A8" href="/tasks">
+          Task
+        </Chip>
+      </div>
+    ),
+  },
+  {
+    id: "dusk/chip-link-focus",
+    title: "Linked chip focus",
+    render: () => (
+      <div className="flex items-center gap-3 p-4">
+        <span data-force-focus>
+          <Chip kind="project" color="#9EC2FF" href="/projects/website">
+            Website relaunch
+          </Chip>
+        </span>
+      </div>
+    ),
+  },
+  {
+    id: "dusk/chip-link-hover",
+    title: "Linked chip hover",
+    render: () => (
+      <div className="flex items-center gap-3 p-4">
+        <span data-force-hover>
+          <Chip kind="project" color="#9EC2FF" href="/projects/website">
+            Website relaunch
+          </Chip>
+        </span>
+      </div>
+    ),
+  },
+  {
     id: "dusk/kbd",
     title: "Kbd macOS and Windows",
     render: () => (

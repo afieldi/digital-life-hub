@@ -57,7 +57,7 @@ export function DatePicker<T extends DateValue = DateValue>({
   return (
     <RACDatePicker
       {...props}
-      className={`flex flex-col gap-1.5${className ? ` ${className}` : ""}`}
+      className={`flex flex-col gap-1.5 ${className ?? ""}`}
     >
       <Label className="font-ui text-sm text-ink-secondary">{label}</Label>
       <Group className="relative flex items-center">

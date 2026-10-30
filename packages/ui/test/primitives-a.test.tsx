@@ -58,9 +58,18 @@ test("SearchField clears with Escape", async () => {
   expect(input).toHaveValue("");
 });
 
-test("SearchField renders shortcut text", () => {
-  render(<SearchField label="Search" shortcut="⌘K" />);
+test("SearchField shortcut follows the platform (⌘K on macOS, Ctrl K on Windows)", () => {
+  const platform = vi.spyOn(navigator, "platform", "get");
+  platform.mockReturnValue("MacIntel");
+  const { unmount } = render(
+    <SearchField label="Search" shortcut={["mod", "K"]} />,
+  );
   expect(screen.getByText("⌘K")).toBeInTheDocument();
+  unmount();
+  platform.mockReturnValue("Win32");
+  render(<SearchField label="Search" shortcut={["mod", "K"]} />);
+  expect(screen.getByText("Ctrl K")).toBeInTheDocument();
+  platform.mockRestore();
 });
 
 test("Switch exposes role switch", () => {

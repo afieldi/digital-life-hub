@@ -15,7 +15,7 @@ export function Kbd({
   const text = parts.join(isMac(platform) ? "" : " ");
   return (
     <kbd
-      className={`rounded-10 bg-white/8 px-1.5 py-0.5 font-ui text-xs text-ink-tertiary${className ? ` ${className}` : ""}`}
+      className={`rounded-10 bg-white/8 px-1.5 py-0.5 font-ui text-xs text-ink-tertiary ${className ?? ""}`}
     >
       {text}
     </kbd>

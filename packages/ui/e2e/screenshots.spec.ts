@@ -1,15 +1,35 @@
-import { expect, test } from "@playwright/test";
+import { chromium, expect, test } from "@playwright/test";
 
-test("every registered story matches its screenshot", async ({ page }) => {
-  await page.goto("/");
-  await page.waitForSelector("[data-story]");
-  await page.evaluate(() => document.fonts.ready);
-  const ids = await page
-    .locator("[data-story]")
-    .evaluateAll((els) => els.map((el) => el.getAttribute("data-story") ?? ""));
+const baseURL = `http://localhost:${process.env.GALLERY_PORT ?? 6006}`;
+
+// One test per story, generated at collection time from the gallery's own
+// registry (read from the running gallery), so one mismatch never hides the
+// rest and a single story can be targeted: `-g "dusk/dock-focus"`.
+async function listStoryIds(): Promise<string[]> {
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${baseURL}/`);
+    await page.waitForSelector("[data-story]");
+    return await page
+      .locator("[data-story]")
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-story") ?? ""),
+      );
+  } finally {
+    await browser.close();
+  }
+}
+
+const ids = await listStoryIds();
+const interactive = ":is(button, input, a, [role=tab], [role=spinbutton])";
+
+test("gallery registers stories", () => {
   expect(ids.length).toBeGreaterThan(0);
-  const interactive = ":is(button, input, a, [role=tab], [role=spinbutton])";
-  for (const id of ids) {
+});
+
+for (const id of ids) {
+  test(`story ${id} matches its screenshot`, async ({ page }) => {
     // Each story loads alone at a fixed position over the Scene, so screenshots
     // never depend on page layout or on state left by another story. Stories mark
     // one element per forced state; it is applied for real (keyboard focus,
@@ -33,8 +53,8 @@ test("every registered story matches its screenshot", async ({ page }) => {
     }
     await expect(story).toHaveScreenshot(`${id.replaceAll("/", "-")}.png`);
     if (pressing) await page.mouse.up();
-  }
-});
+  });
+}
 
 test("keyboard focus draws a visible ring", async ({ page }) => {
   await page.goto("/?story=primitives%2Fbutton-glass");

@@ -43,9 +43,7 @@ export function Modal({
       UNSTABLE_portalContainer={portalContainer ?? undefined}
       className={`${contained ? "absolute" : "fixed"} ${modalBackdropClass}`}
     >
-      <RACModal
-        className={`${modalPanelClass}${className ? ` ${className}` : ""}`}
-      >
+      <RACModal className={`${modalPanelClass} ${className ?? ""}`}>
         {children}
       </RACModal>
     </ModalOverlay>
@@ -62,7 +60,7 @@ export function Dialog({ title, className, children, ...props }: DialogProps) {
   return (
     <RACDialog
       {...props}
-      className={`flex flex-col gap-4 p-6 font-ui text-ink-primary outline-hidden${className ? ` ${className}` : ""}`}
+      className={`flex flex-col gap-4 p-6 font-ui text-ink-primary outline-hidden ${className ?? ""}`}
     >
       {title ? (
         <Heading slot="title" className="font-serif text-2xl text-ink-primary">

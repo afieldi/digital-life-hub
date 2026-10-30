@@ -43,7 +43,7 @@ export function Button({
     <RACButton
       {...props}
       data-variant={variant}
-      className={`${base} ${variants[variant]} ${focusRing}${className ? ` ${className}` : ""}`}
+      className={`${base} ${variants[variant]} ${focusRing} ${className ?? ""}`}
     />
   );
 }

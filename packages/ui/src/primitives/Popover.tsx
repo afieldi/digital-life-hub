@@ -22,7 +22,7 @@ export function Popover({
       offset={8}
       {...props}
       UNSTABLE_portalContainer={portalContainer ?? undefined}
-      className={`glass-dialog min-w-40 font-ui text-ink-primary outline-hidden${className ? ` ${className}` : ""}`}
+      className={`glass-dialog min-w-40 font-ui text-ink-primary outline-hidden ${className ?? ""}`}
     />
   );
 }

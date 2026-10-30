@@ -48,7 +48,12 @@ export function Chip({ kind, color, status, href, children }: ChipProps) {
   const cls = kind === "type" && color ? `${base} !text-app` : base;
   if (href) {
     return (
-      <Link href={href} style={style} className={`${cls} ${focusRing}`}>
+      <Link
+        href={href}
+        style={style}
+        // Visual pill stays 28px; the ::before extends the hit area to 44px.
+        className={`${cls} relative hover:brightness-125 before:absolute before:inset-x-0 before:-inset-y-2 ${focusRing}`}
+      >
         {content}
       </Link>
     );

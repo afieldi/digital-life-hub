@@ -25,7 +25,7 @@ export function Tooltip({
       offset={8}
       {...props}
       UNSTABLE_portalContainer={portalContainer ?? undefined}
-      className={`glass-raised px-3 py-1.5 font-ui text-xs text-ink-primary${className ? ` ${className}` : ""}`}
+      className={`glass-raised px-3 py-1.5 font-ui text-xs text-ink-primary ${className ?? ""}`}
     />
   );
 }

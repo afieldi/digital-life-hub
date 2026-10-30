@@ -30,11 +30,11 @@ export function Menu<T extends object>({
     <Popover
       {...popoverProps}
       portalContainer={portalContainer}
-      className={`p-1.5${popoverProps?.className ? ` ${popoverProps.className}` : ""}`}
+      className={`p-1.5 ${popoverProps?.className ?? ""}`}
     >
       <RACMenu
         {...props}
-        className={`flex max-h-80 flex-col gap-0.5 overflow-auto outline-hidden${className ? ` ${className}` : ""}`}
+        className={`flex max-h-80 flex-col gap-0.5 overflow-auto outline-hidden ${className ?? ""}`}
       />
     </Popover>
   );
@@ -48,7 +48,7 @@ export function MenuItem({ className, ...props }: MenuItemProps) {
   return (
     <RACMenuItem
       {...props}
-      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-10 px-3 font-ui text-sm text-ink-primary outline-hidden focused:bg-white/15 pressed:bg-white/20 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-link disabled:cursor-not-allowed disabled:opacity-45${className ? ` ${className}` : ""}`}
+      className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-10 px-3 font-ui text-sm text-ink-primary outline-hidden focused:bg-white/15 pressed:bg-white/20 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-link disabled:cursor-not-allowed disabled:opacity-45 ${className ?? ""}`}
     />
   );
 }
@@ -67,7 +67,7 @@ export function MenuSection<T extends object>({
   return (
     <RACMenuSection
       {...props}
-      className={`flex flex-col gap-0.5${className ? ` ${className}` : ""}`}
+      className={`flex flex-col gap-0.5 ${className ?? ""}`}
     >
       {title ? (
         <Header className="px-3 pt-2 pb-1 font-ui text-xs uppercase tracking-widest text-ink-muted">
