@@ -59,3 +59,34 @@ test("modules without nav still contribute actions", () => {
   expect(r.nav).toEqual([]);
   expect(r.actions.map((a) => a.id)).toEqual(["x.a"]);
 });
+
+const act = (id: string, actionId: string) =>
+  defineModule({
+    id,
+    routes: () => [],
+    paletteActions: [{ id: actionId, label: "Do", group: "actions", run() {} }],
+  });
+
+test("reserved nav keys throw", () =>
+  expect(() => collectModules([m("a", { key: "h" })], { keys: ["h"] })).toThrow(
+    /reserved.*"h"|"h".*reserved/,
+  ));
+test("reserved nav paths throw", () =>
+  expect(() =>
+    collectModules([m("a", { path: "/settings" })], { paths: ["/settings"] }),
+  ).toThrow(/\/settings/));
+test("non-reserved key and path pass", () =>
+  expect(() =>
+    collectModules([m("a", { key: "j", path: "/a" })], {
+      keys: ["h"],
+      paths: ["/"],
+    }),
+  ).not.toThrow());
+test("nav keys must be a single lowercase letter", () => {
+  for (const key of ["H", "ab", "1", ""])
+    expect(() => collectModules([m("a", { key })])).toThrow(/invalid nav key/);
+});
+test("duplicate palette action ids across modules throw", () =>
+  expect(() =>
+    collectModules([act("a", "same.id"), act("b", "same.id")]),
+  ).toThrow(/same\.id/));

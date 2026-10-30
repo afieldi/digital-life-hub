@@ -14,7 +14,15 @@ export interface ModuleRegistry {
   actions: PaletteAction[];
 }
 
-export function collectModules(manifests: ModuleManifest[]): ModuleRegistry {
+export interface ReservedShell {
+  keys?: string[];
+  paths?: string[];
+}
+
+export function collectModules(
+  manifests: ModuleManifest[],
+  reserved: ReservedShell = {},
+): ModuleRegistry {
   const ids = new Set<string>();
   const paths = new Map<string, string>();
   const keys = new Map<string, string>();
@@ -22,6 +30,7 @@ export function collectModules(manifests: ModuleManifest[]): ModuleRegistry {
   const itemTypes: ModuleRegistry["itemTypes"] = new Map();
   const itemTypeOwners = new Map<string, string>();
   const actions: PaletteAction[] = [];
+  const actionOwners = new Map<string, string>();
 
   for (const m of manifests) {
     if (ids.has(m.id))
@@ -29,6 +38,23 @@ export function collectModules(manifests: ModuleManifest[]): ModuleRegistry {
     ids.add(m.id);
 
     if (m.nav) {
+      if (reserved.paths?.includes(m.nav.path)) {
+        throw new ModuleRegistryError(
+          `Module "${m.id}" uses nav path "${m.nav.path}", which is reserved by the shell`,
+        );
+      }
+      if (m.nav.key !== undefined) {
+        if (!/^[a-z]$/.test(m.nav.key)) {
+          throw new ModuleRegistryError(
+            `Module "${m.id}" has invalid nav key "${m.nav.key}": must be a single letter a-z`,
+          );
+        }
+        if (reserved.keys?.includes(m.nav.key)) {
+          throw new ModuleRegistryError(
+            `Module "${m.id}" uses nav key "${m.nav.key}", which is reserved by the shell`,
+          );
+        }
+      }
       const owner = paths.get(m.nav.path);
       if (owner) {
         throw new ModuleRegistryError(
@@ -59,7 +85,16 @@ export function collectModules(manifests: ModuleManifest[]): ModuleRegistry {
       itemTypes.set(m.itemType.type, m.itemType);
     }
 
-    if (m.paletteActions) actions.push(...m.paletteActions);
+    for (const a of m.paletteActions ?? []) {
+      const owner = actionOwners.get(a.id);
+      if (owner) {
+        throw new ModuleRegistryError(
+          `Duplicate palette action id "${a.id}" in modules "${owner}" and "${m.id}"`,
+        );
+      }
+      actionOwners.set(a.id, m.id);
+      actions.push(a);
+    }
   }
 
   nav.sort((a, b) => a.order - b.order);

@@ -127,7 +127,6 @@ export function Shell() {
             id: a.id,
             label: typeof a.label === "function" ? a.label(ctx) : a.label,
             icon: Icon ? <Icon aria-hidden="true" size={18} /> : undefined,
-            hint: a.shortcut,
             onAction: () => {
               void a.run(ctx);
             },

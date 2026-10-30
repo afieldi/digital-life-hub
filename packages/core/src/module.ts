@@ -13,14 +13,8 @@ export interface PaletteAction {
   icon?: string;
   group: "create" | "actions" | "ai";
   keywords?: string[];
-  shortcut?: string;
   when?: (ctx: CommandContext) => boolean;
   run: (ctx: CommandContext) => void | Promise<void>;
-}
-
-export interface Shortcut {
-  keys: string;
-  run: (ctx: CommandContext) => void;
 }
 
 export interface ModuleManifest {
@@ -41,7 +35,6 @@ export interface ModuleManifest {
   };
   routes: (parent: AnyRoute) => AnyRoute[];
   paletteActions?: PaletteAction[];
-  shortcuts?: Shortcut[];
 }
 
 export function defineModule(m: ModuleManifest): ModuleManifest {

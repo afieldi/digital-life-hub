@@ -9,4 +9,6 @@ export const registry = collectModules(
       import: "default",
     }),
   ),
+  // Keys and paths the shell itself owns (Home, Settings, /dev/ui).
+  { keys: ["h"], paths: ["/", "/settings", "/dev/ui"] },
 );
