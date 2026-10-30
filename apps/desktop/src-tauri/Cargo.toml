@@ -1,0 +1,18 @@
+[package]
+name = "digital-life-hub"
+version = "0.0.0"
+description = "Digital Life Hub"
+edition = "2021"
+
+[lib]
+# The _lib suffix avoids a name clash with the bin target on Windows (cargo#8519).
+name = "digital_life_hub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

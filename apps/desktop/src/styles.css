@@ -1,0 +1,12 @@
+@import "@dlh/ui/theme.css";
+/* Module pages use layout classes only; scan them so those utilities exist. */
+@source "../../../modules";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-app font-ui text-ink-primary;
+  }
+}
