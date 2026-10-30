@@ -8,17 +8,19 @@ import { UNSAFE_PortalProvider } from "react-aria";
 // `transform` makes the box the containing block for fixed/absolute children.
 export function OverlayBox({
   height = 280,
+  width = 440,
   children,
 }: {
   height?: number;
+  width?: number;
   children: (container: HTMLDivElement) => ReactNode;
 }) {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   return (
     <div
       ref={setEl}
-      style={{ height, transform: "translateZ(0)" }}
-      className="relative w-[440px] overflow-hidden rounded-18"
+      style={{ height, width, transform: "translateZ(0)" }}
+      className="relative overflow-hidden rounded-18"
     >
       {el ? (
         <UNSAFE_PortalProvider getContainer={() => el}>

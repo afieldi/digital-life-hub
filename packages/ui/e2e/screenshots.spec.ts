@@ -71,3 +71,33 @@ test("keyboard focus draws a visible ring", async ({ page }) => {
   expect(style.style).not.toBe("none");
   expect(style.width).not.toBe("0px");
 });
+
+test("board keyboard move", async ({ page }) => {
+  await page.goto("/?story=patterns%2Fboard");
+  const story = page.locator('[data-story="patterns/board"]');
+  await story.waitFor();
+  const todo = story.getByRole("grid", { name: "To do" });
+  const inProgress = story.getByRole("grid", { name: "In progress" });
+  const first = todo.getByRole("row").first();
+  const title = "Write homepage copy"; // first To do card in the story
+  await expect(first).toContainText(title);
+  // RAC GridList starts keyboard drags from the card's drag button.
+  await page.keyboard.press("Tab");
+  await first.focus();
+  await page.keyboard.press("ArrowRight"); // into the card: its drag button
+  await expect(
+    first.getByRole("button", { name: `Drag ${title}` }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter"); // start keyboard drag
+  // Tab moves between drop targets until one is inside "In progress".
+  for (let i = 0; i < 8; i++) {
+    const inTarget = await inProgress.evaluate((el) =>
+      el.contains(document.activeElement),
+    );
+    if (inTarget) break;
+    await page.keyboard.press("Tab");
+  }
+  await page.keyboard.press("Enter"); // drop
+  await expect(inProgress.getByText(title, { exact: true })).toBeVisible();
+  await expect(todo.getByText(title, { exact: true })).toHaveCount(0);
+});
