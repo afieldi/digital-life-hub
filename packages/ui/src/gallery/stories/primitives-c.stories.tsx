@@ -63,14 +63,13 @@ registerStories("primitives-c", [
     title: "ComboBox (open)",
     render: () => (
       <OverlayBox height={300}>
-        {(c) => (
+        {() => (
           <OpenOnMount>
             <div className="p-4">
               <ComboBox
                 label="Project"
                 items={projects}
                 defaultInputValue="o"
-                portalContainer={c}
                 popoverProps={{
                   isNonModal: true,
                   shouldFlip: false,
@@ -140,13 +139,12 @@ registerStories("primitives-c", [
     title: "DatePicker (open)",
     render: () => (
       <OverlayBox height={480}>
-        {(c) => (
+        {() => (
           <div className="p-4">
             <DatePicker
               label="Due"
               defaultValue={new CalendarDate(2026, 10, 30)}
               defaultOpen
-              portalContainer={c}
               popoverProps={{
                 isNonModal: true,
                 shouldFlip: false,

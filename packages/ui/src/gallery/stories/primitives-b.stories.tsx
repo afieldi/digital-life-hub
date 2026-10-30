@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { addToast, createToastQueue } from "../../internal/toast";
 import { Button } from "../../primitives/Button";
 import { Dialog, DialogTrigger, Modal } from "../../primitives/Dialog";
 import {
@@ -9,11 +10,7 @@ import {
 } from "../../primitives/Menu";
 import { Popover } from "../../primitives/Popover";
 import { Tab, TabList, TabPanel, Tabs } from "../../primitives/Tabs";
-import {
-  addToast,
-  createToastQueue,
-  ToastRegion,
-} from "../../primitives/Toast";
+import { ToastRegion } from "../../primitives/Toast";
 import { Tooltip, TooltipTrigger } from "../../primitives/Tooltip";
 import { registerStories } from "../registry";
 import { OverlayBox } from "./OverlayBox";
@@ -66,12 +63,11 @@ registerStories("primitives-b", [
     title: "Menu (open)",
     render: () => (
       <OverlayBox>
-        {(c) => (
+        {() => (
           <div className="p-4">
             <MenuTrigger isOpen onOpenChange={noop}>
               <Button>Actions</Button>
               <Menu
-                portalContainer={c}
                 popoverProps={{
                   isNonModal: true,
                   className: "max-h-none!",
@@ -99,13 +95,12 @@ registerStories("primitives-b", [
     title: "Popover (open)",
     render: () => (
       <OverlayBox height={200}>
-        {(c) => (
+        {() => (
           <div className="p-4">
             <DialogTrigger isOpen onOpenChange={noop}>
               <Button>Details</Button>
               <Popover
                 className="max-h-none!"
-                portalContainer={c}
                 isNonModal
                 shouldFlip={false}
                 placement="bottom start"
@@ -125,10 +120,10 @@ registerStories("primitives-b", [
     title: "Dialog (open)",
     render: () => (
       <OverlayBox height={320}>
-        {(c) => (
+        {() => (
           <DialogTrigger isOpen onOpenChange={noop}>
             <Button className="m-4">Rename</Button>
-            <Modal portalContainer={c} contained isDismissable={false}>
+            <Modal contained isDismissable={false}>
               <Dialog title="Rename card">
                 <p className="text-sm text-ink-secondary">
                   Pick a name your future self will recognise.
@@ -153,7 +148,7 @@ registerStories("primitives-b", [
     title: "Tooltip (open)",
     render: () => (
       <OverlayBox height={140}>
-        {(c) => (
+        {() => (
           <div className="p-4 pt-12">
             <TooltipTrigger isOpen onOpenChange={noop}>
               <Button variant="icon" aria-label="Settings">
@@ -161,7 +156,6 @@ registerStories("primitives-b", [
               </Button>
               <Tooltip
                 className="max-h-none!"
-                portalContainer={c}
                 shouldFlip={false}
                 placement="bottom"
               >

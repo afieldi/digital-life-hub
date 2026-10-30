@@ -6,9 +6,7 @@ import {
   type TextFieldProps as RACTextFieldProps,
   Text,
 } from "react-aria-components";
-import { focusRing } from "./focus";
-
-export const inputClass = `min-h-11 w-full rounded-14 border border-white/14 bg-white/8 px-4 font-ui text-ink-primary placeholder:text-ink-muted invalid:border-type-event disabled:cursor-not-allowed disabled:opacity-45 ${focusRing}`;
+import { inputClass } from "../internal/classes";
 
 export type TextFieldProps = Omit<
   RACTextFieldProps,

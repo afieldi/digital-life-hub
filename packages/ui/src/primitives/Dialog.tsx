@@ -8,30 +8,22 @@ import {
   type DialogProps as RACDialogProps,
   Modal as RACModal,
 } from "react-aria-components";
+import { modalBackdropClass, modalPanelClass } from "../internal/classes";
 
 export { DialogTrigger };
 
-// Shared with the gallery, which renders the open state statically.
-export const modalBackdropClass =
-  "inset-0 z-50 flex items-center justify-center bg-[rgba(18,15,26,0.45)] backdrop-blur-[14px]";
-export const modalPanelClass =
-  "glass-dialog w-[min(28rem,calc(100vw-2rem))] outline-hidden";
-
-export type ModalProps = Omit<
-  ModalOverlayProps,
-  "className" | "UNSTABLE_portalContainer" | "children"
-> & {
+export type ModalProps = Omit<ModalOverlayProps, "className" | "children"> & {
   className?: string;
   children?: ReactNode;
-  /** Render inside this element instead of document.body (gallery/screenshots). */
-  portalContainer?: Element | null;
-  /** Backdrop covers the portal container instead of the viewport. */
+  /**
+   * Backdrop covers its portal container instead of the viewport.
+   * @internal gallery only
+   */
   contained?: boolean;
 };
 
 export function Modal({
   className,
-  portalContainer,
   contained,
   children,
   ...props
@@ -40,7 +32,6 @@ export function Modal({
     <ModalOverlay
       isDismissable
       {...props}
-      UNSTABLE_portalContainer={portalContainer ?? undefined}
       className={`${contained ? "absolute" : "fixed"} ${modalBackdropClass}`}
     >
       <RACModal className={`${modalPanelClass} ${className ?? ""}`}>

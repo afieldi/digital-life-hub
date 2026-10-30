@@ -10,9 +10,9 @@ import {
   type ComboBoxProps as RACComboBoxProps,
   Text,
 } from "react-aria-components";
+import { inputClass } from "../internal/classes";
 import { Button } from "./Button";
 import { Popover, type PopoverProps } from "./Popover";
-import { inputClass } from "./TextField";
 
 export type ComboBoxProps<T extends object> = Omit<
   RACComboBoxProps<T>,
@@ -26,8 +26,7 @@ export type ComboBoxProps<T extends object> = Omit<
   placeholder?: string;
   className?: string;
   children: ReactNode | ((item: T) => ReactNode);
-  portalContainer?: Element | null;
-  /** Extra Popover props (placement, isNonModal…), for the gallery. */
+  /** @internal gallery only: extra Popover props (placement, isNonModal, shouldFlip…). */
   popoverProps?: Omit<PopoverProps, "children">;
 };
 
@@ -38,7 +37,6 @@ export function ComboBox<T extends object>({
   placeholder,
   className,
   children,
-  portalContainer,
   popoverProps,
   items,
   ...props
@@ -82,7 +80,6 @@ export function ComboBox<T extends object>({
       ) : null}
       <Popover
         {...popoverProps}
-        portalContainer={portalContainer}
         className={`w-(--trigger-width) p-1.5 ${popoverProps?.className ?? ""}`}
       >
         <ListBox className="flex max-h-72 flex-col gap-0.5 overflow-auto outline-hidden">

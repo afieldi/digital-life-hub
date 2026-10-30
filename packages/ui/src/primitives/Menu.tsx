@@ -15,21 +15,18 @@ export { MenuTrigger };
 
 export type MenuProps<T extends object> = Omit<RACMenuProps<T>, "className"> & {
   className?: string;
-  portalContainer?: Element | null;
-  /** Extra Popover props (placement, isNonModal, boundaryElement…), for the gallery. */
+  /** @internal gallery only: extra Popover props (placement, isNonModal, shouldFlip…). */
   popoverProps?: Omit<PopoverProps, "children">;
 };
 
 export function Menu<T extends object>({
   className,
-  portalContainer,
   popoverProps,
   ...props
 }: MenuProps<T>) {
   return (
     <Popover
       {...popoverProps}
-      portalContainer={portalContainer}
       className={`p-1.5 ${popoverProps?.className ?? ""}`}
     >
       <RACMenu

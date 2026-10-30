@@ -13,10 +13,10 @@ import {
   type DatePickerProps as RACDatePickerProps,
   Text,
 } from "react-aria-components";
+import { dateInputClass, dateSegmentClass } from "../internal/classes";
 import { Button } from "./Button";
 import { Dialog } from "./Dialog";
 import { Popover, type PopoverProps } from "./Popover";
-import { dateInputClass, dateSegmentClass } from "./TimeField";
 
 export type DatePickerProps<T extends DateValue = DateValue> = Omit<
   RACDatePickerProps<T>,
@@ -26,8 +26,7 @@ export type DatePickerProps<T extends DateValue = DateValue> = Omit<
   description?: string;
   errorMessage?: string;
   className?: string;
-  portalContainer?: Element | null;
-  /** Extra Popover props (placement, isNonModal…), for the gallery. */
+  /** @internal gallery only: extra Popover props (placement, isNonModal, shouldFlip…). */
   popoverProps?: Omit<PopoverProps, "children">;
 };
 
@@ -50,7 +49,6 @@ export function DatePicker<T extends DateValue = DateValue>({
   description,
   errorMessage,
   className,
-  portalContainer,
   popoverProps,
   ...props
 }: DatePickerProps<T>) {
@@ -95,11 +93,7 @@ export function DatePicker<T extends DateValue = DateValue>({
           {errorMessage}
         </FieldError>
       ) : null}
-      <Popover
-        {...popoverProps}
-        portalContainer={portalContainer}
-        className={popoverProps?.className}
-      >
+      <Popover {...popoverProps} className={popoverProps?.className}>
         <Dialog aria-label={`${label} calendar`} className="p-3">
           <Calendar className="flex flex-col gap-2 font-ui text-ink-primary">
             <header className="flex items-center justify-between">

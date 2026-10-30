@@ -192,14 +192,13 @@ function CommandBarDemo({
   const [query, setQuery] = useState(initial);
   return (
     <OverlayBox width={760} height={groups.length ? 680 : 340}>
-      {(c) => (
+      {() => (
         <CommandBar
           isOpen
           onOpenChange={noop}
           query={query}
           onQueryChange={setQuery}
           groups={groups}
-          portalContainer={c}
           contained
         />
       )}

@@ -12,7 +12,7 @@ import {
   Modal as RACModal,
 } from "react-aria-components";
 import { Kbd } from "../dusk/Kbd";
-import { modalBackdropClass } from "../primitives/Dialog";
+import { modalBackdropClass } from "../internal/classes";
 
 export type CommandItem = {
   id: string;
@@ -38,9 +38,10 @@ export type CommandBarProps = {
   placeholder?: string;
   /** Replaces the default ↵ / ↑↓ / esc hints. */
   footer?: ReactNode;
-  /** Render inside this element instead of document.body (gallery/screenshots). */
-  portalContainer?: Element | null;
-  /** Backdrop covers the portal container instead of the viewport. */
+  /**
+   * Backdrop covers its portal container instead of the viewport.
+   * @internal gallery only
+   */
   contained?: boolean;
 };
 
@@ -70,7 +71,6 @@ export function CommandBar({
   groups,
   placeholder = "Search, create, or ask AI",
   footer,
-  portalContainer,
   contained,
 }: CommandBarProps) {
   const baseId = useId();
@@ -120,7 +120,6 @@ export function CommandBar({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       isDismissable
-      UNSTABLE_portalContainer={portalContainer ?? undefined}
       className={`${contained ? "absolute" : "fixed"} ${modalBackdropClass} items-start!`}
     >
       <RACModal className="glass-dialog mt-[110px] flex max-h-[calc(100%-140px)] w-[min(680px,calc(100%-32px))] flex-col overflow-hidden rounded-[22px] outline-hidden">
