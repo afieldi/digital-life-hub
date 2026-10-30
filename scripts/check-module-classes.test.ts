@@ -53,3 +53,30 @@ test("expression and template literal forms are checked, with line numbers", () 
     [3, "opacity-50"],
   ]);
 });
+
+test("bare utilities fail, border-0 passes", () => {
+  const v = findViolations(
+    '<div className="border rounded shadow ring blur outline hover:border border-0" />',
+    "a.tsx",
+  );
+  expect(v.map((x) => x.className)).toEqual([
+    "border",
+    "rounded",
+    "shadow",
+    "ring",
+    "blur",
+    "outline",
+    "hover:border",
+  ]);
+});
+
+test("interpolated templates check static tokens, not glued across interpolations", () => {
+  const t = (c: string) =>
+    findViolations(`<div className={\`${c}\`} />`, "a.tsx").map(
+      (x) => x.className,
+    );
+  expect(t("bg-red-500 $" + "{x}")).toEqual(["bg-red-500"]);
+  expect(t("flex $" + "{x} font-bold")).toEqual(["font-bold"]);
+  expect(t("p-$" + "{n} flex")).toEqual([]);
+  expect(t("$" + "{a}shadow-md")).toEqual(["shadow-md"]);
+});

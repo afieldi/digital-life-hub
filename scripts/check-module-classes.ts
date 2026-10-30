@@ -1,6 +1,12 @@
 import { globSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+/**
+ * Scans literal className attributes only. Interpolations (${…}) are blanked out and
+ * the remaining static tokens are checked. NOT scanned: cn()/clsx()/cva() calls,
+ * string concatenation, single-quoted attributes (className='…'), and classes
+ * built in variables.
+ */
 export type Violation = { file: string; line: number; className: string };
 
 const DISALLOWED = [
@@ -19,6 +25,15 @@ const DISALLOWED = [
   "fill-",
   "stroke-",
 ];
+// Bare utilities that set colour/shape/glass without a '-' suffix.
+const BARE = new Set([
+  "border",
+  "rounded",
+  "shadow",
+  "ring",
+  "blur",
+  "outline",
+]);
 const ALLOWED = new Set(["text-left", "text-center", "text-right", "border-0"]);
 
 // className="…", className={'…'}, className={"…"}, className={`…`}
@@ -43,6 +58,7 @@ function isViolation(token: string): boolean {
   if (base.includes("[") && (base.includes("#") || base.includes("rgb")))
     return true;
   if (ALLOWED.has(base)) return false;
+  if (BARE.has(base)) return true;
   return DISALLOWED.some((p) => base.startsWith(p));
 }
 
@@ -50,9 +66,12 @@ export function findViolations(source: string, file: string): Violation[] {
   const out: Violation[] = [];
   for (const m of source.matchAll(CLASS_ATTR)) {
     const value = m[1] ?? m[2] ?? m[3] ?? m[4];
-    if (value === undefined || value.includes("${")) continue;
+    if (value === undefined) continue;
     const line = source.slice(0, m.index).split("\n").length;
-    for (const token of value.split(/\s+/).filter(Boolean)) {
+    for (const token of value
+      .replace(/\$\{[^}]*\}/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)) {
       if (isViolation(token)) out.push({ file, line, className: token });
     }
   }
