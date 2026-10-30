@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@plugin "tailwindcss-react-aria-components";
+@import "@fontsource/plus-jakarta-sans/400.css";
+@import "@fontsource/plus-jakarta-sans/500.css";
+@import "@fontsource/plus-jakarta-sans/600.css";
+@import "@fontsource/plus-jakarta-sans/700.css";
+@import "@fontsource/newsreader/400.css";
+@import "@fontsource/newsreader/500.css";
+
+@theme {
+  --color-type-task: #9FD9A8;
+  --color-type-note: #F5CF7E;
+  --color-type-project: #9EC2FF;
+  --color-type-event: #F5A8A0;
+  --color-type-ai: #CDB6FF;
+
+  --color-status-in_progress: #F5CF7E;
+  --color-status-review: #9EC2FF;
+
+  --color-ink-primary: #FFFFFF;
+  --color-ink-secondary: #F4E9EE;
+  --color-ink-tertiary: #E6DCE4;
+  --color-ink-muted: #D9CFD6;
+
+  --color-link: #FFE2CC;
+  --color-app: #1A1724;
+  --color-check: #A9B8FF;
+
+  --radius-10: 10px;
+  --radius-14: 14px;
+  --radius-18: 18px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+
+  --font-ui: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-serif: "Newsreader", Georgia, serif;
+}
+
+.glass-panel {
+  background: rgba(24, 20, 32, 0.62);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+}
+
+.glass-card {
+  background: rgba(30, 26, 40, 0.42);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+}
+
+.glass-nav {
+  background: rgba(22, 18, 30, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(10, 8, 16, 0.4);
+}
+
+.glass-dialog {
+  background: rgba(30, 26, 40, 0.78);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  box-shadow: 0 30px 80px rgba(10, 8, 16, 0.5);
+}
+
+.glass-raised {
+  background: rgba(46, 40, 60, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+}
