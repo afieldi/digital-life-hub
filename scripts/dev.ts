@@ -73,7 +73,16 @@ export const steps: DevStep[] = [
   },
   {
     name: "migrate",
-    run: () => runCommand("pnpm", ["--filter", "@dlh/db", "migrate"]),
+    run: () =>
+      runCommand("pnpm", [
+        "--filter",
+        "@dlh/db",
+        "exec",
+        "tsx",
+        // Same DATABASE_URL source as the API (apps/api/.env, else the default).
+        "--env-file-if-exists=../../apps/api/.env",
+        "src/cli/migrate.ts",
+      ]),
   },
   {
     name: "apps",

@@ -94,3 +94,16 @@ jobs:
       - run: pnpm --filter @dlh/desktop test:e2e
 
       - run: pnpm --filter @dlh/api docker:build
+
+      - name: Smoke-test the API image
+        run: |
+          docker run -d --name dlh-api --network host \
+            -e DATABASE_URL=postgres://dlh:dlh@127.0.0.1:54329/dlh \
+            -e GOOGLE_CLIENT_ID=ci -e GOOGLE_CLIENT_SECRET=ci \
+            -e ALLOWED_EMAIL=ci@example.test -e PORT=8787 dlh-api
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs dlh-api
+          exit 1

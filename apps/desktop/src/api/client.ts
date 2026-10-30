@@ -11,7 +11,7 @@ import { createTRPCContext } from "@trpc/tanstack-react-query";
 export const { TRPCProvider, useTRPC } = createTRPCContext<ApiRouter>();
 
 export const API_URL: string =
-  import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8787";
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8787";
 
 /** The server rejected the session token (missing, expired or revoked). */
 export function isUnauthorized(err: unknown): boolean {

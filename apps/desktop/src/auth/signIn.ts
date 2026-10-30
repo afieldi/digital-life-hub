@@ -33,6 +33,7 @@ export function toSignInError(err: unknown): SignInError {
     if (err === "denied" || err === "cancelled" || err === "timeout") {
       return new SignInError(err, { cause: err });
     }
+    console.warn("Sign-in failed with an unrecognised error:", err);
     return new SignInError("expired", { cause: err });
   }
   if (err instanceof TRPCClientError) {
@@ -45,11 +46,18 @@ export function toSignInError(err: unknown): SignInError {
   }
   if (err instanceof TypeError)
     return new SignInError("network", { cause: err });
+  console.warn("Sign-in failed with an unrecognised error:", err);
   return new SignInError("expired", { cause: err });
 }
 
 async function thisDevice(): Promise<DeviceInput> {
-  const name = (await hostname())?.trim() || "This computer";
+  let host: string | null = null;
+  try {
+    host = await hostname();
+  } catch {
+    // A missing permission or plugin failure must not fail sign-in.
+  }
+  const name = host?.trim().slice(0, 100).trim() || "This computer";
   const os = platform();
   const devicePlatform: Platform =
     os === "macos" || os === "windows" ? os : "web";

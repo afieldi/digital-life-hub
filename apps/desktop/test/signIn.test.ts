@@ -117,3 +117,34 @@ test("an unreachable server → network", async () => {
   loopback({ code: "google-code" });
   expect(await reasonOf(googleSignIn(trpcClient))).toBe("network");
 });
+
+test("a rejected hostname() still signs in as This computer", async () => {
+  const { api, trpcClient } = setup();
+  loopback({ code: "google-code" });
+  vi.mocked(hostname).mockRejectedValue("os.hostname not allowed");
+
+  const token = await googleSignIn(trpcClient);
+
+  const devices = await api.client(token).devices.list.query();
+  expect(devices).toMatchObject([{ name: "This computer", platform: "macos" }]);
+});
+
+test("a 150-character hostname is sent capped at 100", async () => {
+  const { api, trpcClient } = setup();
+  loopback({ code: "google-code" });
+  vi.mocked(hostname).mockResolvedValue(`  ${"h".repeat(150)}  `);
+
+  const token = await googleSignIn(trpcClient);
+
+  const [device] = await api.client(token).devices.list.query();
+  expect(device?.name).toBe("h".repeat(100));
+});
+
+test("an unrecognised failure is logged without leaking the code", async () => {
+  const { trpcClient } = setup();
+  loopback({ error: "something new" });
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  await reasonOf(googleSignIn(trpcClient));
+  expect(warn).toHaveBeenCalledWith(expect.any(String), "something new");
+  warn.mockRestore();
+});

@@ -11,8 +11,9 @@ function bundleFiles(extraArgs: string[]): { name: string; text: string }[] {
     const res = spawnSync(
       "pnpm",
       ["exec", "tsup", "--out-dir", out, ...extraArgs],
-      { encoding: "utf8" },
+      { encoding: "utf8", shell: process.platform === "win32" },
     );
+    expect(res.error, `spawning pnpm failed: ${res.error}`).toBeUndefined();
     expect(res.status, res.stderr).toBe(0);
     const files = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
