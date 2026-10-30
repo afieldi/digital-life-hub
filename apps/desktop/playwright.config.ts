@@ -5,18 +5,19 @@ import { defineConfig, devices } from "@playwright/test";
 // an existing server: a stale one would be tested instead of this checkout.
 const port = 1420;
 const apiUrl = "http://127.0.0.1:8787";
-// Must be the database globalSetup resets (freshTestDb reads the same variable).
+// Must be the database e2e/prepareDb.ts resets (freshTestDb reads the same variable).
 const testDatabaseUrl =
   process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL;
 
 export default defineConfig({
   testDir: "e2e",
   use: { baseURL: `http://localhost:${port}` },
-  globalSetup: "./e2e/globalSetup.ts",
   webServer: [
     {
       // devSignIn exists only under NODE_ENV=development. Google values are dummies.
-      command: "pnpm --filter @dlh/api exec tsx src/main.ts",
+      // Reset the database first, then start the API on the fresh schema.
+      command:
+        "pnpm --filter @dlh/desktop exec tsx e2e/prepareDb.ts && pnpm --filter @dlh/api exec tsx src/main.ts",
       url: `${apiUrl}/health`,
       reuseExistingServer: false,
       env: {

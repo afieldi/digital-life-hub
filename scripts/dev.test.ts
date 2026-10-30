@@ -6,6 +6,7 @@ import {
   DOCKER_MISSING_MESSAGE,
   NODE_MODULES_MESSAGE,
   preflight,
+  runSteps,
   steps,
 } from "./dev";
 
@@ -100,5 +101,65 @@ describe("preflight", () => {
 describe("steps", () => {
   it("steps run db → migrate → apps", () => {
     expect(steps.map((s) => s.name)).toEqual(["db", "migrate", "apps"]);
+  });
+});
+
+describe("runSteps", () => {
+  const log = () => {
+    const calls: string[] = [];
+    const step = (name: string, result: "done" | "interrupted" | Error) => ({
+      name,
+      run: async () => {
+        calls.push(name);
+        if (result instanceof Error) throw result;
+        return result;
+      },
+    });
+    return { calls, step };
+  };
+
+  it("runs every step in order and exits 0", async () => {
+    const { calls, step } = log();
+    const code = await runSteps(
+      [step("a", "done"), step("b", "done")],
+      () => {},
+      () => {},
+    );
+    expect(calls).toEqual(["a", "b"]);
+    expect(code).toBe(0);
+  });
+
+  it("an interrupt during step 1 means step 2 never runs (exit 130)", async () => {
+    const { calls, step } = log();
+    const code = await runSteps(
+      [step("db", "interrupted"), step("migrate", "done")],
+      () => {},
+      () => {},
+    );
+    expect(calls).toEqual(["db"]);
+    expect(code).toBe(130);
+  });
+
+  it("Ctrl+C ending the last step exits 0", async () => {
+    const { step } = log();
+    const code = await runSteps(
+      [step("db", "done"), step("apps", "interrupted")],
+      () => {},
+      () => {},
+    );
+    expect(code).toBe(0);
+  });
+
+  it("a rejected step prints its message and exits non-zero", async () => {
+    const { calls, step } = log();
+    const errors: string[] = [];
+    const code = await runSteps(
+      [step("db", new Error("boom")), step("migrate", "done")],
+      () => {},
+      (m) => errors.push(m),
+    );
+    expect(calls).toEqual(["db"]);
+    expect(errors).toEqual(["boom"]);
+    expect(code).toBe(1);
   });
 });

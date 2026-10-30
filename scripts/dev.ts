@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export type DevStep = { name: string; run: () => Promise<void> };
+export type StepResult = "done" | "interrupted";
+export type DevStep = { name: string; run: () => Promise<StepResult> };
 
 export const NODE_MODULES_MESSAGE = 'Run "pnpm install" first.';
 export const CARGO_MISSING_MESSAGE =
@@ -46,7 +47,7 @@ function onPath(binary: string): boolean {
     .some((dir) => exts.some((e) => existsSync(join(dir, binary + e))));
 }
 
-function runCommand(command: string, args: string[]): Promise<void> {
+function runCommand(command: string, args: string[]): Promise<StepResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
@@ -57,7 +58,8 @@ function runCommand(command: string, args: string[]): Promise<void> {
     child.on("error", reject);
     child.on("close", (code, signal) => {
       process.off("SIGINT", forward);
-      if (code === 0 || signal === "SIGINT") resolve();
+      if (signal === "SIGINT") resolve("interrupted");
+      else if (code === 0) resolve("done");
       else reject(new Error(`${command} exited with ${code ?? signal}`));
     });
   });
@@ -88,6 +90,26 @@ export const steps: DevStep[] = [
   },
 ];
 
+/** Runs steps in order. Returns the exit code: 130 when Ctrl+C stopped a step
+ * before the last one, 0 when it ended the last step, 1 when a step failed. */
+export async function runSteps(
+  list: DevStep[],
+  log: (message: string) => void,
+  error: (message: string) => void,
+): Promise<number> {
+  for (const [i, step] of list.entries()) {
+    log(`> ${step.name}`);
+    try {
+      const result = await step.run();
+      if (result === "interrupted") return i === list.length - 1 ? 0 : 130;
+    } catch (err) {
+      error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
+  }
+  return 0;
+}
+
 async function main(): Promise<void> {
   const result = preflight({
     hasNodeModules: () => existsSync("node_modules"),
@@ -104,14 +126,8 @@ async function main(): Promise<void> {
     console.error(result.message);
     process.exit(1);
   }
-  for (const step of steps) {
-    console.log(`> ${step.name}`);
-    await step.run();
-  }
+  process.exit(await runSteps(steps, console.log, console.error));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
-  main().catch((err) => {
-    console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
-  });
+  main();
