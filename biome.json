@@ -12,6 +12,7 @@
       "!**/src-tauri/target"
     ]
   },
+  "css": { "parser": { "tailwindDirectives": true } },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
   "linter": { "enabled": true },
   "overrides": [

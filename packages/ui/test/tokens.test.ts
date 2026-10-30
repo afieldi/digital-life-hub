@@ -15,7 +15,9 @@ test("type colours match the spec", () => {
 });
 test("theme.css declares every type colour with the same value", () => {
   for (const [k, v] of Object.entries(typeColors))
-    expect(css).toContain(`--color-type-${k}: ${v}`);
+    expect(css.toLowerCase()).toContain(
+      `--color-type-${k}: ${v.toLowerCase()}`,
+    );
 });
 test("every glass recipe emits both backdrop-filter properties", () => {
   for (const cls of [

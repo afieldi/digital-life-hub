@@ -1,30 +1,30 @@
 @import "tailwindcss";
-@plugin "tailwindcss-react-aria-components";
 @import "@fontsource/plus-jakarta-sans/400.css";
 @import "@fontsource/plus-jakarta-sans/500.css";
 @import "@fontsource/plus-jakarta-sans/600.css";
 @import "@fontsource/plus-jakarta-sans/700.css";
 @import "@fontsource/newsreader/400.css";
 @import "@fontsource/newsreader/500.css";
+@plugin "tailwindcss-react-aria-components";
 
 @theme {
-  --color-type-task: #9FD9A8;
-  --color-type-note: #F5CF7E;
-  --color-type-project: #9EC2FF;
-  --color-type-event: #F5A8A0;
-  --color-type-ai: #CDB6FF;
+  --color-type-task: #9fd9a8;
+  --color-type-note: #f5cf7e;
+  --color-type-project: #9ec2ff;
+  --color-type-event: #f5a8a0;
+  --color-type-ai: #cdb6ff;
 
-  --color-status-in_progress: #F5CF7E;
-  --color-status-review: #9EC2FF;
+  --color-status-in_progress: #f5cf7e;
+  --color-status-review: #9ec2ff;
 
-  --color-ink-primary: #FFFFFF;
-  --color-ink-secondary: #F4E9EE;
-  --color-ink-tertiary: #E6DCE4;
-  --color-ink-muted: #D9CFD6;
+  --color-ink-primary: #ffffff;
+  --color-ink-secondary: #f4e9ee;
+  --color-ink-tertiary: #e6dce4;
+  --color-ink-muted: #d9cfd6;
 
-  --color-link: #FFE2CC;
-  --color-app: #1A1724;
-  --color-check: #A9B8FF;
+  --color-link: #ffe2cc;
+  --color-app: #1a1724;
+  --color-check: #a9b8ff;
 
   --radius-10: 10px;
   --radius-14: 14px;
