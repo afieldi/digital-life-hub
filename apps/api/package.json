@@ -1,0 +1,19 @@
+{
+  "name": "@dlh/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
+    "test:db": "vitest run --passWithNoTests '.db.test.ts'",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@dlh/api-contract": "workspace:*",
+    "@dlh/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "vitest": "^5.0.5"
+  }
+}
