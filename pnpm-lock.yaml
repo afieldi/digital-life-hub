@@ -75,12 +75,18 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@dlh/api-contract':
+        specifier: workspace:*
+        version: link:../../packages/api-contract
       '@dlh/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@dlh/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@tanstack/react-query':
+        specifier: ^5.105.0
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
       '@tanstack/react-router':
         specifier: ^1.170.46
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -93,6 +99,12 @@ importers:
       '@tauri-apps/plugin-os':
         specifier: ~2.4
         version: 2.4.0
+      '@trpc/client':
+        specifier: ^11.22.1
+        version: 11.22.1(@trpc/server@11.22.1(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/tanstack-react-query':
+        specifier: ^11.22.1
+        version: 11.22.1(@tanstack/react-query@5.105.0(@types/react@19.3.0)(react@19.3.1))(@trpc/client@11.22.1(@trpc/server@11.22.1(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.22.1(typescript@5.9.3))(react@19.3.1)(typescript@5.9.3)
       lucide-react:
         specifier: ^1.64.0
         version: 1.64.0(@types/react@19.3.0)(react@19.3.1)
@@ -106,6 +118,9 @@ importers:
         specifier: ^19
         version: 19.3.1(react@19.3.1)
     devDependencies:
+      '@dlh/api':
+        specifier: workspace:*
+        version: link:../api
       '@playwright/test':
         specifier: ^1.64.1
         version: 1.64.1
@@ -1266,6 +1281,18 @@ packages:
     resolution: {integrity: sha512-w1+YvwmTkwt5n8yUqEH3IWZ9DsmorCZW/EQ3KYHnqEgIkOZpH54NvW6/Epq3Dzb8H0ifIeYX8PExvrNLIH5FIA==}
     engines: {node: '>=20.19'}
 
+  '@tanstack/query-core@5.105.0':
+    resolution: {integrity: sha512-7p56vRmT/z4UJ6sctGIdl5WRUQyUv53IUpUwEKi2g97zMbO7zh8ZsCLffGAvCPBR4xD72e3VXsDyLwXHhoNTMQ==}
+
+  '@tanstack/react-query@5.105.0':
+    resolution: {integrity: sha512-y+hMuDERvgg6ay1da0V1a6ZC0ZONt7dELxSFkqRZuwm7p1TTZs0MoXrPlBRflIpRoYjvzQVYxycnLImpFLhWrw==}
+    peerDependencies:
+      '@types/react': ^18 || ^19
+      react: ^18 || ^19
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@tanstack/react-router@1.170.46':
     resolution: {integrity: sha512-ez1iNIhsPjGlaDHg3BXWs67EWVIYzB2tbopEHYDESdkO7owgkGb5de52+5Kv2v1fxdkggcNzo35bdk4arTVGQw==}
     engines: {node: '>=20.19'}
@@ -1412,6 +1439,16 @@ packages:
     resolution: {integrity: sha512-9SjWTS5iwENHOVPqpTjm0I1Os/CtuT6p8kDlovyEm00pXhpHX55tQM2vszJTEpcQhm/JfUz4ut/7Y9JZZQZo6A==}
     hasBin: true
     peerDependencies:
+      typescript: '>=5.7.2'
+
+  '@trpc/tanstack-react-query@11.22.1':
+    resolution: {integrity: sha512-p+pWb3BNE0drNC/s2zuBWSyAwVTbxVFVj/t5Ik82e3fh9v5O0ZCGXndwPukIw6IaSzI2GFulLlZxugNu1pyStg==}
+    hasBin: true
+    peerDependencies:
+      '@tanstack/react-query': ^5.80.3
+      '@trpc/client': 11.22.1
+      '@trpc/server': 11.22.1
+      react: '>=18.2.0'
       typescript: '>=5.7.2'
 
   '@turbo/darwin-64@2.11.10':
@@ -3005,6 +3042,15 @@ snapshots:
 
   '@tanstack/history@1.162.5': {}
 
+  '@tanstack/query-core@5.105.0': {}
+
+  '@tanstack/react-query@5.105.0(@types/react@19.3.0)(react@19.3.1)':
+    dependencies:
+      '@tanstack/query-core': 5.105.0
+      react: 19.3.1
+    optionalDependencies:
+      '@types/react': 19.3.0
+
   '@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       '@tanstack/history': 1.162.5
@@ -3131,6 +3177,14 @@ snapshots:
 
   '@trpc/server@11.22.1(typescript@5.9.3)':
     dependencies:
+      typescript: 5.9.3
+
+  '@trpc/tanstack-react-query@11.22.1(@tanstack/react-query@5.105.0(@types/react@19.3.0)(react@19.3.1))(@trpc/client@11.22.1(@trpc/server@11.22.1(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.22.1(typescript@5.9.3))(react@19.3.1)(typescript@5.9.3)':
+    dependencies:
+      '@tanstack/react-query': 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      '@trpc/client': 11.22.1(@trpc/server@11.22.1(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/server': 11.22.1(typescript@5.9.3)
+      react: 19.3.1
       typescript: 5.9.3
 
   '@turbo/darwin-64@2.11.10':
