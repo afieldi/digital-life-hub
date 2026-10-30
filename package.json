@@ -9,14 +9,16 @@
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "build": "turbo run build",
-    "test": "turbo run test",
+    "test": "turbo run test && vitest run --root . scripts",
     "typecheck": "turbo run typecheck",
-    "lint": "biome check ."
+    "lint": "biome check . && tsx scripts/check-module-classes.ts",
+    "test:scripts": "vitest run scripts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
     "tsx": "^4.23.15",
     "turbo": "^2.11.10",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
   }
 }
