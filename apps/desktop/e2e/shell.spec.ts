@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { signIn } from "./signIn";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -6,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Home shows the greeting panel over the scene", async ({ page }) => {
-  await page.goto("/");
+  await signIn(page);
   await expect(page.getByTestId("scene")).toBeAttached();
   await expect(page.getByTestId("greeting")).toBeVisible();
   await expect(
@@ -19,6 +20,7 @@ test("Home shows the greeting panel over the scene", async ({ page }) => {
 });
 
 test("Settings scene override persists across reloads", async ({ page }) => {
+  await signIn(page);
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Night" }).click();
   await expect(page.getByTestId("scene")).toHaveAttribute(
@@ -37,6 +39,7 @@ test("Settings scene override persists across reloads", async ({ page }) => {
 });
 
 test("/dev/ui lists stories", async ({ page }) => {
+  await signIn(page);
   await page.goto("/dev/ui");
   await expect(page.locator("[data-story]").first()).toBeVisible();
   expect(await page.locator("[data-story]").count()).toBeGreaterThan(10);
@@ -45,8 +48,7 @@ test("/dev/ui lists stories", async ({ page }) => {
 test("g s opens Sample and mod+K shows its palette action", async ({
   page,
 }) => {
-  await page.goto("/");
-  await expect(page.getByTestId("greeting")).toBeVisible();
+  await signIn(page);
   await page.keyboard.press("g");
   await page.keyboard.press("s");
   await expect(page).toHaveURL(/\/sample$/);
