@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "e2e",
+  snapshotPathTemplate:
+    "{testDir}/__screenshots__/{platform}/{projectName}/{arg}{ext}",
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
   use: { baseURL: "http://localhost:6006" },
   webServer: {

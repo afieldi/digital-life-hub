@@ -6,7 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./theme.css": "./src/theme.css",
-    "/gallery": "./src/gallery/Gallery.tsx"
+    "./gallery": "./src/gallery/Gallery.tsx"
   },
   "scripts": {
     "test": "vitest run",
