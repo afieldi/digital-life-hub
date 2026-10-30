@@ -84,20 +84,42 @@ fn respond(stream: &mut TcpStream, status: &str, body: &str) {
     let _ = stream.flush();
 }
 
-fn read_request_line(stream: &mut TcpStream) -> Option<String> {
-    stream.set_nonblocking(false).ok()?;
-    stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
-    let mut buf = Vec::new();
-    let mut chunk = [0u8; 512];
-    while buf.len() < 8192 && !buf.windows(2).any(|w| w == b"\r\n") && !buf.contains(&b'\n') {
+enum Request {
+    Line(String),
+    /// No complete request line arrived (idle preconnect, early close, timeout).
+    Incomplete,
+    /// The request line did not end within the size cap.
+    TooLong,
+}
+
+const MAX_REQUEST: usize = 8192;
+const READ_BUDGET: Duration = Duration::from_secs(2);
+
+/// Reads up to the end of the headers (`\r\n\r\n`) so closing the socket never
+/// discards unread bytes (which would RST and drop our response). Bounded by
+/// `MAX_REQUEST` and a total deadline of `READ_BUDGET`, never past `overall`.
+fn read_request(stream: &mut TcpStream, overall: Instant) -> Request {
+    if stream.set_nonblocking(false).is_err() {
+        return Request::Incomplete;
+    }
+    let limit = (Instant::now() + READ_BUDGET).min(overall);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 1024];
+    while buf.len() < MAX_REQUEST && !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+        let left = limit.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            break;
+        }
         match stream.read(&mut chunk) {
-            Ok(0) => break,
+            Ok(0) | Err(_) => break,
             Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            Err(_) => break,
         }
     }
-    let text = String::from_utf8_lossy(&buf);
-    text.lines().next().map(str::to_owned)
+    match buf.iter().position(|&b| b == b'\n') {
+        Some(i) => Request::Line(String::from_utf8_lossy(&buf[..i]).trim_end_matches('\r').to_owned()),
+        None if buf.len() >= MAX_REQUEST => Request::TooLong,
+        None => Request::Incomplete,
+    }
 }
 
 /// Accepts connections until a callback arrives, `deadline` passes (`"timeout"`)
@@ -127,8 +149,13 @@ pub fn wait_for_code(
                 continue;
             }
         };
-        let Some(line) = read_request_line(&mut stream) else {
-            continue;
+        let line = match read_request(&mut stream, deadline) {
+            Request::Line(l) => l,
+            Request::Incomplete => continue,
+            Request::TooLong => {
+                respond(&mut stream, "400 Bad Request", &page(false));
+                return Err("bad_request".into());
+            }
         };
         match parse_callback(&line, expected_state) {
             Callback::NotCallback => respond(&mut stream, "404 Not Found", &page(false)),
@@ -149,7 +176,8 @@ pub fn wait_for_code(
 /// holds an older one.
 #[derive(Default)]
 pub struct LoopbackState {
-    listener: Mutex<Option<TcpListener>>,
+    /// The pending listener and the generation it was created in.
+    listener: Mutex<Option<(TcpListener, u64)>>,
     generation: AtomicU64,
 }
 
@@ -158,16 +186,20 @@ impl LoopbackState {
         let listener = bind().map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         let mut slot = self.listener.lock().map_err(|e| e.to_string())?;
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        *slot = Some(listener);
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        *slot = Some((listener, generation));
         Ok(port)
+    }
+
+    #[cfg(test)]
+    fn has_pending(&self) -> bool {
+        self.listener.lock().unwrap().is_some()
     }
 
     /// Takes the pending listener with its generation. `None` if there is none.
     fn take(&self) -> Option<(TcpListener, u64)> {
         let mut slot = self.listener.lock().ok()?;
-        let l = slot.take()?;
-        Some((l, self.generation.load(Ordering::SeqCst)))
+        slot.take()
     }
 
     pub fn wait(&self, expected_state: &str, timeout: Duration) -> Result<String, String> {
@@ -266,11 +298,76 @@ mod tests {
         state.start().unwrap();
         let s2 = state.clone();
         let waiter = thread::spawn(move || s2.wait("s", Duration::from_secs(60)));
-        thread::sleep(Duration::from_millis(200));
+        // Deterministic: the slot is empty once the waiter has taken its listener.
+        while state.has_pending() {
+            thread::yield_now();
+        }
         let began = Instant::now();
         state.start().unwrap();
         assert_eq!(waiter.join().unwrap(), Err("cancelled".to_string()));
         assert!(began.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn large_headers_still_get_the_full_response() {
+        // Unread request bytes at close make the OS send RST, which can drop the
+        // response; repeat to make that visible.
+        for _ in 0..20 {
+            let listener = bind().unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let client = thread::spawn(move || {
+                let padding = "x".repeat(1900);
+                let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+                s.write_all(format!("GET /callback?code=c&state=s HTTP/1.1\r\nCookie: {padding}\r\n\r\n").as_bytes()).unwrap();
+                // A slow reader: any RST from the server lands before we read.
+                thread::sleep(Duration::from_millis(100));
+                let mut out = String::new();
+                let _ = s.read_to_string(&mut out);
+                out
+            });
+            let got = wait_for_code(listener, "s", Instant::now() + Duration::from_secs(10), &|| false);
+            assert_eq!(got, Ok("c".to_string()));
+            let resp = client.join().unwrap();
+            assert!(resp.starts_with("HTTP/1.1 200"), "got: {resp:?}");
+            assert!(resp.contains("Signed in."));
+        }
+    }
+
+    #[test]
+    fn unterminated_oversized_line_is_bad_request() {
+        let listener = bind().unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = thread::spawn(move || {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            let _ = s.write_all("A".repeat(9000).as_bytes());
+            let mut out = String::new();
+            let _ = s.read_to_string(&mut out);
+        });
+        let got = wait_for_code(listener, "s", Instant::now() + Duration::from_secs(10), &|| false);
+        assert_eq!(got, Err("bad_request".to_string()));
+        client.join().unwrap();
+    }
+
+    #[test]
+    fn silent_connection_is_ignored() {
+        let listener = bind().unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let _idle = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let client = thread::spawn(move || send(port, "GET /callback?code=c&state=s HTTP/1.1"));
+        let got = wait_for_code(listener, "s", Instant::now() + Duration::from_secs(10), &|| false);
+        assert_eq!(got, Ok("c".to_string()));
+        client.join().unwrap();
+    }
+
+    #[test]
+    fn two_starts_leave_the_second_listener_waitable() {
+        let state = Arc::new(LoopbackState::default());
+        let p1 = state.start().unwrap();
+        let p2 = state.start().unwrap();
+        assert!(TcpStream::connect(("127.0.0.1", p1)).is_err());
+        let client = thread::spawn(move || send(p2, "GET /callback?code=c&state=s HTTP/1.1"));
+        assert_eq!(state.wait("s", Duration::from_secs(10)), Ok("c".to_string()));
+        client.join().unwrap();
     }
 
     #[test]
