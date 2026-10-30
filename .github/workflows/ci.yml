@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      - run: pnpm --filter @dlh/ui exec playwright install --with-deps webkit chromium
+        if: runner.os == 'macOS'
+      - run: pnpm --filter @dlh/desktop exec playwright install --with-deps chromium
+        if: runner.os == 'macOS'
+
+      # Screenshot baselines and desktop e2e exist for darwin only.
+      # Outstanding follow-up: generate Windows baselines, then drop the macOS guard.
+      - run: pnpm --filter @dlh/ui test:screens
+        if: runner.os == 'macOS'
+      - run: pnpm --filter @dlh/desktop test:e2e
+        if: runner.os == 'macOS'
+
+      # The web bundle must exist before cargo runs (tauri frontendDist).
+      - run: pnpm --filter @dlh/desktop build:web
+      - run: pnpm --filter @dlh/desktop exec tauri build --no-bundle
