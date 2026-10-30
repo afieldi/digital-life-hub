@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { statusColors, typeColors } from "../src/tokens";
 
-const css = readFileSync(new URL("../src/theme.css", import.meta.url), "utf8");
+const css = readFileSync(
+  resolve(import.meta.dirname, "../src/theme.css"),
+  "utf8",
+);
 
 test("type colours match the spec", () => {
   expect(typeColors).toEqual({
