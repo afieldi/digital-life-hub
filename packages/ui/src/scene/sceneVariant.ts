@@ -9,8 +9,15 @@ export function sceneVariantFor(date: Date): SceneVariant {
   return "night";
 }
 
-export function sceneTransitionMs(reducedMotion: boolean): number {
-  return reducedMotion ? 0 : 60000;
+/** Why the scene changed: the clock crossing a boundary, or a variant picked by hand. */
+export type SceneChange = "clock" | "picked";
+
+export function sceneTransitionMs(
+  reducedMotion: boolean,
+  change: SceneChange = "clock",
+): number {
+  if (reducedMotion) return 0;
+  return change === "picked" ? 500 : 60000;
 }
 
 export function useSceneVariant(

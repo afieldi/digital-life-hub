@@ -19,9 +19,37 @@ test.each([
   [at(0), "night"],
 ] as const)("%s → %s", (d, v) => expect(sceneVariantFor(d)).toBe(v));
 
-test("reduced motion makes the change instant", () => {
+test("clock changes fade slowly, picked ones quickly, reduced motion instantly", () => {
   expect(sceneTransitionMs(false)).toBe(60000);
+  expect(sceneTransitionMs(false, "picked")).toBe(500);
   expect(sceneTransitionMs(true)).toBe(0);
+  expect(sceneTransitionMs(true, "picked")).toBe(0);
+});
+
+const fades = () =>
+  Array.from(
+    screen.getByTestId("scene").children as HTMLCollectionOf<HTMLElement>,
+  ).map((el) => el.style.transition);
+
+test("picking a variant cross-fades quickly", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(at(9));
+  const { rerender } = render(<Scene />);
+  rerender(<Scene variant="night" />);
+  expect(fades()).toEqual(["none", "opacity 500ms linear"]);
+  rerender(<Scene />);
+  expect(fades().at(-1)).toBe("opacity 500ms linear");
+});
+
+test("a clock change under no override cross-fades slowly", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(at(16, 59));
+  render(<Scene />);
+  act(() => {
+    vi.setSystemTime(at(17, 0));
+    vi.advanceTimersByTime(60_000);
+  });
+  expect(fades()).toEqual(["none", "opacity 60000ms linear"]);
 });
 
 test("switches variant when the clock crosses 17:00 without remount", () => {

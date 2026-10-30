@@ -64,13 +64,20 @@ function LayerSet({
 export function Scene({ variant }: { variant?: SceneVariant }) {
   const current = useSceneVariant(variant);
   const nextId = useRef(1);
+  const lastPick = useRef(variant);
   // First mount renders the variant immediately (no fade); later changes cross-fade.
   const [layers, setLayers] = useState<Layer[]>([
     { id: 0, variant: current, fadeMs: 0 },
   ]);
 
   useEffect(() => {
-    const ms = sceneTransitionMs(prefersReducedMotion());
+    // A change of the `variant` prop is a pick; otherwise the clock moved.
+    const picked = variant !== lastPick.current;
+    lastPick.current = variant;
+    const ms = sceneTransitionMs(
+      prefersReducedMotion(),
+      picked ? "picked" : "clock",
+    );
     let timer: ReturnType<typeof setTimeout> | undefined;
     setLayers((ls) => {
       if (ls[ls.length - 1].variant === current) return ls;
@@ -83,7 +90,7 @@ export function Scene({ variant }: { variant?: SceneVariant }) {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [current]);
+  }, [current, variant]);
 
   return (
     <div
