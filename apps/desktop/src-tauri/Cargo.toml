@@ -19,3 +19,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "~2.12", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Plugins have their own version lines (opener 2.7, os 2.4 alongside tauri 2.12) and crates.io
+# now carries 3.0 alphas, so each is pinned ~ to its stable 2.x minor, matching the npm packages.
+tauri-plugin-opener = "~2.7"
+tauri-plugin-os = "~2.4"
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+url = "2"

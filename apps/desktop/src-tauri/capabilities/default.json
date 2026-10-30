@@ -3,5 +3,12 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "os:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://accounts.google.com/*" }]
+    }
+  ]
 }
