@@ -30,7 +30,7 @@ test("every glass recipe emits both backdrop-filter properties", () => {
     "glass-nav",
     "glass-dialog",
   ]) {
-    const block = css.split(`.${cls}`)[1].split("}")[0];
+    const block = css.split(`@utility ${cls} `)[1].split("}")[0];
     expect(block).toMatch(/-webkit-backdrop-filter:/);
     expect(block).toMatch(/[^-]backdrop-filter:/);
   }

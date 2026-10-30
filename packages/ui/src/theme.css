@@ -6,6 +6,7 @@
 @import "@fontsource/newsreader/400.css";
 @import "@fontsource/newsreader/500.css";
 @plugin "tailwindcss-react-aria-components";
+@source ".";
 
 @theme {
   --color-type-task: #9fd9a8;
@@ -36,7 +37,7 @@
   --font-serif: "Newsreader", Georgia, serif;
 }
 
-.glass-panel {
+@utility glass-panel {
   background: rgba(24, 20, 32, 0.62);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -44,7 +45,7 @@
   border-radius: 20px;
 }
 
-.glass-card {
+@utility glass-card {
   background: rgba(30, 26, 40, 0.42);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -52,7 +53,7 @@
   border-radius: 18px;
 }
 
-.glass-nav {
+@utility glass-nav {
   background: rgba(22, 18, 30, 0.72);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -61,7 +62,7 @@
   box-shadow: 0 16px 40px rgba(10, 8, 16, 0.4);
 }
 
-.glass-dialog {
+@utility glass-dialog {
   background: rgba(30, 26, 40, 0.78);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -70,7 +71,7 @@
   box-shadow: 0 30px 80px rgba(10, 8, 16, 0.5);
 }
 
-.glass-raised {
+@utility glass-raised {
   background: rgba(46, 40, 60, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;

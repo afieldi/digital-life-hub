@@ -1,3 +1,4 @@
+import { Scene } from "../scene/Scene";
 import { getStoryGroups } from "./registry";
 
 export type { Story } from "./registry";
@@ -10,7 +11,8 @@ import.meta.glob("./stories/*.stories.tsx", { eager: true });
 export function Gallery({ filter }: { filter?: string }) {
   const groups = getStoryGroups();
   return (
-    <div className="min-h-screen bg-app p-8 font-sans text-white">
+    <div className="min-h-screen p-8 font-ui text-white">
+      <Scene variant="dusk" />
       {groups.map(({ group, stories }) => {
         const visible = stories.filter(
           (s) => !filter || s.id.includes(filter) || s.title.includes(filter),
