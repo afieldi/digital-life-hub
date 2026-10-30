@@ -6,13 +6,12 @@ import { Switch } from "../../primitives/Switch";
 import { TextField } from "../../primitives/TextField";
 import { registerStories } from "../registry";
 
-// Static stories cover default and disabled; hover/pressed/focus are runtime
-// states React Aria owns and are exercised by the interaction tests.
-// Focus is real, not faked: Focus marks the element and the screenshot spec
-// keyboard-focuses it (Tab, then focus()) before capturing, so isFocusVisible
-// and focus-visible genuinely match. Only one element can hold focus at a time,
-// so each story marks one. Hover and pressed need a live pointer and cannot be
-// forced statically (React Aria owns those data attributes); tests cover them.
+// Focus, hover and pressed are real, not faked: a story marks one element with
+// data-force-focus / data-force-hover / data-force-press and the screenshot spec
+// keyboard-focuses it, hovers it, or hovers + holds the mouse down on it before
+// capturing, so React Aria's own state attributes and the focus-visible
+// pseudo-class genuinely match. One element per story, because only one can hold
+// focus or the pointer at a time.
 const forced = {
   default: {},
   focus: {},
@@ -26,6 +25,13 @@ function Focus({ children }: { children: ReactNode }) {
 }
 const wrap = (s: State, node: ReactNode) =>
   s === "focus" ? <Focus key={s}>{node}</Focus> : node;
+
+function Hover({ children }: { children: ReactNode }) {
+  return <span data-force-hover>{children}</span>;
+}
+function Press({ children }: { children: ReactNode }) {
+  return <span data-force-press>{children}</span>;
+}
 
 function Row({ children }: { children: ReactNode }) {
   return (
@@ -63,6 +69,30 @@ registerStories("primitives", [
       </Row>
     ),
   })),
+  ...variants.flatMap((variant) =>
+    (["hover", "pressed"] as const).map((state) => {
+      const Mark = state === "hover" ? Hover : Press;
+      return {
+        id: `primitives/button-${variant}-${state}`,
+        title: `Button ${variant} ${state}`,
+        render: () => (
+          <Row>
+            <Mark>
+              {variant === "icon" ? (
+                <Button variant="icon" aria-label={`Settings (${state})`}>
+                  ⚙
+                </Button>
+              ) : (
+                <Button variant={variant}>
+                  {variant === "dashed" ? "+ Add card" : `Button ${state}`}
+                </Button>
+              )}
+            </Mark>
+          </Row>
+        ),
+      };
+    }),
+  ),
   {
     id: "primitives/checkbox",
     title: "Checkbox",
@@ -114,6 +144,21 @@ registerStories("primitives", [
     ),
   },
   {
+    id: "primitives/textfield-focus",
+    title: "TextField focus",
+    render: () => (
+      <Row>
+        <Focus>
+          <TextField
+            label="Title"
+            placeholder="Name this card"
+            className="w-64"
+          />
+        </Focus>
+      </Row>
+    ),
+  },
+  {
     id: "primitives/searchfield",
     title: "SearchField",
     render: () => (
@@ -131,6 +176,22 @@ registerStories("primitives", [
           placeholder="Search…"
           className="w-72"
         />
+      </Row>
+    ),
+  },
+  {
+    id: "primitives/searchfield-focus",
+    title: "SearchField focus",
+    render: () => (
+      <Row>
+        <Focus>
+          <SearchField
+            label="Search"
+            placeholder="Search…"
+            shortcut="⌘K"
+            className="w-72"
+          />
+        </Focus>
       </Row>
     ),
   },
