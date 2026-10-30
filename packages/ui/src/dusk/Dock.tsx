@@ -28,7 +28,10 @@ export function Dock({
       level="nav"
       as="nav"
       aria-label="Primary"
-      className={`${className ?? "fixed"} bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 p-1.5 font-ui`}
+      // select-none: the dock is app chrome. Without it, a triple-click on the
+      // page's last paragraph selects through to the first dock label and
+      // WebKit paints every empty block in between as selected.
+      className={`${className ?? "fixed"} bottom-6 left-1/2 flex -translate-x-1/2 select-none items-center gap-1 p-1.5 font-ui`}
     >
       {items.map(({ id, label, icon: Icon, href }) => {
         const current = href === currentHref;

@@ -108,3 +108,19 @@ test("board keyboard move", async ({ page }) => {
   );
   await expect(inProgress.getByRole("row").last()).toContainText(title);
 });
+
+test("dock labels are not text-selectable", async ({ page }) => {
+  // A triple-click on the last paragraph above the dock selects through to the
+  // next selectable text; if that is a dock label, WebKit paints the whole gap.
+  await page.goto("/?story=dusk%2Fdock");
+  const nav = page.locator('[data-story="dusk/dock"] nav');
+  await nav.waitFor();
+  const labels = await nav.locator("a").allInnerTexts();
+  expect(labels.length).toBeGreaterThan(0);
+  const selected = await page.evaluate(() => {
+    const sel = window.getSelection();
+    sel?.selectAllChildren(document.body);
+    return sel?.toString() ?? "";
+  });
+  for (const label of labels) expect(selected).not.toContain(label.trim());
+});
