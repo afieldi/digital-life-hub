@@ -16,19 +16,19 @@ export type LinkWithItem = Link & { item: ItemSummary };
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-type SummaryRow = Pick<
+export type SummaryRow = Pick<
   typeof items.$inferSelect,
   "id" | "type" | "title" | "archivedAt"
 >;
 
-const summaryColumns = {
+export const summaryColumns = {
   id: items.id,
   type: items.type,
   title: items.title,
   archivedAt: items.archivedAt,
 };
 
-function toSummary(row: SummaryRow): ItemSummary {
+export function toSummary(row: SummaryRow): ItemSummary {
   return {
     id: row.id,
     type: row.type,
