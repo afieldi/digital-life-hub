@@ -6,6 +6,13 @@ import { SamplePage } from "./SamplePage";
 /** Throwaway module: proves a manifest alone adds a Dock item, route and action. */
 export default defineModule({
   id: "sample",
+  itemType: {
+    type: "sample",
+    label: "Sample",
+    glyph: "FlaskConical",
+    color: "var(--color-type-ai)",
+    href: (id) => `/sample/${id}`,
+  },
   nav: {
     label: "Sample",
     icon: "FlaskConical",
