@@ -9,6 +9,7 @@ import { sql } from "drizzle-orm";
 import { createApp } from "./app";
 import { drizzleAuthStore } from "./auth/drizzleStore";
 import { createGoogleOAuth } from "./auth/google";
+import { startPurgeJob } from "./changes";
 import { ConfigError, loadConfig } from "./config";
 import { serverModules } from "./modules.gen";
 
@@ -56,7 +57,7 @@ if (process.env.MIGRATE_ON_START === "1") {
   await migrate(config.databaseUrl, "./drizzle");
 }
 
-const app = createApp({
+const deps = {
   db,
   changes: createChangeBus(),
   itemTypes,
@@ -65,7 +66,9 @@ const app = createApp({
   store: drizzleAuthStore(db),
   google: createGoogleOAuth(config.google),
   now: () => new Date(),
-});
+};
+const app = createApp(deps);
+startPurgeJob(deps);
 
 const hostname = process.env.HOST || "127.0.0.1";
 serve({ fetch: app.fetch, port: config.port, hostname }, () => {

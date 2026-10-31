@@ -1,4 +1,5 @@
 export { type ChangeBus, createChangeBus } from "./changes";
+export { purgeExpired } from "./items/purge";
 export { type ItemWriter, writeItems } from "./items/writer";
 export {
   CORE_ROUTER_IDS,
