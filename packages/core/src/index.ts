@@ -1,4 +1,19 @@
 export type {
+  Item,
+  ItemSummary,
+  Link,
+  LinkKind,
+  ListCursor,
+} from "./items";
+export {
+  item,
+  itemSummary,
+  itemTitle,
+  link,
+  linkKind,
+  listCursor,
+} from "./items";
+export type {
   CommandContext,
   ModuleManifest,
   PaletteAction,

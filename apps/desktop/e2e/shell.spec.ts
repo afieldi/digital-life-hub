@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openPalette } from "./palette";
 import { signIn } from "./signIn";
 
 test.beforeEach(async ({ page }) => {
@@ -52,14 +53,7 @@ test("g s opens Sample and mod+K shows its palette action", async ({
   await page.keyboard.press("g");
   await page.keyboard.press("s");
   await expect(page).toHaveURL(/\/sample$/);
-  // Device presets may report a different OS than the host: ask the page.
-  const mac = await page.evaluate(() =>
-    /mac/i.test(
-      (navigator as Navigator & { userAgentData?: { platform?: string } })
-        .userAgentData?.platform || navigator.platform,
-    ),
-  );
-  await page.keyboard.press(mac ? "Meta+k" : "Control+k");
+  await openPalette(page);
   const option = page.getByRole("option", { name: "Hello from Sample" });
   await expect(option).toBeVisible();
   await option.click();

@@ -3,7 +3,10 @@ import { createDb } from "./client";
 import { migrate } from "./migrate";
 
 /** Drops and recreates the `public` and `drizzle` schemas, then migrates. */
-export async function resetDatabase(url: string): Promise<void> {
+export async function resetDatabase(
+  url: string,
+  migrationsFolder?: string,
+): Promise<void> {
   const { db, close } = createDb(url);
   try {
     await db.execute(sql`drop schema if exists public cascade`);
@@ -12,5 +15,5 @@ export async function resetDatabase(url: string): Promise<void> {
   } finally {
     await close();
   }
-  await migrate(url);
+  await migrate(url, migrationsFolder);
 }

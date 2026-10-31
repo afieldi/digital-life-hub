@@ -8,6 +8,7 @@ import {
   startInput,
   startOutput,
 } from "@dlh/api-contract";
+import { protectedProcedure, publicProcedure, router } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { sessionExpiry } from "../auth/sessions";
@@ -19,7 +20,6 @@ import {
   newState,
 } from "../auth/tokens";
 import type { AppDeps } from "../trpc";
-import { protectedProcedure, publicProcedure, router } from "../trpc";
 
 async function issueSession(
   deps: AppDeps,

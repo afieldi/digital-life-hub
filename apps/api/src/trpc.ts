@@ -1,41 +1,24 @@
-import { initTRPC, TRPCError } from "@trpc/server";
+import type { ApiDeps, Context, CoreDeps } from "@dlh/server";
 import type { GoogleOAuth } from "./auth/google";
-import { authenticate } from "./auth/sessions";
-import type { AuthStore, SessionRow } from "./auth/store";
+import { authenticate, bearerToken } from "./auth/sessions";
+import type { AuthStore } from "./auth/store";
 import type { Config } from "./config";
 
-export type AppDeps = {
-  config: Config;
-  store: AuthStore;
-  google: GoogleOAuth;
-  now: () => Date;
-};
+declare module "@dlh/server" {
+  interface ApiDeps {
+    config: Config;
+    store: AuthStore;
+    google: GoogleOAuth;
+  }
+}
 
-export type Context = { deps: AppDeps; session: SessionRow | null };
+export type AppDeps = CoreDeps & ApiDeps;
 
 export async function createContext(
   deps: AppDeps,
   authorization: string | null | undefined,
 ): Promise<Context> {
-  const match = /^Bearer (.+)$/.exec(authorization ?? "");
-  const session = match?.[1]
-    ? await authenticate(deps.store, match[1], deps.now())
-    : null;
-  return { deps, session };
+  const token = bearerToken(authorization);
+  const row = token ? await authenticate(deps.store, token, deps.now()) : null;
+  return { deps, session: row ? { id: row.id, email: row.email } : null };
 }
-
-// isDev is fixed at init, so strip the stack per request from devAuth instead.
-const t = initTRPC.context<Context>().create({
-  errorFormatter: ({ shape, ctx }) => {
-    if (ctx?.deps.config.devAuth) return shape;
-    const { stack: _stack, ...data } = shape.data;
-    return { ...shape, data };
-  },
-});
-
-export const router = t.router;
-export const publicProcedure = t.procedure;
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.session) throw new TRPCError({ code: "UNAUTHORIZED" });
-  return next({ ctx: { ...ctx, session: ctx.session } });
-});

@@ -1,6 +1,7 @@
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { changesHandler } from "./changes";
 import { appRouter } from "./router";
 import { type AppDeps, createContext } from "./trpc";
 
@@ -21,6 +22,7 @@ export function createApp(deps: AppDeps): Hono {
     }),
   );
   app.get("/health", (c) => c.json({ ok: true }));
+  app.get("/changes", changesHandler(deps));
   app.use(
     "/trpc/*",
     trpcServer({

@@ -28,13 +28,21 @@ function bundleFiles(extraArgs: string[]): { name: string; text: string }[] {
   }
 }
 
+// A real tsup build of the API, @dlh/server and every module takes several
+// seconds on CI runners (7.5s seen on Windows), well past vitest's 5s default.
+const BUILD_TIMEOUT_MS = 60_000;
+
 test.each([
   ["default", []],
   ["without code splitting", ["--no-splitting"]],
-])("production bundle never contains schema-dropping code (%s)", (_n, args) => {
-  const files = bundleFiles(args);
-  expect(files.length).toBeGreaterThan(0);
-  for (const f of files) {
-    expect(f.text.toLowerCase(), f.name).not.toContain("drop schema");
-  }
-});
+])(
+  "production bundle never contains schema-dropping code (%s)",
+  (_n, args) => {
+    const files = bundleFiles(args);
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      expect(f.text.toLowerCase(), f.name).not.toContain("drop schema");
+    }
+  },
+  BUILD_TIMEOUT_MS,
+);

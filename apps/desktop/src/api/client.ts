@@ -7,6 +7,7 @@ import {
   TRPCClientError,
 } from "@trpc/client";
 import { createTRPCContext } from "@trpc/tanstack-react-query";
+import { type SubscribeChanges, subscribeChanges } from "./changes";
 
 export const { TRPCProvider, useTRPC } = createTRPCContext<ApiRouter>();
 
@@ -22,11 +23,17 @@ export function createApi(opts: {
   url?: string;
   getToken: () => Promise<string | null>;
   fetch?: typeof fetch;
-}): { trpcClient: TRPCClient<ApiRouter>; queryClient: QueryClient } {
+}): {
+  trpcClient: TRPCClient<ApiRouter>;
+  queryClient: QueryClient;
+  /** `/changes` stream bound to the same url, fetch and token as tRPC. */
+  subscribeChanges: SubscribeChanges;
+} {
+  const url = opts.url ?? API_URL;
   const trpcClient = createTRPCClient<ApiRouter>({
     links: [
       httpBatchLink({
-        url: `${opts.url ?? API_URL}/trpc`,
+        url: `${url}/trpc`,
         fetch: opts.fetch,
         headers: async () => {
           const token = await opts.getToken();
@@ -43,5 +50,15 @@ export function createApi(opts: {
       },
     },
   });
-  return { trpcClient, queryClient };
+  return {
+    trpcClient,
+    queryClient,
+    subscribeChanges: (handlers) =>
+      subscribeChanges({
+        url: `${url}/changes`,
+        getToken: opts.getToken,
+        fetch: opts.fetch,
+        ...handlers,
+      }),
+  };
 }

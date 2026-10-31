@@ -10,18 +10,24 @@ import {
   type SceneVariant,
   ToastRegion,
 } from "@dlh/ui";
+import { useQuery } from "@tanstack/react-query";
 import { Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import { House, Settings as SettingsIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RouterProvider } from "react-aria-components";
+import { useTRPC } from "../api/client";
 import { registry } from "../modules";
 import { createHotkeys } from "./hotkeys";
 import { iconFor } from "./icons";
+import { goToRows, itemRows, jumpGroup, matchesQuery } from "./palette";
 import {
   loadSceneOverride,
   SceneOverrideContext,
   saveSceneOverride,
 } from "./sceneOverride";
+import { useDebouncedValue } from "./useDebouncedValue";
+
+const SEARCH_DEBOUNCE_MS = 150;
 
 const GROUP_LABELS: Record<PaletteAction["group"], string> = {
   create: "Create",
@@ -112,11 +118,35 @@ export function Shell() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate, openCommandBar]);
 
+  const trpc = useTRPC();
+  const emptyQuery = query.trim() === "";
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  const searching = commandOpen && debouncedQuery.trim() !== "";
+  // The query key includes the text, so a slow response for an old query can
+  // never replace the results for the current one.
+  const search = useQuery({
+    ...trpc.search.queryOptions({ query: debouncedQuery }),
+    enabled: searching,
+    retry: false,
+  });
+  const recents = useQuery({
+    ...trpc.recents.list.queryOptions(),
+    enabled: commandOpen && emptyQuery,
+  });
+
   const groups = useMemo<CommandGroup[]>(() => {
     if (!commandOpen) return [];
     const ctx: CommandContext = { pathname, navigate };
-    const available = registry.actions.filter((a) => !a.when || a.when(ctx));
-    return (["create", "actions", "ai"] as const).map((id) => ({
+    const available = registry.actions.filter(
+      (a) =>
+        (!a.when || a.when(ctx)) &&
+        matchesQuery(
+          typeof a.label === "function" ? a.label(ctx) : a.label,
+          a.keywords,
+          query,
+        ),
+    );
+    const actionGroups = (["create", "actions", "ai"] as const).map((id) => ({
       id,
       label: GROUP_LABELS[id],
       items: available
@@ -133,7 +163,42 @@ export function Shell() {
           };
         }),
     }));
-  }, [commandOpen, pathname, navigate]);
+    const result: CommandGroup[] = [...actionGroups];
+    if (emptyQuery) {
+      result.push(
+        {
+          id: "recent",
+          label: "Recents",
+          items: itemRows(recents.data ?? [], registry.itemTypes, navigate),
+        },
+        { id: "goto", label: "Go to", items: goToRows(registry.nav, navigate) },
+      );
+    } else {
+      const jump = jumpGroup({
+        status: !searching
+          ? "idle"
+          : search.isError
+            ? "error"
+            : search.isSuccess
+              ? "ok"
+              : "loading",
+        items: itemRows(search.data ?? [], registry.itemTypes, navigate),
+      });
+      if (jump) result.push(jump);
+    }
+    return result;
+  }, [
+    commandOpen,
+    pathname,
+    navigate,
+    query,
+    emptyQuery,
+    searching,
+    search.isError,
+    search.isSuccess,
+    search.data,
+    recents.data,
+  ]);
 
   return (
     <RouterProvider

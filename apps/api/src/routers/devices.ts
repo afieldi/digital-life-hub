@@ -1,7 +1,7 @@
 import { deviceSession, revokeInput } from "@dlh/api-contract";
+import { protectedProcedure, router } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { protectedProcedure, router } from "../trpc";
 
 export const devicesRouter = router({
   list: protectedProcedure

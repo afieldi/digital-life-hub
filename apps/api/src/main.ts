@@ -1,10 +1,17 @@
 import { createDb, migrate } from "@dlh/db";
+import {
+  CORE_ROUTER_IDS,
+  collectServerModules,
+  createChangeBus,
+} from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
 import { createApp } from "./app";
 import { drizzleAuthStore } from "./auth/drizzleStore";
 import { createGoogleOAuth } from "./auth/google";
+import { startPurgeJob } from "./changes";
 import { ConfigError, loadConfig } from "./config";
+import { serverModules } from "./modules.gen";
 
 function loadConfigOrExit() {
   try {
@@ -29,6 +36,11 @@ function hostPort(url: string): string {
 }
 
 const config = loadConfigOrExit();
+// Throws on a duplicate module id or item type, or an id that clashes with a core router.
+const { itemTypes } = collectServerModules(
+  [...serverModules],
+  [...CORE_ROUTER_IDS],
+);
 const { db, close } = createDb(config.databaseUrl);
 
 try {
@@ -45,12 +57,18 @@ if (process.env.MIGRATE_ON_START === "1") {
   await migrate(config.databaseUrl, "./drizzle");
 }
 
-const app = createApp({
+const deps = {
+  db,
+  changes: createChangeBus(),
+  itemTypes,
+  devErrors: config.devAuth,
   config,
   store: drizzleAuthStore(db),
   google: createGoogleOAuth(config.google),
   now: () => new Date(),
-});
+};
+const app = createApp(deps);
+startPurgeJob(deps);
 
 const hostname = process.env.HOST || "127.0.0.1";
 serve({ fetch: app.fetch, port: config.port, hostname }, () => {

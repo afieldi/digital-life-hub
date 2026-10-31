@@ -17,7 +17,10 @@ function adminUrl(testUrl: string): string {
 }
 
 /** Connects to the test database (creating it if missing), wipes it and migrates. */
-export async function freshTestDb(): Promise<{
+export async function freshTestDb(
+  /** Only for jsdom tests, where the default folder cannot be resolved from `import.meta.url`. */
+  migrationsFolder?: string,
+): Promise<{
   db: Db;
   url: string;
   close: () => Promise<void>;
@@ -38,6 +41,6 @@ export async function freshTestDb(): Promise<{
     await admin.close();
   }
 
-  await resetDatabase(url);
+  await resetDatabase(url, migrationsFolder);
   return { url, ...createDb(url) };
 }

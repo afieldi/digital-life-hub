@@ -11,11 +11,12 @@
     "build": "turbo run build",
     "test": "turbo run test && vitest run --root . scripts",
     "typecheck": "turbo run typecheck",
-    "lint": "biome check . && tsx scripts/check-module-classes.ts",
+    "lint": "biome check . && tsx scripts/check-module-classes.ts && tsx scripts/gen-modules.ts --check",
     "test:scripts": "vitest run scripts",
     "test:db": "turbo run test:db --concurrency=1",
     "dev:down": "docker compose down",
-    "db:reset": "pnpm --filter @dlh/db reset"
+    "db:reset": "pnpm --filter @dlh/db reset && pnpm --filter @dlh/api seed",
+    "gen:modules": "tsx scripts/gen-modules.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

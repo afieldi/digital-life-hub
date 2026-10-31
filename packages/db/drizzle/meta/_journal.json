@@ -8,6 +8,27 @@
       "when": 1793372776124,
       "tag": "0000_adorable_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793461479302,
+      "tag": "0001_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793461479961,
+      "tag": "0002_mean_squirrel_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793466031328,
+      "tag": "0003_tiny_malice",
+      "breakpoints": true
     }
   ]
 }
