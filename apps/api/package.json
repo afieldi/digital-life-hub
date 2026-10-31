@@ -16,6 +16,7 @@
   "dependencies": {
     "@dlh/api-contract": "workspace:*",
     "@dlh/db": "workspace:*",
+    "@dlh/server": "workspace:*",
     "@hono/node-server": "^2.1.5",
     "@hono/trpc-server": "^0.4.2",
     "@trpc/client": "^11.22.1",

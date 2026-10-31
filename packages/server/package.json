@@ -1,0 +1,26 @@
+{
+  "name": "@dlh/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
+    "test:db": "vitest run --passWithNoTests '.db.test.ts'",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@dlh/core": "workspace:*",
+    "@dlh/db": "workspace:*",
+    "@trpc/server": "^11.22.1",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "vitest": "^5.0.5"
+  }
+}

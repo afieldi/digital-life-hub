@@ -32,6 +32,9 @@ importers:
       '@dlh/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@dlh/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.14)
@@ -242,6 +245,31 @@ importers:
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(jsdom@30.1.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/server:
+    dependencies:
+      '@dlh/core':
+        specifier: workspace:*
+        version: link:../core
+      '@dlh/db':
+        specifier: workspace:*
+        version: link:../db
+      '@trpc/server':
+        specifier: ^11.22.1
+        version: 11.22.1(typescript@5.9.3)
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(postgres@4.0.0)
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(jsdom@30.1.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))

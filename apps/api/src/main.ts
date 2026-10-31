@@ -1,4 +1,5 @@
 import { createDb, migrate } from "@dlh/db";
+import { createChangeBus } from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
 import { createApp } from "./app";
@@ -46,6 +47,10 @@ if (process.env.MIGRATE_ON_START === "1") {
 }
 
 const app = createApp({
+  db,
+  changes: createChangeBus(),
+  itemTypes: new Set(),
+  devErrors: config.devAuth,
   config,
   store: drizzleAuthStore(db),
   google: createGoogleOAuth(config.google),

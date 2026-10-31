@@ -1,4 +1,6 @@
 import type { DeviceInput } from "@dlh/api-contract";
+import type { Db } from "@dlh/db";
+import { createChangeBus } from "@dlh/server";
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";
 import { createApp } from "./app";
 import type { GoogleOAuth } from "./auth/google";
@@ -31,8 +33,18 @@ export class FakeGoogle implements GoogleOAuth {
 const REDIRECT_URI = "http://127.0.0.1:5000/callback";
 const DEFAULT_DEVICE: DeviceInput = { name: "Test device", platform: "macos" };
 
+function noDb(): Db {
+  return new Proxy({} as Db, {
+    get() {
+      throw new Error(
+        "createTestApi: no database — pass { db } (DB tests only)",
+      );
+    },
+  });
+}
+
 export function createTestApi(
-  opts: { devAuth?: boolean; allowedEmail?: string } = {},
+  opts: { devAuth?: boolean; allowedEmail?: string; db?: Db } = {},
 ) {
   const allowedEmail = opts.allowedEmail ?? "arek@example.com";
   let time = new Date("2026-10-30T12:00:00.000Z").getTime();
@@ -44,13 +56,18 @@ export function createTestApi(
   };
   const store = memoryAuthStore();
   const google = new FakeGoogle(allowedEmail);
+  const devAuth = opts.devAuth ?? false;
   const app = createApp({
+    db: opts.db ?? noDb(),
+    changes: createChangeBus(),
+    itemTypes: new Set(),
+    devErrors: devAuth,
     config: {
       port: 0,
       databaseUrl: "",
       google: { clientId: "test", clientSecret: "test" },
       allowedEmail,
-      devAuth: opts.devAuth ?? false,
+      devAuth,
     },
     store,
     google,
