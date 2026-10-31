@@ -141,4 +141,83 @@ describe("subscribeChanges", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  test("backoff restarts at 0 after a successful connection", async () => {
+    const ok = sseResponse();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValueOnce(ok.response)
+      .mockRejectedValue(new TypeError("offline"));
+    const backoff = vi.fn((n: number) => (n + 1) * 10);
+    const { stop } = setup(fetchMock as unknown as typeof fetch, backoff);
+    await vi.advanceTimersByTimeAsync(100);
+    ok.end();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(backoff.mock.calls.map((c) => c[0]).slice(0, 4)).toEqual([
+      0, 1, 0, 1,
+    ]);
+    stop();
+  });
+
+  test("stopping during a pending backoff prevents the retry", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    const { stop } = setup(fetchMock as unknown as typeof fetch);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    stop();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("stop cancels an open body even when fetch ignores the signal", async () => {
+    const cancelled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ cancel: cancelled });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body));
+    const { stop } = setup(fetchMock as unknown as typeof fetch);
+    await flush();
+    stop();
+    await flush();
+    expect(cancelled).toHaveBeenCalledTimes(1);
+  });
+
+  test("an onIds exception is not swallowed and does not drop the stream", async () => {
+    const s = sseResponse();
+    const fetchMock = vi.fn().mockResolvedValue(s.response);
+    const boom = new Error("handler bug");
+    const caught: unknown[] = [];
+    const onUncaught = (e: unknown) => caught.push(e);
+    process.on("uncaughtException", onUncaught);
+    const { handlers, stop } = setup(fetchMock as unknown as typeof fetch);
+    handlers.onIds.mockImplementation(() => {
+      throw boom;
+    });
+    await flush();
+    s.push('data: {"ids":["a"]}\n\n');
+    await flush();
+    await vi.advanceTimersByTimeAsync(0);
+    process.off("uncaughtException", onUncaught);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(caught).toContain(boom);
+    stop();
+  });
+
+  test("an onUnauthorized exception does not trigger a retry", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("{}", { status: 401 }));
+    const caught: unknown[] = [];
+    const onRejected = (e: unknown) => caught.push(e);
+    process.on("unhandledRejection", onRejected);
+    const { handlers } = setup(fetchMock as unknown as typeof fetch);
+    handlers.onUnauthorized.mockImplementation(() => {
+      throw new Error("x");
+    });
+    await flush();
+    await vi.advanceTimersByTimeAsync(60_000);
+    process.off("unhandledRejection", onRejected);
+    expect(caught).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

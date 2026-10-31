@@ -73,30 +73,54 @@ export function subscribeChanges(
   const run = async () => {
     let attempt = 0;
     let dropped = false;
+    let unauthorized = false;
     while (!controller.signal.aborted) {
+      // Only network failures are retried; handler exceptions are not.
       try {
         const token = await opts.getToken();
-        if (!token) return opts.onUnauthorized();
+        if (!token) {
+          unauthorized = true;
+          break;
+        }
         const res = await doFetch(opts.url, {
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
-        if (res.status === 401) return opts.onUnauthorized();
+        if (res.status === 401) {
+          unauthorized = true;
+          break;
+        }
         if (!res.ok || !res.body) throw new Error(`changes: ${res.status}`);
         attempt = 0;
         // Events may have been missed while disconnected.
         if (dropped) opts.onReconnect();
         const parse = createSseParser((data) => {
+          let ids: unknown;
           try {
-            const msg = JSON.parse(data) as { ids?: unknown };
-            if (Array.isArray(msg.ids)) opts.onIds(msg.ids as string[]);
+            ids = (JSON.parse(data) as { ids?: unknown }).ids;
           } catch {
-            // A malformed event is skipped; the stream stays up.
+            return; // A malformed event is skipped; the stream stays up.
+          }
+          if (!Array.isArray(ids)) return;
+          try {
+            opts.onIds(ids as string[]);
+          } catch (err) {
+            // Surface a handler bug without tearing down the stream.
+            queueMicrotask(() => {
+              throw err;
+            });
           }
         });
         const reader = res.body
           .pipeThrough(new TextDecoderStream())
           .getReader();
+        // Not every fetch ties the body to the signal (the in-process test
+        // one does not), so cancel the reader explicitly.
+        controller.signal.addEventListener(
+          "abort",
+          () => void reader.cancel().catch(() => {}),
+          { once: true },
+        );
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -109,6 +133,7 @@ export function subscribeChanges(
       dropped = true;
       await sleep(backoffMs(attempt++));
     }
+    if (unauthorized) opts.onUnauthorized();
   };
   void run();
 
