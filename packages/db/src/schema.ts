@@ -45,14 +45,14 @@ export const items = pgTable(
     search: tsvector("search").generatedAlwaysAs(
       sql`setweight(to_tsvector('english', title), 'A') || setweight(to_tsvector('english', coalesce(search_text, '')), 'B')`,
     ),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 })
       .notNull()
       .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 })
       .notNull()
       .defaultNow(),
-    archivedAt: timestamp("archived_at", { withTimezone: true }),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true, precision: 3 }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, precision: 3 }),
   },
   (t) => [
     index("items_search_idx").using("gin", t.search),
@@ -75,7 +75,7 @@ export const links = pgTable(
       .references(() => items.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     context: text("context"),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 })
       .notNull()
       .defaultNow(),
   },
@@ -93,7 +93,10 @@ export const itemViews = pgTable(
     itemId: uuid("item_id")
       .notNull()
       .references(() => items.id, { onDelete: "cascade" }),
-    viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull(),
+    viewedAt: timestamp("viewed_at", {
+      withTimezone: true,
+      precision: 3,
+    }).notNull(),
   },
   (t) => [
     index("item_views_viewed_idx").on(t.viewedAt.desc()),

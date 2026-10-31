@@ -9,6 +9,8 @@ export type ChangesHandlers = {
 export type SubscribeChanges = (handlers: ChangesHandlers) => () => void;
 
 const MAX_BACKOFF_MS = 30_000;
+/** The server sends `: ping` every 25 s; 2.5x that without a byte means the connection is dead. */
+export const DEFAULT_IDLE_TIMEOUT_MS = 62_500;
 
 export function defaultBackoffMs(attempt: number): number {
   return Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt);
@@ -57,10 +59,13 @@ export function subscribeChanges(
     getToken: () => Promise<string | null>;
     fetch?: typeof fetch;
     backoffMs?: (attempt: number) => number;
+    /** Cancel and reconnect when no bytes (comments included) arrive for this long. */
+    idleTimeoutMs?: number;
   } & ChangesHandlers,
 ): () => void {
   const doFetch = opts.fetch ?? fetch;
   const backoffMs = opts.backoffMs ?? defaultBackoffMs;
+  const idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wake: (() => void) | undefined;
@@ -91,7 +96,6 @@ export function subscribeChanges(
           break;
         }
         if (!res.ok || !res.body) throw new Error(`changes: ${res.status}`);
-        attempt = 0;
         // Called on every open, the first included: events may have been
         // missed while disconnected, or before the stream first connected.
         opts.onReconnect();
@@ -115,17 +119,28 @@ export function subscribeChanges(
         const reader = res.body
           .pipeThrough(new TextDecoderStream())
           .getReader();
+        const cancel = () => void reader.cancel().catch(() => {});
         // Not every fetch ties the body to the signal (the in-process test
         // one does not), so cancel the reader explicitly.
-        controller.signal.addEventListener(
-          "abort",
-          () => void reader.cancel().catch(() => {}),
-          { once: true },
-        );
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parse(value);
+        controller.signal.addEventListener("abort", cancel, { once: true });
+        let idle: ReturnType<typeof setTimeout> | undefined;
+        const armIdle = () => {
+          clearTimeout(idle);
+          idle = setTimeout(cancel, idleTimeoutMs);
+        };
+        try {
+          armIdle();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            armIdle();
+            // Only a connection that delivered bytes counts as healthy.
+            attempt = 0;
+            parse(value);
+          }
+        } finally {
+          clearTimeout(idle);
+          controller.signal.removeEventListener("abort", cancel);
         }
       } catch {
         // Fall through to the backoff below (an abort ends the loop).

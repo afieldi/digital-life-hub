@@ -74,7 +74,7 @@ const links = router({
         fromId: id,
         toId: id,
         kind: linkKind,
-        context: z.string().nullable().optional(),
+        context: z.string().max(2000).nullable().optional(),
       }),
     )
     .output(link)
@@ -115,7 +115,7 @@ const links = router({
 const search = protectedProcedure
   .input(
     z.object({
-      query: z.string(),
+      query: z.string().max(1000),
       types: z.array(z.string()).optional(),
       limit: z.number().int().optional(),
     }),

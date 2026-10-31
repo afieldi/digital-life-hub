@@ -143,7 +143,7 @@ describe("subscribeChanges", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test("backoff restarts at 0 after a successful connection", async () => {
+  test("backoff restarts at 0 once a connection has delivered bytes", async () => {
     const ok = sseResponse();
     const fetchMock = vi
       .fn()
@@ -154,12 +154,81 @@ describe("subscribeChanges", () => {
     const backoff = vi.fn((n: number) => (n + 1) * 10);
     const { stop } = setup(fetchMock as unknown as typeof fetch, backoff);
     await vi.advanceTimersByTimeAsync(100);
+    ok.push(": ping\n\n");
+    await vi.advanceTimersByTimeAsync(0);
     ok.end();
     await vi.advanceTimersByTimeAsync(100);
     expect(backoff.mock.calls.map((c) => c[0]).slice(0, 4)).toEqual([
       0, 1, 0, 1,
     ]);
     stop();
+  });
+
+  test("a server that accepts then closes without bytes keeps the backoff growing", async () => {
+    const fetchMock = vi.fn(() => {
+      const s = sseResponse();
+      s.end();
+      return Promise.resolve(s.response);
+    });
+    const backoff = vi.fn((n: number) => (n + 1) * 10);
+    const { stop } = setup(fetchMock as unknown as typeof fetch, backoff);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(backoff.mock.calls.map((c) => c[0]).slice(0, 4)).toEqual([
+      0, 1, 2, 3,
+    ]);
+    stop();
+  });
+
+  test("a silent connection is cancelled after the idle timeout and reconnects", async () => {
+    const first = sseResponse();
+    const second = sseResponse();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(first.response)
+      .mockResolvedValueOnce(second.response);
+    const handlers = {
+      onIds: vi.fn(),
+      onReconnect: vi.fn(),
+      onUnauthorized: vi.fn(),
+    };
+    const stop = subscribeChanges({
+      url: "http://x/changes",
+      getToken: async () => "t",
+      fetch: fetchMock as unknown as typeof fetch,
+      backoffMs: () => 100,
+      idleTimeoutMs: 1000,
+      ...handlers,
+    });
+    await flush();
+    await vi.advanceTimersByTimeAsync(900);
+    first.push(": ping\n\n"); // a comment resets the watchdog
+    await vi.advanceTimersByTimeAsync(900);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(100); // 1000 ms of silence
+    await vi.advanceTimersByTimeAsync(100); // backoff
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(handlers.onReconnect).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  test("abort listeners do not accumulate across reconnects", async () => {
+    const add = vi.spyOn(AbortSignal.prototype, "addEventListener");
+    const remove = vi.spyOn(AbortSignal.prototype, "removeEventListener");
+    const fetchMock = vi.fn(() => {
+      const s = sseResponse();
+      s.end();
+      return Promise.resolve(s.response);
+    });
+    const { stop } = setup(fetchMock as unknown as typeof fetch, () => 10);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(3);
+    const adds = add.mock.calls.filter((c) => c[0] === "abort").length;
+    const removes = remove.mock.calls.filter((c) => c[0] === "abort").length;
+    expect(adds - removes).toBeLessThanOrEqual(1);
+    stop();
+    add.mockRestore();
+    remove.mockRestore();
   });
 
   test("stopping during a pending backoff prevents the retry", async () => {

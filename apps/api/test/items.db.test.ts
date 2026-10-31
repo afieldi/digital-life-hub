@@ -223,3 +223,23 @@ test("seedIfEmpty seeds an empty database once", async () => {
   );
   await close();
 });
+
+test("over-long search query and link context are BAD_REQUEST", async () => {
+  const { c, mk, close } = await setup();
+  const a = await mk("A");
+  const b = await mk("B");
+  expect(await codeOf(c.search.query({ query: "x".repeat(1001) }))).toBe(
+    "BAD_REQUEST",
+  );
+  expect(
+    await codeOf(
+      c.links.add.mutate({
+        fromId: a.id,
+        toId: b.id,
+        kind: "relates",
+        context: "x".repeat(2001),
+      }),
+    ),
+  ).toBe("BAD_REQUEST");
+  await close();
+});

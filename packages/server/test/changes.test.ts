@@ -27,4 +27,18 @@ describe("change bus", () => {
     bus.publish([]);
     expect(got).toEqual([]);
   });
+
+  it("a throwing subscriber does not stop the others or throw", () => {
+    const bus = createChangeBus();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const got: string[][] = [];
+    bus.subscribe(() => {
+      throw new Error("boom");
+    });
+    bus.subscribe((ids) => got.push(ids));
+    expect(() => bus.publish(["a"])).not.toThrow();
+    expect(got).toEqual([["a"]]);
+    expect(err).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
 });
