@@ -1,10 +1,9 @@
 import type { AppRouter } from "@dlh/api/router";
 import { expect, test } from "@playwright/test";
 import { createTRPCClient, httpLink } from "@trpc/client";
+import { E2E_API_URL } from "./apiUrl";
 import { openPalette } from "./palette";
 import { signIn } from "./signIn";
-
-const API_URL = "http://127.0.0.1:8787";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
@@ -63,7 +62,7 @@ test("create, find, recent and live rename of a sample item", async ({
   const api = createTRPCClient<AppRouter>({
     links: [
       httpLink({
-        url: `${API_URL}/trpc`,
+        url: `${E2E_API_URL}/trpc`,
         headers: { Authorization: `Bearer ${token}` },
       }),
     ],
