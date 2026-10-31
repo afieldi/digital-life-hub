@@ -70,7 +70,7 @@ describe("subscribeChanges", () => {
     s.push('data: {"ids":["a","b"]}\n\n');
     await flush();
     expect(handlers.onIds).toHaveBeenCalledWith(["a", "b"]);
-    expect(handlers.onReconnect).not.toHaveBeenCalled();
+    expect(handlers.onReconnect).toHaveBeenCalledTimes(1); // first open
     stop();
   });
 
@@ -85,7 +85,7 @@ describe("subscribeChanges", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  test("a dropped stream retries after the backoff, then reports a reconnect", async () => {
+  test("a dropped stream retries after the backoff, then reports a reconnect again", async () => {
     const first = sseResponse();
     const second = sseResponse();
     const fetchMock = vi
@@ -98,6 +98,7 @@ describe("subscribeChanges", () => {
       backoff,
     );
     await flush();
+    expect(handlers.onReconnect).toHaveBeenCalledTimes(1);
     first.end();
     await flush();
     expect(backoff).toHaveBeenCalledWith(0);
@@ -107,7 +108,7 @@ describe("subscribeChanges", () => {
     await vi.advanceTimersByTimeAsync(1);
     await flush();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(handlers.onReconnect).toHaveBeenCalledTimes(1);
+    expect(handlers.onReconnect).toHaveBeenCalledTimes(2);
     stop();
   });
 

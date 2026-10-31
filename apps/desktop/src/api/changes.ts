@@ -1,5 +1,6 @@
 export type ChangesHandlers = {
   onIds: (ids: string[]) => void;
+  /** Called each time the stream opens, the first time included: refetch what was loaded before it was live. */
   onReconnect: () => void;
   onUnauthorized: () => void;
 };
@@ -72,7 +73,6 @@ export function subscribeChanges(
 
   const run = async () => {
     let attempt = 0;
-    let dropped = false;
     let unauthorized = false;
     while (!controller.signal.aborted) {
       // Only network failures are retried; handler exceptions are not.
@@ -92,8 +92,9 @@ export function subscribeChanges(
         }
         if (!res.ok || !res.body) throw new Error(`changes: ${res.status}`);
         attempt = 0;
-        // Events may have been missed while disconnected.
-        if (dropped) opts.onReconnect();
+        // Called on every open, the first included: events may have been
+        // missed while disconnected, or before the stream first connected.
+        opts.onReconnect();
         const parse = createSseParser((data) => {
           let ids: unknown;
           try {
@@ -130,7 +131,6 @@ export function subscribeChanges(
         // Fall through to the backoff below (an abort ends the loop).
       }
       if (controller.signal.aborted) return;
-      dropped = true;
       await sleep(backoffMs(attempt++));
     }
     if (unauthorized) opts.onUnauthorized();

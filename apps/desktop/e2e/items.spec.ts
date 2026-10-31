@@ -1,6 +1,7 @@
 import type { AppRouter } from "@dlh/api/router";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { createTRPCClient, httpLink } from "@trpc/client";
+import { openPalette } from "./palette";
 import { signIn } from "./signIn";
 
 const API_URL = "http://127.0.0.1:8787";
@@ -10,35 +11,30 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
 });
 
-/** Device presets may report a different OS than the host: ask the page. */
-async function openPalette(page: Page): Promise<void> {
-  const mac = await page.evaluate(() =>
-    /mac/i.test(
-      (navigator as Navigator & { userAgentData?: { platform?: string } })
-        .userAgentData?.platform || navigator.platform,
-    ),
-  );
-  await page.keyboard.press(mac ? "Meta+k" : "Control+k");
-}
-
 test("create, find, recent and live rename of a sample item", async ({
   page,
-}) => {
+}, testInfo) => {
+  // The database is shared by both browser projects and never wiped between
+  // them, so every title is unique to this run.
+  const stamp = `${testInfo.project.name} ${Date.now()}`;
+  const title = `E2E item ${stamp}`;
+  const renamed = `E2E renamed ${stamp}`;
+
   await signIn(page);
   await page.goto("/sample");
 
-  await page.getByLabel("New sample item").fill("E2E item");
+  await page.getByRole("textbox", { name: "New sample item" }).fill(title);
   await page.getByRole("button", { name: "Create" }).click();
-  await expect(page.getByText("E2E item").first()).toBeVisible();
+  await expect(page.getByRole("link", { name: title })).toBeVisible();
 
   // Search finds it and opens its page.
   await openPalette(page);
-  await page.getByRole("combobox").fill("e2e");
-  await page.getByRole("option", { name: /E2E item/ }).click();
+  await page.getByRole("combobox").fill(stamp);
+  await page.getByRole("option", { name: title, exact: true }).click();
   await expect(page).toHaveURL(/\/sample\/[^/]+$/);
   await expect(
-    page.getByRole("heading", { level: 1, name: "E2E item" }),
-  ).toBeAttached();
+    page.getByRole("heading", { level: 1, name: title }),
+  ).toBeVisible();
   const itemUrl = page.url();
 
   // Opening it recorded a view: it is now under Recents on an empty query.
@@ -48,16 +44,22 @@ test("create, find, recent and live rename of a sample item", async ({
     .click();
   await expect(page.getByTestId("greeting")).toBeVisible();
   await openPalette(page);
-  await expect(page.getByRole("option", { name: /E2E item/ })).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: title, exact: true }),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
 
   // A rename made elsewhere reaches the open page through /changes.
   await page.goto(itemUrl);
-  const id = new URL(itemUrl).pathname.split("/").pop() as string;
+  await expect(
+    page.getByRole("heading", { level: 1, name: title }),
+  ).toBeVisible();
+  const id = new URL(itemUrl).pathname.split("/").pop();
+  if (!id) throw new Error(`no item id in ${itemUrl}`);
   const token = await page.evaluate(() =>
     localStorage.getItem("dlh.devSessionToken"),
   );
-  expect(token).toBeTruthy();
+  if (!token) throw new Error("no dev session token in localStorage");
   const api = createTRPCClient<AppRouter>({
     links: [
       httpLink({
@@ -70,9 +72,9 @@ test("create, find, recent and live rename of a sample item", async ({
   await api.items.rename.mutate({
     id,
     expectedUpdatedAt: current.updatedAt,
-    title: "E2E item renamed",
+    title: renamed,
   });
   await expect(
-    page.getByRole("heading", { level: 1, name: "E2E item renamed" }),
+    page.getByRole("heading", { level: 1, name: renamed }),
   ).toBeVisible({ timeout: 2000 });
 });

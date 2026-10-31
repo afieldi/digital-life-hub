@@ -22,11 +22,12 @@ pnpm dev
 
 `pnpm dev` starts Postgres in Docker, applies migrations, then runs the API and the desktop app. For Google sign-in, copy `apps/api/.env.example` to `apps/api/.env` and fill it in.
 
-| Command                        | Does                            |
-| ------------------------------ | ------------------------------- |
-| `pnpm dev`                     | Starts everything               |
-| `pnpm dev:down`                | Stops Postgres                  |
-| `pnpm db:reset`                | Wipes the dev database          |
-| `pnpm test`                    | Unit tests                      |
-| `pnpm test:db`                 | Database tests (needs Postgres) |
-| `pnpm typecheck` / `pnpm lint` | Type and lint checks            |
+| Command                        | Does                                                               |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `pnpm dev`                     | Starts everything                                                  |
+| `pnpm dev:down`                | Stops Postgres                                                     |
+| `pnpm db:reset`                | Wipes the dev database and reseeds sample items                    |
+| `pnpm gen:modules`             | Regenerates the module registry (`pnpm lint` fails if it is stale) |
+| `pnpm test`                    | Unit tests                                                         |
+| `pnpm test:db`                 | Database tests (needs Postgres)                                    |
+| `pnpm typecheck` / `pnpm lint` | Type and lint checks                                               |
