@@ -1,5 +1,12 @@
 import { useCoreApi, useModuleApi } from "@dlh/client";
-import { Button, EmptyState, ItemRow, SectionCard, TextField } from "@dlh/ui";
+import {
+  Button,
+  EmptyState,
+  ItemRow,
+  SectionCard,
+  TextField,
+  toast,
+} from "@dlh/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FlaskConical } from "lucide-react";
 import { useState } from "react";
@@ -15,7 +22,8 @@ export function SamplePage() {
     queryFn: () => core.items.list.query({ types: ["sample"] }),
   });
   const create = useMutation({
-    mutationFn: (t: string) => sample.create.mutate({ title: t }),
+    mutationFn: (t: string) => sample.create.mutate({ title: t.trim() }),
+    onError: () => toast("Could not create the item", { tone: "error" }),
     onSuccess: async () => {
       setTitle("");
       await queryClient.invalidateQueries({ queryKey: ["sample", "list"] });

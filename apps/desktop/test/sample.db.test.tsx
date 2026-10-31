@@ -108,3 +108,20 @@ test("a rename from another client appears without user action", async () => {
   ).toBeInTheDocument();
   view.unmount();
 });
+
+test("a draft does not follow the user to another item", async () => {
+  const { view, api, token, router } = await openDetail();
+  const other = await api
+    .client(token)
+    .sample.create.mutate({ title: "Second sample" });
+  await userEvent.type(
+    screen.getByRole("textbox", { name: "Title" }),
+    " draft",
+  );
+  await router.navigate({ to: `/sample/${other.id}` });
+  await screen.findByRole("heading", { name: "Second sample", level: 1 });
+  expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue(
+    "Second sample",
+  );
+  view.unmount();
+});

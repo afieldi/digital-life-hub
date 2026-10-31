@@ -8,8 +8,13 @@ import { useState } from "react";
 /** An unsaved edit, remembering the version it started from so a save made after someone else's change conflicts. */
 type Draft = { text: string; baseUpdatedAt: string };
 
+/** Remounts per id: the route reuses this component when only the id changes, and a draft must not follow it. */
 export function SampleItemPage() {
   const { id } = useParams({ strict: false }) as { id: string };
+  return <SampleItem key={id} id={id} />;
+}
+
+function SampleItem({ id }: { id: string }) {
   const core = useCoreApi();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -26,7 +31,7 @@ export function SampleItemPage() {
     mutationFn: (d: Draft) =>
       core.items.rename.mutate({
         id,
-        title: d.text,
+        title: d.text.trim(),
         expectedUpdatedAt: d.baseUpdatedAt,
       }),
     onSuccess: (updated) => {
@@ -56,8 +61,8 @@ export function SampleItemPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-8 pt-20">
-      <h1 className="text-2xl font-semibold">{item.title}</h1>
-      <SectionCard title="Rename">
+      <h1 className="sr-only">{item.title}</h1>
+      <SectionCard title={item.title}>
         <form
           className="flex items-end gap-2"
           onSubmit={(e) => {
