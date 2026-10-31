@@ -4,8 +4,9 @@ import { expect, test } from "vitest";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (rel: string) => readFileSync(`${ROOT}${rel}`, "utf8");
+// globSync returns backslash paths on Windows.
 const dirs = globSync("modules/*/src/server.ts", { cwd: ROOT }).map(
-  (f) => f.split("/")[1] ?? "",
+  (f) => f.split(/[\\/]/)[1] ?? "",
 );
 
 /** The first top-level `id: "..."` after `defineServerModule(` / `defineModule(`. */
