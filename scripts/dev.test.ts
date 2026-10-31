@@ -99,8 +99,8 @@ describe("preflight", () => {
 });
 
 describe("steps", () => {
-  it("steps run db → migrate → apps", () => {
-    expect(steps.map((s) => s.name)).toEqual(["db", "migrate", "apps"]);
+  it("steps run db → migrate → seed → apps", () => {
+    expect(steps.map((s) => s.name)).toEqual(["db", "migrate", "seed", "apps"]);
   });
 });
 

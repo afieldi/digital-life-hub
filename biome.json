@@ -25,7 +25,8 @@
               "level": "error",
               "options": {
                 "paths": {
-                  "react-aria-components": "Modules must use @dlh/ui, not react-aria-components directly."
+                  "react-aria-components": "Modules must use @dlh/ui, not react-aria-components directly.",
+                  "@dlh/db": "Modules change items through @dlh/server, never @dlh/db directly."
                 }
               }
             }

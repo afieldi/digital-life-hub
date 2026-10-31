@@ -1,6 +1,8 @@
 import { writeItems } from "@dlh/server";
 import { freshTestDb } from "@dlh/server/testing";
 import { TRPCClientError } from "@trpc/client";
+import { seedIfEmpty } from "../src/cli/seed";
+import { serverModules } from "../src/modules.gen";
 import { createTestApi } from "../src/testing";
 
 async function setup() {
@@ -199,5 +201,25 @@ test("outputs never contain searchText", async () => {
   const json = JSON.stringify(outputs);
   expect(json).not.toContain("hidden-body-text");
   expect(json).not.toMatch(/searchText|search_text/);
+  await close();
+});
+
+test("sample.create is reachable through the app router", async () => {
+  const { c, close } = await setup();
+  const item = await c.sample.create.mutate({ title: " From the app " });
+  expect(item).toMatchObject({ type: "sample", title: "From the app" });
+  expect((await c.items.get.query({ id: item.id })).id).toBe(item.id);
+  await close();
+});
+
+test("seedIfEmpty seeds an empty database once", async () => {
+  const { api, c, close } = await setup();
+  expect(await seedIfEmpty(api.deps, serverModules)).toBe(true);
+  const seeded = (await c.items.list.query({ limit: 200 })).items;
+  expect(seeded.length).toBeGreaterThan(0);
+  expect(await seedIfEmpty(api.deps, serverModules)).toBe(false);
+  expect((await c.items.list.query({ limit: 200 })).items).toHaveLength(
+    seeded.length,
+  );
   await close();
 });

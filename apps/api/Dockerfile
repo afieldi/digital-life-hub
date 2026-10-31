@@ -2,7 +2,8 @@ FROM node:22-slim AS build
 RUN corepack enable
 WORKDIR /repo
 COPY . .
-RUN pnpm install --frozen-lockfile --filter @dlh/api...
+# Server modules are bundled into the API from their source, so they need their deps too.
+RUN pnpm install --frozen-lockfile --filter @dlh/api... --filter "./modules/*"
 RUN pnpm --filter @dlh/api build
 RUN pnpm --filter @dlh/api deploy --prod /out
 

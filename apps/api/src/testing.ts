@@ -1,10 +1,15 @@
 import type { DeviceInput } from "@dlh/api-contract";
 import type { Db } from "@dlh/db";
-import { createChangeBus } from "@dlh/server";
+import {
+  CORE_ROUTER_IDS,
+  collectServerModules,
+  createChangeBus,
+} from "@dlh/server";
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";
 import { createApp } from "./app";
 import type { GoogleOAuth } from "./auth/google";
 import { memoryAuthStore } from "./auth/memoryStore";
+import { serverModules } from "./modules.gen";
 import type { AppRouter } from "./router";
 
 export class FakeGoogle implements GoogleOAuth {
@@ -65,7 +70,11 @@ export function createTestApi(
   const deps = {
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
-    itemTypes: new Set(opts.itemTypes ?? []),
+    itemTypes: new Set([
+      ...collectServerModules([...serverModules], [...CORE_ROUTER_IDS])
+        .itemTypes,
+      ...(opts.itemTypes ?? []),
+    ]),
     devErrors: devAuth,
     config: {
       port: 0,
