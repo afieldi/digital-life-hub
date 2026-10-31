@@ -8,12 +8,14 @@
     "dev:web": "vite",
     "build:web": "vite build",
     "tauri": "tauri",
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/*.db.test.tsx'",
+    "test:db": "vitest run '.db.test.tsx'",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
     "@dlh/api-contract": "workspace:*",
+    "@dlh/client": "workspace:*",
     "@dlh/core": "workspace:*",
     "@dlh/ui": "workspace:*",
     "@tanstack/react-query": "^5.105.0",

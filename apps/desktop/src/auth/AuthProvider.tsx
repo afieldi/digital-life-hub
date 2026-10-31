@@ -22,7 +22,7 @@ export type AuthState = {
   signOut(): Promise<void>;
 };
 
-const AuthContext = createContext<AuthState | null>(null);
+export const AuthContext = createContext<AuthState | null>(null);
 
 export function useAuth(): AuthState {
   const auth = useContext(AuthContext);
