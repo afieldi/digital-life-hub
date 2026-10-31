@@ -1,4 +1,5 @@
-import { freshTestDb, writeItems } from "@dlh/server/testing";
+import { writeItems } from "@dlh/server";
+import { freshTestDb } from "@dlh/server/testing";
 import { TRPCClientError } from "@trpc/client";
 import { createTestApi } from "../src/testing";
 
@@ -169,6 +170,11 @@ test("a non-uuid id is BAD_REQUEST", async () => {
   expect(await codeOf(c.recents.record.mutate({ id: "nope" }))).toBe(
     "BAD_REQUEST",
   );
+  expect(
+    await codeOf(
+      c.links.add.mutate({ fromId: "nope", toId: "nope", kind: "relates" }),
+    ),
+  ).toBe("BAD_REQUEST");
   expect(await codeOf(c.links.remove.mutate({ id: "nope" }))).toBe(
     "BAD_REQUEST",
   );

@@ -1,5 +1,5 @@
 export { type ChangeBus, createChangeBus } from "./changes";
-export type { ItemWriter } from "./items/writer";
+export { type ItemWriter, writeItems } from "./items/writer";
 export {
   CORE_ROUTER_IDS,
   collectServerModules,
