@@ -7,6 +7,11 @@ const DAY_MS = 86_400_000;
 export const sessionExpiry = (now: Date): Date =>
   new Date(now.getTime() + SESSION_DAYS * DAY_MS);
 
+/** Extracts the token from an `Authorization: Bearer <token>` header. */
+export function bearerToken(header: string | null | undefined): string | null {
+  return /^Bearer (.+)$/.exec(header ?? "")?.[1] ?? null;
+}
+
 export async function authenticate(
   store: AuthStore,
   token: string,

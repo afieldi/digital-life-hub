@@ -34,10 +34,15 @@ const waitFor = async (cond: () => boolean) => {
     await new Promise((r) => setTimeout(r, 5));
 };
 
+const real = (api: ReturnType<typeof createTestApi>, token?: string) =>
+  api.fetch("http://api.test/changes", {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
 test("no token → 401", async () => {
   const api = createTestApi();
-  expect((await open(api, null)).status).toBe(401);
-  expect((await open(api, "garbage")).status).toBe(401);
+  expect((await real(api)).status).toBe(401);
+  expect((await real(api, "garbage")).status).toBe(401);
 });
 
 test("revoked token → 401", async () => {
@@ -45,7 +50,7 @@ test("revoked token → 401", async () => {
   const token = await api.signIn();
   const [row] = await api.store.listActiveSessions(api.clock.now());
   await api.store.revokeSession(row?.id ?? "", api.clock.now());
-  expect((await open(api, token)).status).toBe(401);
+  expect((await real(api, token)).status).toBe(401);
 });
 
 test("publishes within a batch arrive as one event", async () => {
@@ -89,7 +94,8 @@ test("revoking the session closes the stream at the next heartbeat", async () =>
 test("cancelling the reader unsubscribes", async () => {
   const api = createTestApi();
   const token = await api.signIn();
-  const res = await open(api, token);
+  const res = await real(api, token);
+  expect(res.headers.get("content-type")).toContain("text/event-stream");
   const reader = (res.body as ReadableStream<Uint8Array>).getReader();
   await waitFor(() => api.deps.changes.size() === 1);
   expect(api.deps.changes.size()).toBe(1);

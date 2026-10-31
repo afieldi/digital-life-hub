@@ -1,7 +1,7 @@
 import { purgeExpired } from "@dlh/server";
 import type { Handler } from "hono";
 import { streamSSE } from "hono/streaming";
-import { authenticate } from "./auth/sessions";
+import { authenticate, bearerToken } from "./auth/sessions";
 import type { AppDeps } from "./trpc";
 
 const DEFAULT_BATCH_MS = 100;
@@ -19,9 +19,7 @@ export function changesHandler(
   const batchMs = opts.batchMs ?? DEFAULT_BATCH_MS;
   const heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
   return async (c) => {
-    const token = /^Bearer (.+)$/.exec(
-      c.req.header("Authorization") ?? "",
-    )?.[1];
+    const token = bearerToken(c.req.header("Authorization"));
     const session = token
       ? await authenticate(deps.store, token, deps.now())
       : null;
@@ -56,7 +54,7 @@ export function changesHandler(
           const ids = [...pending];
           pending = new Set();
           if (closed || ids.length === 0) return;
-          stream.write(`data: ${JSON.stringify({ ids })}\n\n`).catch(close);
+          void stream.write(`data: ${JSON.stringify({ ids })}\n\n`);
         }, batchMs);
       });
 
@@ -65,8 +63,9 @@ export function changesHandler(
           const row = await authenticate(deps.store, token, deps.now());
           if (closed) return;
           if (!row) close();
-          else await stream.write(": ping\n\n");
+          else void stream.write(": ping\n\n");
         } catch {
+          // The store failed; end the stream so the client reconnects.
           close();
         }
       }, heartbeatMs);
