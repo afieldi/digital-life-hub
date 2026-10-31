@@ -9,7 +9,7 @@
     "start": "node --env-file-if-exists=.env dist/main.js",
     "build": "tsx ../../scripts/gen-modules.ts && tsup",
     "sessions": "tsx --env-file-if-exists=.env src/cli/sessions.ts",
-    "seed": "tsx --env-file-if-exists=.env src/cli/seed.ts",
+    "seed": "tsx ../../scripts/gen-modules.ts && tsx --env-file-if-exists=.env src/cli/seed.ts",
     "docker:build": "docker build -f Dockerfile -t dlh-api ../..",
     "test": "tsx ../../scripts/gen-modules.ts && vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
     "test:db": "vitest run --passWithNoTests '.db.test.ts'",

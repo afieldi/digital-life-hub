@@ -27,7 +27,13 @@
                 "paths": {
                   "react-aria-components": "Modules must use @dlh/ui, not react-aria-components directly.",
                   "@dlh/db": "Modules change items through @dlh/server, never @dlh/db directly."
-                }
+                },
+                "patterns": [
+                  {
+                    "group": ["@dlh/db/**"],
+                    "message": "Modules change items through @dlh/server, never @dlh/db directly."
+                  }
+                ]
               }
             }
           }
