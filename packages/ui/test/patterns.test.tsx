@@ -154,6 +154,118 @@ test("CommandBar: clicking a row runs it", async () => {
   expect(run).toHaveBeenCalledWith("j1");
 });
 
+const bar = (groups: CommandGroup[], onOpenChange = noop) => (
+  <CommandBar
+    isOpen
+    onOpenChange={onOpenChange}
+    query=""
+    onQueryChange={noop}
+    groups={groups}
+  />
+);
+
+test("CommandBar renders groups in ORDER: recent, goto, create, actions, ai, jump", () => {
+  const item = (id: string) => ({ id, label: `Row ${id}`, onAction: noop });
+  const labels = ["Jump", "AI", "Actions", "Create", "Go to", "Recents"];
+  const ids = ["jump", "ai", "actions", "create", "goto", "recent"] as const;
+  render(
+    bar(ids.map((id, i) => ({ id, label: labels[i], items: [item(id)] }))),
+  );
+  const rows = screen.getAllByRole("option").map((o) => o.textContent);
+  expect(rows).toEqual([
+    "Row recent",
+    "Row goto",
+    "Row create",
+    "Row actions",
+    "Row ai",
+    "Row jump",
+  ]);
+});
+
+test("CommandBar: ArrowDown skips a disabled row", async () => {
+  render(
+    bar([
+      {
+        id: "goto",
+        label: "Go to",
+        items: [
+          { id: "a", label: "Alpha", onAction: noop },
+          { id: "b", label: "Beta", disabled: true, onAction: noop },
+          { id: "c", label: "Gamma", onAction: noop },
+        ],
+      },
+    ]),
+  );
+  expect(screen.getByRole("option", { name: /Beta/ })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await userEvent.keyboard("{ArrowDown}");
+  expect(screen.getByRole("option", { name: /Gamma/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await userEvent.keyboard("{ArrowUp}");
+  expect(screen.getByRole("option", { name: /Alpha/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("CommandBar: clicking a disabled row neither runs nor closes", async () => {
+  const run = vi.fn();
+  const onOpenChange = vi.fn();
+  render(
+    bar(
+      [
+        {
+          id: "recent",
+          label: "Recents",
+          items: [
+            { id: "d", label: "Disabled one", disabled: true, onAction: run },
+          ],
+        },
+      ],
+      onOpenChange,
+    ),
+  );
+  await userEvent.click(screen.getByRole("option", { name: /Disabled one/ }));
+  await userEvent.keyboard("{Enter}");
+  expect(run).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+});
+
+test("CommandBar: an empty group with a message renders its label and message", () => {
+  render(
+    bar([
+      { id: "jump", label: "Jump to", items: [], message: "No items match" },
+    ]),
+  );
+  expect(screen.getByText("Jump to")).toBeInTheDocument();
+  expect(screen.getByText("No items match")).toBeInTheDocument();
+  expect(screen.queryByText(/No results/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Start typing/)).not.toBeInTheDocument();
+});
+
+test("CommandBar: palette-wide empty text shows only when no group has items or a message", () => {
+  const { rerender } = render(
+    bar([{ id: "jump", label: "Jump to", items: [] }]),
+  );
+  expect(screen.getByText(/Start typing/)).toBeInTheDocument();
+  expect(screen.queryByText("Jump to")).not.toBeInTheDocument();
+  rerender(
+    bar([
+      {
+        id: "jump",
+        label: "Jump to",
+        items: [],
+        message: "Search unavailable",
+      },
+    ]),
+  );
+  expect(screen.queryByText(/Start typing/)).not.toBeInTheDocument();
+});
+
 test("ItemRow done state strikes the title", () => {
   render(<ItemRow title="Draft budget" done />);
   expect(screen.getByText("Draft budget")).toHaveStyle({

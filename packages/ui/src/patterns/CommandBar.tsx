@@ -19,13 +19,17 @@ export type CommandItem = {
   label: string;
   icon?: ReactNode;
   hint?: string;
+  /** Muted, skipped by ↑↓, and inert on Enter or click. */
+  disabled?: boolean;
   onAction: () => void;
 };
 
 export type CommandGroup = {
-  id: "create" | "actions" | "ai" | "jump";
+  id: "recent" | "goto" | "create" | "actions" | "ai" | "jump";
   label: string;
   items: CommandItem[];
+  /** Shown in place of rows when the group has no items (e.g. "No items match"). */
+  message?: string;
 };
 
 export type CommandBarProps = {
@@ -33,7 +37,7 @@ export type CommandBarProps = {
   onOpenChange: (isOpen: boolean) => void;
   query: string;
   onQueryChange: (query: string) => void;
-  /** Already filtered by the caller; shown create → actions → ai → jump. */
+  /** Already filtered by the caller; shown recent → goto → create → actions → ai → jump. */
   groups: CommandGroup[];
   placeholder?: string;
   /** Replaces the default ↵ / ↑↓ / esc hints. */
@@ -45,7 +49,14 @@ export type CommandBarProps = {
   contained?: boolean;
 };
 
-const ORDER: CommandGroup["id"][] = ["create", "actions", "ai", "jump"];
+const ORDER: CommandGroup["id"][] = [
+  "recent",
+  "goto",
+  "create",
+  "actions",
+  "ai",
+  "jump",
+];
 
 function DefaultFooter() {
   return (
@@ -78,9 +89,10 @@ export function CommandBar({
   const optionId = (id: string) => `${baseId}-opt-${id}`;
 
   const visible = ORDER.map((id) => groups.find((g) => g.id === id)).filter(
-    (g): g is CommandGroup => !!g && g.items.length > 0,
+    (g): g is CommandGroup => !!g && (g.items.length > 0 || !!g.message),
   );
-  const flat = visible.flatMap((g) => g.items);
+  // Only enabled rows take part in ↑↓ and Enter.
+  const flat = visible.flatMap((g) => g.items).filter((i) => !i.disabled);
 
   // The highlight returns to the first row whenever the query changes.
   const [active, setActive] = useState(0);
@@ -97,6 +109,7 @@ export function CommandBar({
   }, [activeId]);
 
   const run = (item: CommandItem) => {
+    if (item.disabled) return;
     item.onAction();
     onOpenChange(false);
   };
@@ -176,6 +189,11 @@ export function CommandBar({
                 >
                   {group.label}
                 </div>
+                {group.items.length === 0 ? (
+                  <p className="px-3 py-3 text-sm text-ink-muted">
+                    {group.message}
+                  </p>
+                ) : null}
                 {group.items.map((item) => {
                   const index = flat.indexOf(item);
                   const selected = index === activeIndex;
@@ -189,10 +207,11 @@ export function CommandBar({
                       role="option"
                       tabIndex={-1}
                       aria-selected={selected}
-                      onMouseMove={() => setActive(index)}
+                      aria-disabled={item.disabled || undefined}
+                      onMouseMove={() => !item.disabled && setActive(index)}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => run(item)}
-                      className={`flex min-h-[52px] cursor-pointer items-center gap-3 rounded-14 px-3 ${selected ? "bg-white/12" : ""}`}
+                      className={`flex min-h-[52px] items-center gap-3 rounded-14 px-3 ${item.disabled ? "cursor-default text-ink-muted" : "cursor-pointer"} ${selected ? "bg-white/12" : ""}`}
                     >
                       {item.icon ? (
                         <span className="flex size-[30px] shrink-0 items-center justify-center">

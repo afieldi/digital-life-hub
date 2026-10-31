@@ -182,6 +182,44 @@ const populated: CommandGroup[] = [
   },
 ];
 
+const recents: CommandGroup[] = [
+  {
+    id: "recent",
+    label: "Recents",
+    items: [
+      {
+        id: "r1",
+        label: "Website relaunch",
+        hint: "Project",
+        icon: <TypeTile type="project" size={30} />,
+        onAction: noop,
+      },
+      {
+        id: "r2",
+        label: "Web fonts shortlist",
+        hint: "Note",
+        icon: <TypeTile type="note" size={30} />,
+        onAction: noop,
+      },
+    ],
+  },
+  {
+    id: "goto",
+    label: "Go to",
+    items: [
+      { id: "g1", label: "Home", hint: "G H", onAction: noop },
+      { id: "g2", label: "Settings", hint: "G S", onAction: noop },
+      {
+        id: "g3",
+        label: "Tasks (unavailable)",
+        hint: "G T",
+        disabled: true,
+        onAction: noop,
+      },
+    ],
+  },
+];
+
 function CommandBarDemo({
   initial,
   groups,
@@ -237,6 +275,11 @@ registerStories("patterns", [
     id: "patterns/command-bar",
     title: "Command bar (populated)",
     render: () => <CommandBarDemo initial="web" groups={populated} />,
+  },
+  {
+    id: "patterns/command-bar-recents",
+    title: "Command bar (recents and go to)",
+    render: () => <CommandBarDemo initial="" groups={recents} />,
   },
   {
     id: "patterns/item-row",
