@@ -294,6 +294,7 @@ Four milestones, each ending in something you can run. Core is done when all fou
 3. **Items, links, search.** `items`, `links`, `item_views`, the search call, the `/changes` stream, the ⌘K palette with Recents and Jump to.
    - Done when: a test module creates 10,000 items, search returns under 50 ms, and an edit made through a second client (a test script against the local API) shows in the open app within 2 seconds.
    - Deep dive: [Items, Links, Search](items-links-search.md).
+   - Status: done (Oct 31, 2026). Search p95 about 29 ms over 10,000 items; the e2e rename check passes in Chromium and WebKit.
 4. **AI gateway.** Provider interface, OpenRouter, Claude Code and Codex runners, the confirm-before-write flow, settings.
    - Done when: one test action ("summarise this item") works through all three providers, and a malformed answer is rejected with a clear message.
 
