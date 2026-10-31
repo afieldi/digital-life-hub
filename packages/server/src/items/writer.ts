@@ -3,6 +3,7 @@ import { items } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { and, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import type { CoreDeps, Tx } from "../trpc";
+import { deleteLink, insertLink } from "./links";
 
 export interface ItemWriter {
   tx: Tx;
@@ -38,7 +39,7 @@ export interface ItemWriter {
 
 type ItemRow = typeof items.$inferSelect;
 
-function toItem(row: ItemRow): Item {
+export function toItem(row: ItemRow): Item {
   return {
     id: row.id,
     type: row.type,
@@ -164,12 +165,8 @@ export async function writeItems<T>(
           !i.deleted,
         );
       },
-      async addLink() {
-        throw new Error("addLink: implemented in Task 4");
-      },
-      async removeLink() {
-        throw new Error("removeLink: implemented in Task 4");
-      },
+      addLink: (i) => insertLink(tx, i, (id) => changed.add(id)),
+      removeLink: (id) => deleteLink(tx, id, (itemId) => changed.add(itemId)),
     };
     return fn(writer);
   });

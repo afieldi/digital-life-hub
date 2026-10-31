@@ -168,11 +168,3 @@ test("updateItem with no fields still advances the version and publishes", async
   expect(row.updatedAt.toISOString() > a.updatedAt).toBe(true);
   await close();
 });
-
-test("addLink and removeLink are not implemented yet", async () => {
-  const { deps, close } = await setup();
-  await expect(writeItems(deps, (w) => w.removeLink("x"))).rejects.toThrow(
-    "removeLink: implemented in Task 4",
-  );
-  await close();
-});
