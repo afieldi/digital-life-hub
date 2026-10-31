@@ -1,5 +1,6 @@
 import { type Db, items } from "@dlh/db";
 import { eq } from "drizzle-orm";
+import { expect } from "vitest";
 import { createChangeBus } from "./changes";
 import type { CoreDeps } from "./trpc";
 
@@ -12,12 +13,12 @@ export function testDeps(
   db: Db,
   opts: { itemTypes?: string[]; now?: () => Date } = {},
 ): TestDeps {
-  let clock = new Date("2026-10-30T12:00:00.000Z");
+  let clock = opts.now?.() ?? new Date("2026-10-30T12:00:00.000Z");
   return {
     db,
     changes: createChangeBus(),
     itemTypes: new Set(opts.itemTypes ?? ["test"]),
-    now: opts.now ?? (() => clock),
+    now: () => clock,
     devErrors: true,
     setNow(date) {
       clock = date;
