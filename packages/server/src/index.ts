@@ -7,6 +7,7 @@ export {
   type ServerModule,
   ServerModuleError,
 } from "./modules";
+export { type CoreRouter, coreRouters } from "./routers";
 export {
   type ApiDeps,
   type Context,

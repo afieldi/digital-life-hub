@@ -44,7 +44,12 @@ function noDb(): Db {
 }
 
 export function createTestApi(
-  opts: { devAuth?: boolean; allowedEmail?: string; db?: Db } = {},
+  opts: {
+    devAuth?: boolean;
+    allowedEmail?: string;
+    db?: Db;
+    itemTypes?: string[];
+  } = {},
 ) {
   const allowedEmail = opts.allowedEmail ?? "arek@example.com";
   let time = new Date("2026-10-30T12:00:00.000Z").getTime();
@@ -57,10 +62,10 @@ export function createTestApi(
   const store = memoryAuthStore();
   const google = new FakeGoogle(allowedEmail);
   const devAuth = opts.devAuth ?? false;
-  const app = createApp({
+  const deps = {
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
-    itemTypes: new Set(),
+    itemTypes: new Set(opts.itemTypes ?? []),
     devErrors: devAuth,
     config: {
       port: 0,
@@ -72,7 +77,8 @@ export function createTestApi(
     store,
     google,
     now: clock.now,
-  });
+  };
+  const app = createApp(deps);
 
   const fetchApi: typeof fetch = (input, init) =>
     Promise.resolve(app.fetch(new Request(input, init)));
@@ -99,5 +105,5 @@ export function createTestApi(
     return token;
   };
 
-  return { app, store, google, clock, fetch: fetchApi, client, signIn };
+  return { app, deps, store, google, clock, fetch: fetchApi, client, signIn };
 }

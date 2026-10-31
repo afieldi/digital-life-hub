@@ -5,6 +5,7 @@ import { createChangeBus } from "./changes";
 import type { CoreDeps } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
+export { writeItems } from "./items/writer";
 
 export type TestDeps = CoreDeps & { setNow(date: Date): void };
 
