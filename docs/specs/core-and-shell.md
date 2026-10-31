@@ -110,6 +110,8 @@ Every item is one row in `items`. Each module adds a side table keyed by `item_i
 
 `items` holds no relationships at all, not even project membership. Every relationship is a row in `links`.
 
+> **Update (milestone 3):** `body_text` is renamed `search_text`, and modules write items only through one server-side helper. See [Items, Links, Search](items-links-search.md).
+
 **Side tables** (owned by each module, sketched here to test the model)
 
 - `tasks`: `item_id`, `status`, `completed_at`, `due_at`, `due_has_time`, `priority`. `status` is one value from a fixed list in code: `todo`, `in_progress`, `review`, `done` (room for one or two more later). A plain task only ever uses `todo` and `done`; the checkbox switches between them, and ticking from any state sets `done`.
@@ -291,6 +293,7 @@ Four milestones, each ending in something you can run. Core is done when all fou
    - Done when: you sign in, quit and reopen without signing in again, and revoking that session from the Devices list (or a test script) signs the app out.
 3. **Items, links, search.** `items`, `links`, `item_views`, the search call, the `/changes` stream, the ⌘K palette with Recents and Jump to.
    - Done when: a test module creates 10,000 items, search returns under 50 ms, and an edit made through a second client (a test script against the local API) shows in the open app within 2 seconds.
+   - Deep dive: [Items, Links, Search](items-links-search.md).
 4. **AI gateway.** Provider interface, OpenRouter, Claude Code and Codex runners, the confirm-before-write flow, settings.
    - Done when: one test action ("summarise this item") works through all three providers, and a malformed answer is rejected with a clear message.
 

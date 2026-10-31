@@ -77,7 +77,7 @@ We build one module at a time. Each one goes through the same steps, and nothing
 
 This doc stays the map. Each deep dive links back here, and the Modules table gets updated when scope changes.
 
-**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
+**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
 
 ## Suggested build order
 
