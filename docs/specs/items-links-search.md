@@ -188,6 +188,6 @@ Still throwaway; it proves a module can do the full round trip.
 - **Lint:** a module importing `items`, `links` or `item_views` from `@dlh/db` fails.
 - **Playwright:** sign in, create a sample item, find it in ⌘K, open it, see it in Recents; a script renames it through the API and the open screen updates within 2 seconds.
 
-## Open questions
+## Decisions
 
-- [ ] **Search language.** The `english` config stems words ("planning" finds "plan") but not other languages. Fine while all content is English?
+- **Search language:** `english` (stems "planning" to "plan"). All content is English for now.
