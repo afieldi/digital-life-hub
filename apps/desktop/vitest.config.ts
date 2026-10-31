@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
+    // DB-backed test files share one Postgres database.
+    fileParallelism: false,
     environment: "jsdom",
     setupFiles: ["test/setup.ts"],
     exclude: ["e2e/**", "node_modules/**"],

@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@dlh/client": "workspace:*",
     "@dlh/core": "workspace:*",
     "@dlh/server": "workspace:*",
     "@dlh/ui": "workspace:*",
+    "@tanstack/react-query": "^5.105.0",
     "@tanstack/react-router": "^1.170.46",
     "@trpc/server": "^11.22.1",
     "lucide-react": "^1.64.0",

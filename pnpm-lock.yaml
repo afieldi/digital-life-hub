@@ -178,6 +178,9 @@ importers:
 
   modules/sample:
     dependencies:
+      '@dlh/client':
+        specifier: workspace:*
+        version: link:../../packages/client
       '@dlh/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -187,6 +190,9 @@ importers:
       '@dlh/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@tanstack/react-query':
+        specifier: ^5.105.0
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
       '@tanstack/react-router':
         specifier: ^1.170.46
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

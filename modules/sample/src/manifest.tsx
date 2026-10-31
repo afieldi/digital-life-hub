@@ -1,6 +1,7 @@
 import { defineModule } from "@dlh/core";
 import { toast } from "@dlh/ui";
 import { createRoute } from "@tanstack/react-router";
+import { SampleItemPage } from "./SampleItemPage";
 import { SamplePage } from "./SamplePage";
 
 /** Throwaway module: proves a manifest alone adds a Dock item, route and action. */
@@ -25,6 +26,11 @@ export default defineModule({
       getParentRoute: () => parent,
       path: "/sample",
       component: SamplePage,
+    }),
+    createRoute({
+      getParentRoute: () => parent,
+      path: "/sample/$id",
+      component: SampleItemPage,
     }),
   ],
   paletteActions: [
