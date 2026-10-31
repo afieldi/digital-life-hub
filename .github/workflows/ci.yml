@@ -14,6 +14,48 @@ concurrency:
 
 jobs:
   check:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # Screenshot baselines exist for darwin only. Desktop e2e needs the API and
+      # Postgres, so it runs in the server job.
+      # Outstanding follow-up: generate Windows baselines, then drop the macOS guard.
+      - uses: actions/cache@v4
+        if: runner.os == 'macOS'
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # macOS needs no system packages, so no --with-deps; a cache hit makes this a no-op.
+      - run: pnpm --filter @dlh/ui exec playwright install webkit chromium
+        if: runner.os == 'macOS'
+
+      - run: pnpm --filter @dlh/ui test:screens
+        if: runner.os == 'macOS'
+
+  # The Tauri build runs beside the checks instead of after them: it is the
+  # slowest step, and needs nothing the checks produce.
+  desktop-build:
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -34,27 +76,19 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Save the cache even when the job fails, or a red run leaves every later
+      # run compiling all crates from scratch.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
+          cache-on-failure: true
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
 
-      - run: pnpm --filter @dlh/ui exec playwright install --with-deps webkit chromium
-        if: runner.os == 'macOS'
-
-      # Screenshot baselines exist for darwin only. Desktop e2e needs the API and
-      # Postgres, so it runs in the server job.
-      # Outstanding follow-up: generate Windows baselines, then drop the macOS guard.
-      - run: pnpm --filter @dlh/ui test:screens
-        if: runner.os == 'macOS'
-
-      # The web bundle must exist before cargo runs (tauri frontendDist).
-      - run: pnpm --filter @dlh/desktop build:web
-      - run: pnpm --filter @dlh/desktop exec tauri build --no-bundle
+      # Pull requests check that the app compiles with a fast debug build;
+      # pushes to main still build release. tauri runs build:web first
+      # (beforeBuildCommand).
+      - run: pnpm --filter @dlh/desktop exec tauri build --no-bundle ${{ github.event_name == 'pull_request' && '--debug' || '' }}
 
   server:
     timeout-minutes: 30
@@ -90,6 +124,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:db
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # --with-deps still installs the system packages; the browser download is
+      # skipped on a cache hit.
       - run: pnpm --filter @dlh/desktop exec playwright install --with-deps webkit chromium
       - run: pnpm --filter @dlh/desktop test:e2e
 
