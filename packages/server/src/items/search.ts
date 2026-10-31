@@ -35,8 +35,10 @@ export async function searchItems(
   const q = opts.query.replaceAll("\0", "").trim().slice(0, MAX_QUERY_LENGTH);
   if (!q) return [];
   const prefix = `${escapeLike(q)}%`;
-  const typeFilter = opts.types?.length
-    ? sql`and type in (${sql.join(
+  // An explicit empty list matches no type.
+  if (opts.types && opts.types.length === 0) return [];
+  const typeFilter = opts.types
+    ? sql`and i.type in (${sql.join(
         opts.types.map((t) => sql`${t}`),
         sql`, `,
       )})`
@@ -45,21 +47,28 @@ export async function searchItems(
     await tx.execute(
       sql`select set_config('pg_trgm.similarity_threshold', ${String(SIMILARITY_THRESHOLD)}, true)`,
     );
+    // Each candidate branch can use its own GIN index; a single OR'd predicate forces a seq scan.
     return tx.execute<{
       id: string;
       type: string;
       title: string;
-      archived_at: Date | null;
+      archived_at: string | Date | null;
     }>(sql`
-    with q as (select websearch_to_tsquery('english', ${q}) as tsq)
-    select id, type, title, archived_at,
-      (ts_rank(search, q.tsq) + similarity(title, ${q})
-        + case when title ilike ${prefix} escape '\\' then 0.5 else 0 end)
-      * case when archived_at is null then 1 else 0.5 end as score
-    from items, q
-    where deleted_at is null ${typeFilter}
-      and (search @@ q.tsq or title % ${q} or title ilike ${prefix} escape '\\')
-    order by score desc, updated_at desc
+    with q as (select websearch_to_tsquery('english', ${q}) as tsq),
+    cand as (
+      select id from items, q where deleted_at is null and search @@ q.tsq
+      union
+      select id from items where deleted_at is null and title % ${q}
+      union
+      select id from items where deleted_at is null and title ilike ${prefix} escape '\\'
+    )
+    select i.id, i.type, i.title, i.archived_at,
+      (ts_rank(i.search, q.tsq) + similarity(i.title, ${q})
+        + case when i.title ilike ${prefix} escape '\\' then 0.5 else 0 end)
+      * case when i.archived_at is null then 1 else 0.5 end as score
+    from cand join items i on i.id = cand.id, q
+    where true ${typeFilter}
+    order by score desc, i.updated_at desc
     limit ${limit}`);
   });
   return rows.map((r) =>

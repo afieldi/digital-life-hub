@@ -14,12 +14,13 @@ export async function recordView(deps: CoreDeps, id: string): Promise<void> {
   const now = deps.now();
   const since = new Date(now.getTime() - VIEW_WINDOW_MS);
   await deps.db.transaction(async (tx) => {
-    // Lock the item row so concurrent views of one item can't both pass the window check.
+    // FOR NO KEY UPDATE conflicts with itself, so concurrent views of one item run one at a
+    // time and the second sees the first's row in the window check. (FOR SHARE would not.)
     const [item] = await tx
       .select({ id: items.id })
       .from(items)
       .where(and(eq(items.id, id), isNull(items.deletedAt)))
-      .for("share");
+      .for("no key update");
     if (!item)
       throw new TRPCError({ code: "NOT_FOUND", message: "item not found" });
     await tx.execute(sql`

@@ -45,9 +45,10 @@ test("a title match outranks a search_text-only match", async () => {
 });
 
 test("an archived item ranks below an equal live one", async () => {
-  const { db, mk, patch, close } = await setup();
-  const a = await mk("Budget");
+  const { db, deps, mk, patch, close } = await setup();
   await mk("Budget");
+  deps.setNow(new Date("2026-10-30T13:00:00.000Z"));
+  const a = await mk("Budget"); // newer, so only the penalty can push it down
   await patch(a.id, { archivedAt: new Date() });
   const res = await searchItems(db, { query: "budget" });
   expect(res).toHaveLength(2);
@@ -69,6 +70,13 @@ test("deleted items never appear; types filters", async () => {
   expect(
     await titles(searchItems(db, { query: "gadget", types: ["other"] })),
   ).toEqual(["Gadget two"]);
+  await close();
+});
+
+test("an empty types list matches nothing", async () => {
+  const { db, mk, close } = await setup();
+  await mk("Widget");
+  expect(await searchItems(db, { query: "widget", types: [] })).toEqual([]);
   await close();
 });
 
