@@ -62,6 +62,17 @@ async function ask(text: string) {
   return input;
 }
 
+/**
+ * Waits until the search for the text as typed found no rows, so ↵ asks AI.
+ * "No items match" alone may still be the answer for older text.
+ */
+const searched = () =>
+  waitFor(() =>
+    expect(
+      screen.getByText("to ask AI").querySelector("kbd"),
+    ).toHaveTextContent(/^↵$/),
+  );
+
 /** ⌘↵ on macOS, Ctrl+↵ elsewhere. */
 const modEnter = () =>
   userEvent.keyboard(
@@ -138,6 +149,7 @@ test("Suggest shows three options and Use applies the one picked", async () => {
   fake.queue(retitleOptions);
   await ask("suggest a few titles");
   expect(await screen.findByRole("radio", { name: "Suggest" })).toBeChecked();
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(await screen.findByText("Second idea")).toBeInTheDocument();
   expect(screen.getByText("Clear.")).toBeInTheDocument();
@@ -156,6 +168,7 @@ test("keys 1–3 pick a suggested option", async () => {
   fake.queue(retitleOptions);
   await ask("suggest a few titles");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   await screen.findByText("Third idea");
   await userEvent.keyboard("3");
@@ -167,6 +180,7 @@ test("None of these discards the options and changes nothing", async () => {
   fake.queue(retitleOptions);
   await ask("suggest a few titles");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   await userEvent.click(
     await screen.findByRole("button", { name: "None of these" }),
@@ -196,6 +210,7 @@ test("Show options after a Do runs the same request as Suggest", async () => {
   fake.queue(JSON.stringify({ title: "Better title" }), retitleOptions);
   await ask("give this a better title");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   await userEvent.click(
     await screen.findByRole("button", { name: "Show options" }),
@@ -217,6 +232,7 @@ test("an Ask answer shows the items it used as links, and Copy", async () => {
   );
   await ask("summarise this");
   expect(await screen.findByRole("radio", { name: "Ask" })).toBeChecked();
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(await screen.findByText("It greets the world.")).toBeInTheDocument();
   const link = await screen.findByRole("link", { name: "Linked note" });
@@ -234,6 +250,7 @@ test("a Claude Code bad_output shows the exact message and Use OpenRouter retrie
       "Shows options, changes nothing until you pick · Claude Code",
     ),
   ).toBeInTheDocument();
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(
     await screen.findByText(
@@ -259,6 +276,7 @@ test("a failed Do shows its message in a toast with the error's actions", async 
   });
   await ask("give this a better title");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(
     await screen.findByText("Claude Code isn't installed on this computer."),
@@ -286,6 +304,7 @@ test("a CLI timeout ends the request failed with timeout", async () => {
   });
   await ask("suggest a few titles");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(
     await screen.findByText(/^Claude Code didn't answer within \d+ seconds\.$/),
@@ -315,6 +334,7 @@ test("Cancel on a running Claude Code Do stops it and ends the request", async (
   });
   await ask("give this a better title");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(
     await screen.findByText("Claude Code is working…"),
@@ -382,6 +402,7 @@ test("two Dos run independently: Cancel on one leaves the other running", async 
   for (const _ of [1, 2]) {
     await ask("give this a better title");
     await screen.findByText("Rename");
+    await searched();
     await userEvent.keyboard("{Enter}");
     await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
   }
@@ -419,6 +440,7 @@ test("with an error shown, Tab moves focus to its actions", async () => {
   fakeCli(() => "not json at all");
   await ask("suggest a few titles");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   await screen.findByText(
     "Claude Code's answer wasn't in the expected format, so nothing was changed.",
@@ -437,6 +459,7 @@ test("a CLI that exits non-zero with no output shows its exit code", async () =>
   });
   await ask("suggest a few titles");
   await screen.findByText("Rename");
+  await searched();
   await userEvent.keyboard("{Enter}");
   expect(
     await screen.findByText(
@@ -510,6 +533,7 @@ test("the log records the interpreter only when its own pick ran", async () => {
   fake.queue(retitleOptions, retitleOptions);
   await ask("suggest a few titles");
   expect(await screen.findByRole("radio", { name: "Suggest" })).toBeChecked();
+  await searched();
   await userEvent.keyboard("{Enter}");
   await screen.findByText("Second idea");
   await waitFor(async () => {
@@ -524,7 +548,7 @@ test("the log records the interpreter only when its own pick ran", async () => {
   expect(await screen.findByRole("radio", { name: "Do" })).toBeChecked();
   await userEvent.keyboard("{Tab}");
   expect(screen.getByRole("radio", { name: "Suggest" })).toBeChecked();
-  await screen.findByText("No items match");
+  await searched();
   await userEvent.keyboard("{Enter}");
   await screen.findByText("Second idea");
   await waitFor(async () => {
@@ -533,4 +557,96 @@ test("the log records the interpreter only when its own pick ran", async () => {
     expect(entries[0]?.kind).toBe("suggest");
     expect(entries[0]?.interpretedBy).toBeNull();
   });
+});
+
+test("on Home, ↵ typed before search settles asks no AI; once rows arrive it opens one", async () => {
+  const { client, fake } = await setup({ onHome: true });
+  await client.sample.create.mutate({ title: "How to brew coffee" });
+  fake.queue(JSON.stringify({ answer: "Grind, bloom, pour.", used: [] }));
+  await ask("how to brew coffee");
+  await screen.findByText("Answer");
+  // The search is still debounced: no rows yet, so ↵ must wait for them.
+  expect(
+    screen.queryByRole("option", { name: /How to brew coffee/ }),
+  ).toBeNull();
+  expect(screen.getByText("to ask AI").querySelector("kbd")).toHaveTextContent(
+    isMac() ? "⌘↵" : "Ctrl ↵",
+  );
+  await userEvent.keyboard("{Enter}");
+  await screen.findByRole("option", { name: /How to brew coffee/ });
+  expect(screen.queryByText("Grind, bloom, pour.")).toBeNull();
+  expect(fake.calls).toHaveLength(0);
+  expect((await client.ai.log.list.query({})).entries).toHaveLength(0);
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("heading", {
+      name: "How to brew coffee",
+      level: 1,
+    }),
+  ).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(0);
+  expect((await client.ai.log.list.query({})).entries).toHaveLength(0);
+});
+
+test("on an item, ↵ typed before search settles does not run a Do", async () => {
+  const { client, fake, title } = await setup();
+  await client.sample.create.mutate({ title: "Rename budget" });
+  fake.queue(JSON.stringify({ title: "Budget" }));
+  await ask("rename budget");
+  await screen.findByText("Rename");
+  expect(screen.queryByRole("option", { name: /Rename budget/ })).toBeNull();
+  await userEvent.keyboard("{Enter}");
+  await screen.findByRole("option", { name: /Rename budget/ });
+  expect(screen.getByRole("combobox")).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(0);
+  expect((await client.ai.log.list.query({})).entries).toHaveLength(0);
+  expect(await title()).toBe("Hello item");
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("heading", { name: "Rename budget", level: 1 }),
+  ).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(0);
+  expect(await title()).toBe("Hello item");
+});
+
+test("mod+↵ right after typing a matched request asks AI without waiting for search", async () => {
+  const { client, fake } = await setup({ onHome: true });
+  await client.sample.create.mutate({ title: "How to brew coffee" });
+  fake.queue(JSON.stringify({ answer: "Grind, bloom, pour.", used: [] }));
+  await ask("how to brew coffee");
+  await screen.findByText("Answer");
+  expect(
+    screen.queryByRole("option", { name: /How to brew coffee/ }),
+  ).toBeNull();
+  await modEnter();
+  expect(await screen.findByText("Grind, bloom, pour.")).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(1);
+});
+
+test("mod+↵ before the request is understood does nothing", async () => {
+  const { client, fake } = await setup({ onHome: true });
+  await client.sample.create.mutate({ title: "How to brew coffee" });
+  const input = await ask("how to brew coffee");
+  await screen.findByText("Answer");
+  await screen.findByRole("option", { name: /How to brew coffee/ });
+  // Clearing drops the guess; retyping lists the same rows before a new one.
+  fireEvent.change(input, { target: { value: "" } });
+  fireEvent.change(input, { target: { value: "how to brew coffee" } });
+  expect(screen.queryByText("Understood as")).toBeNull();
+  expect(
+    screen.getByRole("option", { name: /How to brew coffee/ }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(input, {
+    key: "Enter",
+    metaKey: isMac(),
+    ctrlKey: !isMac(),
+  });
+  // Let any navigation or request it started happen.
+  await new Promise((r) => setTimeout(r, 100));
+  expect(screen.getByRole("combobox")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "How to brew coffee", level: 1 }),
+  ).toBeNull();
+  expect(fake.calls).toHaveLength(0);
+  expect((await client.ai.log.list.query({})).entries).toHaveLength(0);
 });

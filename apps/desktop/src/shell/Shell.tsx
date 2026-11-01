@@ -130,6 +130,11 @@ export function Shell() {
     enabled: searching,
     retry: false,
   });
+  // Rows for the text are still to come: the search lags it or is loading.
+  const rowsPending =
+    !emptyQuery &&
+    (debouncedQuery !== query ||
+      (searching && !search.isSuccess && !search.isError));
   const recents = useQuery({
     ...trpc.recents.list.queryOptions(),
     enabled: commandOpen && emptyQuery,
@@ -208,6 +213,7 @@ export function Shell() {
     setQuery,
     navigate,
     hasRows: groups.some((g) => g.items.some((i) => !i.disabled)),
+    rowsPending,
   });
 
   return (

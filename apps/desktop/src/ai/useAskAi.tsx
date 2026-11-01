@@ -47,6 +47,8 @@ function isModEnter(e: KeyboardEvent<HTMLInputElement>): boolean {
  *
  * While the bar lists result rows (`hasRows`), ↵ and ↑↓ stay with the rows and
  * mod+↵ runs the request; with no rows, ↵ runs it and ↑↓ pick an alternative.
+ * While the search for the text is still on its way (`rowsPending`), ↵ does
+ * nothing, so a quick ↵ never asks AI about text it meant to search for.
  */
 export function useAskAi({
   open,
@@ -55,6 +57,7 @@ export function useAskAi({
   setQuery,
   navigate,
   hasRows,
+  rowsPending,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -63,6 +66,8 @@ export function useAskAi({
   navigate: (to: string) => void;
   /** Whether the bar lists any enabled row that ↵ would act on. */
   hasRows: boolean;
+  /** Whether the search for the current text has yet to settle. */
+  rowsPending: boolean;
 }): {
   interpretation?: ReactNode;
   result?: ReactNode;
@@ -238,9 +243,18 @@ export function useAskAi({
   // A result replaces the rows, and the bar then leaves ↵ and ↑↓ alone.
   const showsResult = open && phase !== "idle" && phase !== "applied";
   const rowsListed = hasRows && !showsResult;
+  const rowsWaiting = rowsPending && !showsResult;
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): boolean => {
-    if (!showRow || !action || !kind || !interp) return false;
+    if (!showRow || !action || !kind || !interp) {
+      // mod+↵ asks AI: with no request understood yet, it does nothing rather
+      // than open the highlighted row.
+      if (isModEnter(e) && open && query.trim() !== "") {
+        e.preventDefault();
+        return true;
+      }
+      return false;
+    }
     const { result } = bar.state;
     if (phase === "suggested" && result?.status === "suggested") {
       const n = Number(e.key);
@@ -279,6 +293,11 @@ export function useAskAi({
       bar.discard();
       const next = step(candidates, candidate, e.key === "ArrowDown" ? 1 : -1);
       setChoice({ text: query, actionId: next.actionId, kind: null });
+      return true;
+    }
+    if (e.key === "Enter" && rowsWaiting && !isModEnter(e)) {
+      // Wait for the search: ↵ then picks a row, or asks AI if none came.
+      e.preventDefault();
       return true;
     }
     if (e.key === "Enter" && (!rowsListed || isModEnter(e))) {
@@ -350,7 +369,11 @@ export function useAskAi({
       ) : undefined,
     result,
     footer: showRow ? (
-      <AiFooter rowsListed={rowsListed} alternatives={candidates.length > 1} />
+      <AiFooter
+        rowsListed={rowsListed}
+        modAsks={rowsListed || rowsWaiting}
+        alternatives={candidates.length > 1}
+      />
     ) : undefined,
     onKeyDown,
     onQueryChange,
@@ -360,9 +383,12 @@ export function useAskAi({
 
 function AiFooter({
   rowsListed,
+  modAsks,
   alternatives,
 }: {
   rowsListed: boolean;
+  /** Whether only mod+↵ asks AI (rows listed, or the search still pending). */
+  modAsks: boolean;
   alternatives: boolean;
 }) {
   return (
@@ -373,7 +399,7 @@ function AiFooter({
         </span>
       ) : null}
       <span className="flex items-center gap-1.5">
-        <Kbd keys={rowsListed ? ["mod", "↵"] : ["↵"]} /> to ask AI
+        <Kbd keys={modAsks ? ["mod", "↵"] : ["↵"]} /> to ask AI
       </span>
       <span className="flex items-center gap-1.5">
         <Kbd keys={["tab"]} /> to switch kind

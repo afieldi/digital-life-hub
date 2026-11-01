@@ -24,12 +24,16 @@ async function openNewItem(page: Page, label: string): Promise<string> {
   return title;
 }
 
-/** Types into the command bar and waits for the Understood as row. */
+/**
+ * Types into the command bar and waits for the Understood as row, and for the
+ * search to settle with no rows, so ↵ asks AI.
+ */
 async function ask(page: Page, text: string, action: string): Promise<void> {
   await openPalette(page);
   await page.getByRole("combobox").fill(text);
   await expect(page.getByText("Understood as")).toBeVisible();
   await expect(page.getByText(action, { exact: true })).toBeVisible();
+  await expect(page.getByText("to ask AI").locator("kbd")).toHaveText("↵");
 }
 
 test("Do renames the item and Undo restores the title", async ({
