@@ -4,6 +4,7 @@ import {
   collectServerModules,
   coreAi,
   createChangeBus,
+  createOpenRouter,
 } from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
@@ -71,8 +72,10 @@ const deps = {
   ai: {
     runners: aiRunners,
     descriptions: [...aiRunners.values()].map((r) => r.action),
-    providers: {},
-    defaultModel: null,
+    providers: config.openrouter.apiKey
+      ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }
+      : {},
+    defaultModel: config.openrouter.defaultModel,
   },
 };
 const app = createApp(deps);

@@ -35,3 +35,24 @@ test("rejects an allowed email that is not an email", () => {
     ConfigError,
   );
 });
+
+test("OpenRouter variables are optional and trimmed", () => {
+  expect(loadConfig(base).openrouter).toEqual({
+    apiKey: null,
+    defaultModel: null,
+  });
+  expect(
+    loadConfig({
+      ...base,
+      OPENROUTER_API_KEY: "  ",
+      OPENROUTER_DEFAULT_MODEL: "",
+    }).openrouter,
+  ).toEqual({ apiKey: null, defaultModel: null });
+  expect(
+    loadConfig({
+      ...base,
+      OPENROUTER_API_KEY: " sk-x ",
+      OPENROUTER_DEFAULT_MODEL: " a/b ",
+    }).openrouter,
+  ).toEqual({ apiKey: "sk-x", defaultModel: "a/b" });
+});

@@ -165,6 +165,14 @@ export async function undo(
       e instanceof RequestUsedError
         ? null
         : writeFailure(e, row.provider as AiProviderId);
+    // A stale undo can never succeed later, so stop offering it.
+    if (err?.code === "stale") {
+      await claim(deps.db, row.id, "applied", { undo: null }).catch(
+        (clearErr: unknown) => {
+          if (!(clearErr instanceof RequestUsedError)) throw clearErr;
+        },
+      );
+    }
     throw err ? aiFailure(err) : e;
   }
   return { summary: `Undid ${runner.action.label.toLowerCase()}` };

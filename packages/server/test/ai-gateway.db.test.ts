@@ -285,6 +285,9 @@ test("undo after the item was edited since apply is stale", async () => {
   );
   await expectAiError(undo(s.deps, { requestId: res.requestId }), "stale");
   expect(await titleOf(s)).toBe("Edited");
+  const row = await rowOf(s, res.requestId);
+  expect(row.status).toBe("applied");
+  expect(row.undo).toBeNull();
   await s.close();
 });
 

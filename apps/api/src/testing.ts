@@ -56,6 +56,8 @@ export function createTestApi(
     allowedEmail?: string;
     db?: Db;
     itemTypes?: string[];
+    aiProvider?: FakeProvider;
+    noOpenRouter?: boolean;
   } = {},
 ) {
   const allowedEmail = opts.allowedEmail ?? "arek@example.com";
@@ -75,7 +77,7 @@ export function createTestApi(
     coreAi,
   );
   // OpenRouter in tests: queue model outputs on `ai`.
-  const ai = new FakeProvider();
+  const ai = opts.aiProvider ?? new FakeProvider();
   const deps = {
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
@@ -87,6 +89,7 @@ export function createTestApi(
       google: { clientId: "test", clientSecret: "test" },
       allowedEmail,
       devAuth,
+      openrouter: { apiKey: null, defaultModel: null },
     },
     store,
     google,
@@ -94,7 +97,7 @@ export function createTestApi(
     ai: {
       runners: collected.aiRunners,
       descriptions: [...collected.aiRunners.values()].map((r) => r.action),
-      providers: { openrouter: ai },
+      providers: opts.noOpenRouter ? {} : { openrouter: ai },
       defaultModel: "test-model",
     },
   };

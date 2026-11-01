@@ -1,5 +1,6 @@
 import { item, itemSummary, link, linkKind, listCursor } from "@dlh/core";
 import { z } from "zod";
+import { aiRouter } from "./ai/router";
 import { getItem, linksForItem, listContained, listItems } from "./items/read";
 import { listRecents, recordView } from "./items/recents";
 import { searchItems } from "./items/search";
@@ -137,5 +138,11 @@ const recents = router({
     }),
 });
 
-export const coreRouters = { items, links, search, recents };
+export const coreRouters = {
+  items,
+  links,
+  search,
+  recents,
+  ai: aiRouter,
+};
 export type CoreRouter = ReturnType<typeof router<typeof coreRouters>>;
