@@ -3,8 +3,17 @@ export {
   itemContext,
   MAX_CONTEXT_CHARS,
 } from "./ai/context";
-export { coreAiRunners } from "./ai/core-runners";
+export { coreAi, coreAiRunners } from "./ai/core-runners";
 export { AiError, aiErrorMessage, PROVIDER_NAMES } from "./ai/errors";
+export {
+  type AiDeps,
+  apply,
+  cancel,
+  complete,
+  discard,
+  prepare,
+  undo,
+} from "./ai/gateway";
 export {
   type AiCompleteRequest,
   type AiCompleteResult,
@@ -18,6 +27,7 @@ export {
   defineAiRunner,
 } from "./ai/runners";
 export { type ScopedWriter, scopedWriter } from "./ai/scoped";
+export { getSettings } from "./ai/settings";
 export { type ChangeBus, createChangeBus } from "./changes";
 export { purgeExpired } from "./items/purge";
 export { type ItemWriter, writeItems } from "./items/writer";

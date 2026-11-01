@@ -104,3 +104,9 @@ Describe in one sentence what would be deleted, so the person can confirm it.`,
 });
 
 export const coreAiRunners: AiRunner[] = [answer, retitle, del];
+
+/** Core's AI actions and runners, as `collectServerModules` takes them. */
+export const coreAi = {
+  actions: Object.values(coreAiActions),
+  runners: coreAiRunners,
+};

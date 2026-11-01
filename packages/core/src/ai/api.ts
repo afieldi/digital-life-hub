@@ -54,7 +54,7 @@ export type AiResult = z.infer<typeof aiResult>;
 
 export const aiSettings = z.object({
   defaultProvider: aiProviderId,
-  openrouterModel: z.string(),
+  openrouterModel: z.string().nullable(),
   interpreter: z.literal("keywords"),
 });
 export type AiSettings = z.infer<typeof aiSettings>;
