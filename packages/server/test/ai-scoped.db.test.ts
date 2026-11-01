@@ -1,4 +1,4 @@
-import { items } from "@dlh/db";
+import { items, links } from "@dlh/db";
 import { eq } from "drizzle-orm";
 import { scopedWriter, writeItems } from "../src";
 import { freshTestDb, testDeps } from "../src/testing";
@@ -64,7 +64,7 @@ test("updateItem on another id is forbidden and rolls back earlier writes", asyn
 });
 
 test("addLink only from the scope item; writeOtherItems lifts it", async () => {
-  const { deps, a, b, close } = await setup();
+  const { db, deps, a, b, close } = await setup();
   await writeItems(deps, async (w) => {
     const s = scopedWriter(w, { effects: ["addLinks"], itemId: a.id });
     await s.addLink?.({ fromId: a.id, toId: b.id, kind: "relates" });
@@ -82,11 +82,15 @@ test("addLink only from the scope item; writeOtherItems lifts it", async () => {
     });
     await s.addLink?.({ fromId: b.id, toId: a.id, kind: "relates" });
   });
+  const rows = await db.select().from(links);
+  expect(rows.map((r) => `${r.fromId}>${r.toId}`).sort()).toEqual(
+    [`${a.id}>${b.id}`, `${b.id}>${a.id}`].sort(),
+  );
   await close();
 });
 
 test("setDeleted is limited to scope item without writeOtherItems", async () => {
-  const { deps, a, b, close } = await setup();
+  const { db, deps, a, b, close } = await setup();
   await expect(
     writeItems(deps, async (w) => {
       const s = scopedWriter(w, { effects: ["deleteItems"], itemId: a.id });
@@ -108,5 +112,70 @@ test("setDeleted is limited to scope item without writeOtherItems", async () => 
       deleted: true,
     });
   });
+  const [row] = await db.select().from(items).where(eq(items.id, b.id));
+  expect(row?.deletedAt).not.toBeNull();
+  await close();
+});
+
+test("writeOtherItems alone exposes no write method", async () => {
+  const { deps, a, close } = await setup();
+  await writeItems(deps, async (w) => {
+    const s = scopedWriter(w, { effects: ["writeOtherItems"], itemId: a.id });
+    for (const m of [
+      "updateItem",
+      "setDeleted",
+      "setArchived",
+      "addLink",
+      "createItem",
+      "removeLink",
+    ]) {
+      expect(s).not.toHaveProperty(m);
+    }
+  });
+  await close();
+});
+
+test("updateItem + writeOtherItems updates another item", async () => {
+  const { db, deps, a, b, close } = await setup();
+  await writeItems(deps, async (w) => {
+    const s = scopedWriter(w, {
+      effects: ["updateItem", "writeOtherItems"],
+      itemId: a.id,
+    });
+    await s.updateItem?.({
+      id: b.id,
+      expectedUpdatedAt: b.updatedAt,
+      title: "B2",
+    });
+  });
+  const [row] = await db.select().from(items).where(eq(items.id, b.id));
+  expect(row?.title).toBe("B2");
+  await close();
+});
+
+test("setArchived is limited to the scope item", async () => {
+  const { db, deps, a, b, close } = await setup();
+  await expect(
+    writeItems(deps, async (w) => {
+      const s = scopedWriter(w, { effects: ["setArchived"], itemId: a.id });
+      await s.setArchived?.({
+        id: b.id,
+        expectedUpdatedAt: b.updatedAt,
+        archived: true,
+      });
+    }),
+  ).rejects.toMatchObject(FORBIDDEN);
+  await writeItems(deps, async (w) => {
+    const s = scopedWriter(w, { effects: ["setArchived"], itemId: a.id });
+    await s.setArchived?.({
+      id: a.id,
+      expectedUpdatedAt: a.updatedAt,
+      archived: true,
+    });
+  });
+  const [row] = await db.select().from(items).where(eq(items.id, a.id));
+  expect(row?.archivedAt).not.toBeNull();
+  const [other] = await db.select().from(items).where(eq(items.id, b.id));
+  expect(other?.archivedAt).toBeNull();
   await close();
 });
