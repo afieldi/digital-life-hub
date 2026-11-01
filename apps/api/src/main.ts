@@ -40,6 +40,7 @@ const config = loadConfigOrExit();
 const { itemTypes } = collectServerModules(
   [...serverModules],
   [...CORE_ROUTER_IDS],
+  { actions: [], runners: [] },
 );
 const { db, close } = createDb(config.databaseUrl);
 

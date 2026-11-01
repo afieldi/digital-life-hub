@@ -28,6 +28,7 @@ async function main(): Promise<void> {
   const { modules, itemTypes } = collectServerModules(
     [...serverModules],
     [...CORE_ROUTER_IDS],
+    { actions: [], runners: [] },
   );
   try {
     const seeded = await seedIfEmpty(

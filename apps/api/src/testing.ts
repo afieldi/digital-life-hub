@@ -71,8 +71,10 @@ export function createTestApi(
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
     itemTypes: new Set([
-      ...collectServerModules([...serverModules], [...CORE_ROUTER_IDS])
-        .itemTypes,
+      ...collectServerModules([...serverModules], [...CORE_ROUTER_IDS], {
+        actions: [],
+        runners: [],
+      }).itemTypes,
       ...(opts.itemTypes ?? []),
     ]),
     devErrors: devAuth,

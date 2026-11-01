@@ -1,3 +1,10 @@
+export type { AiContext } from "./ai/context";
+export {
+  type AiRunner,
+  collectAiRunners,
+  defineAiRunner,
+} from "./ai/runners";
+export { type ScopedWriter, scopedWriter } from "./ai/scoped";
 export { type ChangeBus, createChangeBus } from "./changes";
 export { purgeExpired } from "./items/purge";
 export { type ItemWriter, writeItems } from "./items/writer";

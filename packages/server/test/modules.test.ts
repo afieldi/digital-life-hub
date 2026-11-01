@@ -9,22 +9,27 @@ const router = initTRPC.create().router({});
 const mod = (id: string, itemTypes: string[] = []) =>
   defineServerModule({ id, itemTypes, router });
 const reserved = [...CORE_ROUTER_IDS];
+const core = { actions: [], runners: [] };
 
 describe("collectServerModules", () => {
   it("rejects duplicate module ids", () => {
-    expect(() => collectServerModules([mod("x"), mod("x")], reserved)).toThrow(
-      'Duplicate server module id "x"',
-    );
+    expect(() =>
+      collectServerModules([mod("x"), mod("x")], reserved, core),
+    ).toThrow('Duplicate server module id "x"');
   });
 
   it("rejects an item type claimed twice", () => {
     expect(() =>
-      collectServerModules([mod("a", ["note"]), mod("b", ["note"])], reserved),
+      collectServerModules(
+        [mod("a", ["note"]), mod("b", ["note"])],
+        reserved,
+        core,
+      ),
     ).toThrow('Item type "note" is claimed by modules "a" and "b"');
   });
 
   it("rejects ids that clash with a core router", () => {
-    expect(() => collectServerModules([mod("items")], reserved)).toThrow(
+    expect(() => collectServerModules([mod("items")], reserved, core)).toThrow(
       'Module id "items" clashes with a core router',
     );
   });
@@ -33,6 +38,7 @@ describe("collectServerModules", () => {
     const { modules, itemTypes } = collectServerModules(
       [mod("a", ["note", "memo"]), mod("b", ["task"])],
       reserved,
+      core,
     );
     expect(modules).toHaveLength(2);
     expect([...itemTypes].sort()).toEqual(["memo", "note", "task"]);
