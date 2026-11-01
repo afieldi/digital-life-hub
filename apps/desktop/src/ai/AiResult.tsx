@@ -7,7 +7,7 @@ import type { AiAction } from "./errorActions";
 import type { AiUiState } from "./useAiRequest";
 
 const linkClass =
-  "rounded-10 border border-white/14 bg-white/8 px-3 py-1 text-xs text-ink-secondary hover:brightness-125";
+  "inline-flex min-h-11 items-center rounded-10 border border-white/14 bg-white/8 px-3 text-xs text-ink-secondary hover:brightness-125";
 
 /** The items an answer relied on, as links to their pages. Deleted ones are left out. */
 function UsedItems({ ids, onOpen }: { ids: string[]; onOpen: () => void }) {

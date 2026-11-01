@@ -302,9 +302,118 @@ test("Cancel on a running Claude Code Do stops it and ends the request", async (
 
 test("on Home only answer is offered", async () => {
   await setup({ onHome: true });
-  await ask("give this a better title");
+  await ask("what's new?");
   expect(await screen.findByText("Answer")).toBeInTheDocument();
   expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([
     "Ask",
   ]);
+});
+
+test("text with no action words keeps the bar's own rows and ↵", async () => {
+  const { client } = await setup({ onHome: true });
+  await ask("hello");
+  await screen.findByRole("group", { name: "Actions" });
+  // Give the interpreter time to (not) show the row.
+  await new Promise((r) => setTimeout(r, 100));
+  expect(screen.queryByText("Understood as")).toBeNull();
+  expect(screen.queryByRole("radiogroup", { name: "Kind" })).toBeNull();
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByText("Hello from Sample")).toBeInTheDocument();
+  const { entries } = await client.ai.log.list.query({});
+  expect(entries).toHaveLength(0);
+});
+
+test("two Dos run independently: Cancel on one leaves the other running", async () => {
+  const { client, title } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  const runs = new Map<
+    string,
+    { resolve: (stdout: string) => void; reject: (e: unknown) => void }
+  >();
+  const order: string[] = [];
+  const cancelled: string[] = [];
+  setCliRunnerForTests({
+    run: (req) =>
+      new Promise((resolve, reject) => {
+        order.push(req.runId);
+        runs.set(req.runId, {
+          resolve: (stdout) => resolve({ stdout, exitCode: 0 }),
+          reject,
+        });
+      }),
+    status: async () => ({ installed: true, signedIn: true, version: "1" }),
+    cancel: async (runId) => {
+      cancelled.push(runId);
+      runs.get(runId)?.reject(new CliError("cancelled", "Cancelled"));
+    },
+  });
+  for (const _ of [1, 2]) {
+    await ask("give this a better title");
+    await screen.findByText("Rename");
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+  }
+  await waitFor(() => expect(order).toHaveLength(2));
+  const [first, second] = order as [string, string];
+  const toasts = screen.getAllByText("Claude Code is working…");
+  expect(toasts).toHaveLength(2);
+  // Cancel the first Do from its own toast, wherever the queue placed it.
+  const cancels = screen.getAllByRole("button", { name: "Cancel" });
+  await userEvent.click(cancels[cancels.length - 1] as HTMLElement);
+  expect(cancelled).toEqual([first]);
+  await waitFor(() =>
+    expect(screen.getAllByText("Claude Code is working…")).toHaveLength(1),
+  );
+
+  runs
+    .get(second)
+    ?.resolve(JSON.stringify({ structured_output: { title: "From second" } }));
+  expect(
+    await screen.findByText("Renamed to “From second”"),
+  ).toBeInTheDocument();
+  expect(await title()).toBe("From second");
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries.map((e) => e.status).sort()).toEqual([
+      "applied",
+      "cancelled",
+    ]);
+  });
+});
+
+test("with an error shown, Tab moves focus to its actions", async () => {
+  const { client } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  fakeCli(() => "not json at all");
+  await ask("suggest a few titles");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  await screen.findByText(
+    "Claude Code's answer wasn't in the expected format, so nothing was changed.",
+  );
+  await userEvent.keyboard("{Tab}");
+  expect(screen.getByRole("button", { name: "Try again" })).toHaveFocus();
+});
+
+test("a CLI that exits non-zero with no output shows its exit code", async () => {
+  const { client } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  setCliRunnerForTests({
+    run: async () => ({ stdout: "  \n", exitCode: 2 }),
+    status: async () => ({ installed: true, signedIn: true, version: "1" }),
+    cancel: async () => {},
+  });
+  await ask("suggest a few titles");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByText(
+      "Claude Code returned an error: exited with code 2.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries[0]?.status).toBe("cancelled");
+  });
 });

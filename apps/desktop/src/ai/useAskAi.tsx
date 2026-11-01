@@ -15,13 +15,18 @@ import {
   useRef,
   useState,
 } from "react";
-import { useTRPC } from "../api/client";
+import { useTRPC, useTRPCClient } from "../api/client";
 import { registry } from "../modules";
 import { AiResult } from "./AiResult";
 import { errorActions } from "./errorActions";
 import { PROVIDER_NAMES } from "./providers";
 import { allowedKinds, UnderstoodAs } from "./UnderstoodAs";
-import { type AiRunRequest, useAiRequest } from "./useAiRequest";
+import {
+  type AiRunRequest,
+  startAiRequest,
+  undoAiRequest,
+  useAiRequest,
+} from "./useAiRequest";
 import { useInterpretation } from "./useInterpretation";
 
 const ALL_ACTIONS: AiActionDescription[] = [
@@ -87,7 +92,7 @@ export function useAskAi({
       itemType === undefined ? null : applicableActions(ALL_ACTIONS, itemType),
     [itemType],
   );
-  const interp = useInterpretation(
+  const { interpretation: interp, current: interpCurrent } = useInterpretation(
     open ? query : "",
     itemType ?? null,
     actions,
@@ -106,10 +111,12 @@ export function useAskAi({
   const kinds = action ? allowedKinds(action) : [];
   const wanted = pick?.kind ?? candidate?.kind;
   const kind = wanted && kinds.includes(wanted) ? wanted : kinds[0];
-  const showRow = open && query.trim() !== "" && !!interp && !!action && !!kind;
+  // The no-match fallback offers no AI: the bar keeps its own rows and keys.
+  const showRow =
+    open && query.trim() !== "" && !!interp?.matched && !!action && !!kind;
 
+  const client = useTRPCClient();
   const bar = useAiRequest(defaultProvider);
-  const background = useAiRequest(defaultProvider);
 
   const closeBar = useCallback(() => {
     bar.discard();
@@ -159,7 +166,7 @@ export function useAskAi({
           {
             label: "Undo",
             onAction: () => {
-              background.undo(requestId).then(
+              undoAiRequest(client, requestId).then(
                 (s) => toast(s),
                 (e: Error) => toast(e.message, { tone: "error" }),
               );
@@ -171,18 +178,20 @@ export function useAskAi({
         ],
       });
     },
-    [background, showOptions],
+    [client, showOptions],
   );
 
+  // Each Do runs on its own, so its toast's Cancel stops only that one.
   const runDo = useCallback(
     async (req: AiRunRequest) => {
       closeBar();
       const provider = req.provider ?? defaultProvider ?? "openrouter";
+      const handle = startAiRequest(client, req, defaultProvider);
       const key = toast(`${PROVIDER_NAMES[provider]} is working…`, {
         timeout: 0,
-        actions: [{ label: "Cancel", onAction: () => background.cancel() }],
+        actions: [{ label: "Cancel", onAction: handle.cancel }],
       });
-      const done = await background.run(req);
+      const done = await handle.done;
       closeToast(key);
       if (done.result?.status === "applied") {
         showApplied(done.result.requestId, done.result.summary, req);
@@ -190,7 +199,7 @@ export function useAskAi({
         showError(done);
       }
     },
-    [closeBar, defaultProvider, background, showApplied, showError],
+    [closeBar, defaultProvider, client, showApplied, showError],
   );
 
   const runRequest = useCallback(
@@ -230,18 +239,17 @@ export function useAskAi({
       }
     }
     const by = e.shiftKey ? -1 : 1;
-    if (e.key === "Tab") {
+    // Tab switches kind only while nothing is shown below; otherwise it moves
+    // focus to the result's controls as usual.
+    if (e.key === "Tab" && kinds.length > 1 && phase === "idle") {
       // The dialog's focus scope moves focus on Tab even when prevented.
       e.preventDefault();
       e.stopPropagation();
-      if (kinds.length > 1) {
-        bar.discard();
-        setChoice({
-          text: query,
-          actionId: action.id,
-          kind: step(kinds, kind, by),
-        });
-      }
+      setChoice({
+        text: query,
+        actionId: action.id,
+        kind: step(kinds, kind, by),
+      });
       return true;
     }
     if (
@@ -257,7 +265,8 @@ export function useAskAi({
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      if (phase !== "working" && phase !== "suggested") {
+      // Wait for the guess about the text as it is now.
+      if (interpCurrent && phase !== "working" && phase !== "suggested") {
         runRequest({
           text: query,
           itemId,

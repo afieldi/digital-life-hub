@@ -10,15 +10,21 @@ const INTERPRET_DEBOUNCE_MS = 30;
 
 /**
  * How `text` is understood, live as it is typed. Each keystroke cancels the
- * previous guess. Null for empty text or when no action applies (`actions`
- * null means not known yet).
+ * previous guess. `interpretation` is null for empty text or when no action
+ * applies (`actions` null means not known yet). Until the guess for the
+ * current text arrives, the previous one is kept on screen with `current`
+ * false, so nothing runs the new text with the old guess.
  */
 export function useInterpretation(
   text: string,
   itemType: string | null,
   actions: AiActionDescription[] | null,
-): Interpretation | null {
-  const [result, setResult] = useState<Interpretation | null>(null);
+): { interpretation: Interpretation | null; current: boolean } {
+  // Tagged with its text, so a guess for older text is never used for newer.
+  const [result, setResult] = useState<{
+    text: string;
+    interpretation: Interpretation;
+  } | null>(null);
   const empty = text.trim() === "" || !actions || actions.length === 0;
 
   useEffect(() => {
@@ -31,7 +37,7 @@ export function useInterpretation(
       keywordInterpreter
         .interpret({ text, itemType, actions, signal: ctrl.signal })
         .then((i) => {
-          if (!ctrl.signal.aborted) setResult(i);
+          if (!ctrl.signal.aborted) setResult({ text, interpretation: i });
         })
         .catch(() => {});
     }, INTERPRET_DEBOUNCE_MS);
@@ -41,5 +47,10 @@ export function useInterpretation(
     };
   }, [empty, text, itemType, actions]);
 
-  return empty ? null : result;
+  if (empty) return { interpretation: null, current: true };
+  if (!result) return { interpretation: null, current: false };
+  return {
+    interpretation: result.interpretation,
+    current: result.text === text,
+  };
 }

@@ -89,10 +89,11 @@ export function UnderstoodAs({
             type="button"
             role="radio"
             aria-checked={k === kind}
-            // Keep focus in the command bar's input.
+            // Keep focus in the command bar's input; Tab there switches kind.
+            tabIndex={-1}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onKindChange(k)}
-            className={`min-h-9 rounded-[12px] px-3 font-ui text-sm ${
+            className={`min-h-11 rounded-[12px] px-3 font-ui text-sm ${
               k === kind
                 ? "bg-white/16 text-ink-primary"
                 : "text-ink-tertiary hover:text-ink-secondary"
