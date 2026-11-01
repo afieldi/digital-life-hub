@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { freshTestDb } from "@dlh/db/testing";
+import { isMac } from "@dlh/ui";
 import {
   cleanup,
   fireEvent,
@@ -61,6 +62,12 @@ async function ask(text: string) {
   return input;
 }
 
+/** ⌘↵ on macOS, Ctrl+↵ elsewhere. */
+const modEnter = () =>
+  userEvent.keyboard(
+    isMac() ? "{Meta>}{Enter}{/Meta}" : "{Control>}{Enter}{/Control}",
+  );
+
 const retitleOptions = JSON.stringify({
   options: [
     { title: "First idea", reason: "Short." },
@@ -110,6 +117,11 @@ test("↵ on Do renames at once with an Undo toast, and Undo restores", async ()
   fake.queue(JSON.stringify({ title: "Better title" }));
   await ask("give this a better title");
   await screen.findByText("Rename");
+  // No result rows are listed, so ↵ runs the request.
+  await screen.findByText("No items match");
+  expect(screen.getByText("to ask AI").querySelector("kbd")).toHaveTextContent(
+    /^↵$/,
+  );
   await userEvent.keyboard("{Enter}");
   await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
   expect(
@@ -437,6 +449,60 @@ test("a CLI that exits non-zero with no output shows its exit code", async () =>
     expect(entries[0]?.status).toBe("failed");
     expect(entries[0]?.errorCode).toBe("provider_error");
   });
+});
+
+test("on Home, ↵ opens a matching search result and asks no AI; ⌘↵ asks", async () => {
+  const { client, fake } = await setup({ onHome: true });
+  await client.sample.create.mutate({ title: "How to brew coffee" });
+
+  fake.queue(JSON.stringify({ answer: "Grind, bloom, pour.", used: [] }));
+  await ask("how to brew coffee");
+  expect(await screen.findByText("Answer")).toBeInTheDocument();
+  await screen.findByRole("option", { name: /How to brew coffee/ });
+  // With rows listed, ↵ selects and mod+↵ asks AI.
+  expect(screen.getByText("to ask AI").querySelector("kbd")).toHaveTextContent(
+    isMac() ? "⌘↵" : "Ctrl ↵",
+  );
+  expect(screen.getByText("to select")).toBeInTheDocument();
+  await modEnter();
+  expect(await screen.findByText("Grind, bloom, pour.")).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(1);
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+
+  await ask("how to brew coffee");
+  await screen.findByText("Answer");
+  await screen.findByRole("option", { name: /How to brew coffee/ });
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("heading", {
+      name: "How to brew coffee",
+      level: 1,
+    }),
+  ).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(1);
+  expect((await client.ai.log.list.query({})).entries).toHaveLength(1);
+});
+
+test("on an item, ↵ opens a listed result row instead of running the request", async () => {
+  const { client, fake, title } = await setup();
+  await client.sample.create.mutate({ title: "Give this a better title" });
+  await ask("give this a better title");
+  await screen.findByText("Rename");
+  await screen.findByRole("option", { name: /Give this a better title/ });
+  // ↑↓ move through the rows, not the alternatives.
+  await userEvent.keyboard("{ArrowDown}");
+  expect(screen.getByText("Rename")).toBeInTheDocument();
+  await userEvent.keyboard("{ArrowUp}");
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("heading", {
+      name: "Give this a better title",
+      level: 1,
+    }),
+  ).toBeInTheDocument();
+  expect(fake.calls).toHaveLength(0);
+  expect(await title()).toBe("Hello item");
 });
 
 test("the log records the interpreter only when its own pick ran", async () => {

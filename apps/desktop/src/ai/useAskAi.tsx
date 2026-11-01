@@ -1,6 +1,6 @@
 import { useOpenItem } from "@dlh/client";
 import { type AiKind, applicableActions } from "@dlh/core";
-import { closeToast, Kbd, toast } from "@dlh/ui";
+import { closeToast, isMac, Kbd, toast } from "@dlh/ui";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import {
   type KeyboardEvent,
@@ -34,10 +34,19 @@ function step<T>(list: readonly T[], current: T, by: 1 | -1): T {
   return list[(i + by + list.length) % list.length] as T;
 }
 
+/** ⌘↵ on macOS, Ctrl+↵ elsewhere. */
+function isModEnter(e: KeyboardEvent<HTMLInputElement>): boolean {
+  if (e.key !== "Enter") return false;
+  return isMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+}
+
 /**
  * Ask AI in the command bar: the Understood as row, the result slot, the keys,
  * and the toasts for Do. The Shell passes the bar's state in and spreads the
  * returned props onto `CommandBar`.
+ *
+ * While the bar lists result rows (`hasRows`), ↵ and ↑↓ stay with the rows and
+ * mod+↵ runs the request; with no rows, ↵ runs it and ↑↓ pick an alternative.
  */
 export function useAskAi({
   open,
@@ -45,12 +54,15 @@ export function useAskAi({
   query,
   setQuery,
   navigate,
+  hasRows,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
   query: string;
   setQuery: (query: string) => void;
   navigate: (to: string) => void;
+  /** Whether the bar lists any enabled row that ↵ would act on. */
+  hasRows: boolean;
 }): {
   interpretation?: ReactNode;
   result?: ReactNode;
@@ -222,9 +234,14 @@ export function useAskAi({
     [bar, closeBar, showApplied],
   );
 
+  const { phase } = bar.state;
+  // A result replaces the rows, and the bar then leaves ↵ and ↑↓ alone.
+  const showsResult = open && phase !== "idle" && phase !== "applied";
+  const rowsListed = hasRows && !showsResult;
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): boolean => {
     if (!showRow || !action || !kind || !interp) return false;
-    const { phase, result } = bar.state;
+    const { result } = bar.state;
     if (phase === "suggested" && result?.status === "suggested") {
       const n = Number(e.key);
       if (
@@ -254,6 +271,7 @@ export function useAskAi({
     }
     if (
       (e.key === "ArrowDown" || e.key === "ArrowUp") &&
+      !rowsListed &&
       candidates.length > 1 &&
       candidate
     ) {
@@ -263,7 +281,7 @@ export function useAskAi({
       setChoice({ text: query, actionId: next.actionId, kind: null });
       return true;
     }
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && (!rowsListed || isModEnter(e))) {
       e.preventDefault();
       // Wait for the guess about the text as it is now.
       if (interpCurrent && phase !== "working" && phase !== "suggested") {
@@ -294,28 +312,27 @@ export function useAskAi({
     ? PROVIDER_NAMES[defaultProvider]
     : undefined;
   const { state } = bar;
-  const result =
-    open && state.phase !== "idle" && state.phase !== "applied" ? (
-      <AiResult
-        state={state}
-        providerName={PROVIDER_NAMES[state.provider ?? "openrouter"]}
-        errorActions={
-          state.error && state.request && state.provider
-            ? errorActions(state.error, state.request, state.provider, {
-                retry: runRequest,
-                openSettings: () => {
-                  closeBar();
-                  navigate("/settings");
-                },
-              })
-            : []
-        }
-        onUse={(i) => void pickOption(i)}
-        onNone={closeBar}
-        onCancel={bar.cancel}
-        onClose={closeBar}
-      />
-    ) : undefined;
+  const result = showsResult ? (
+    <AiResult
+      state={state}
+      providerName={PROVIDER_NAMES[state.provider ?? "openrouter"]}
+      errorActions={
+        state.error && state.request && state.provider
+          ? errorActions(state.error, state.request, state.provider, {
+              retry: runRequest,
+              openSettings: () => {
+                closeBar();
+                navigate("/settings");
+              },
+            })
+          : []
+      }
+      onUse={(i) => void pickOption(i)}
+      onNone={closeBar}
+      onCancel={bar.cancel}
+      onClose={closeBar}
+    />
+  ) : undefined;
 
   return {
     interpretation:
@@ -333,7 +350,7 @@ export function useAskAi({
       ) : undefined,
     result,
     footer: showRow ? (
-      <AiFooter alternatives={candidates.length > 1} />
+      <AiFooter rowsListed={rowsListed} alternatives={candidates.length > 1} />
     ) : undefined,
     onKeyDown,
     onQueryChange,
@@ -341,16 +358,31 @@ export function useAskAi({
   };
 }
 
-function AiFooter({ alternatives }: { alternatives: boolean }) {
+function AiFooter({
+  rowsListed,
+  alternatives,
+}: {
+  rowsListed: boolean;
+  alternatives: boolean;
+}) {
   return (
     <>
+      {rowsListed ? (
+        <span className="flex items-center gap-1.5">
+          <Kbd keys={["↵"]} /> to select
+        </span>
+      ) : null}
       <span className="flex items-center gap-1.5">
-        <Kbd keys={["↵"]} /> to run
+        <Kbd keys={rowsListed ? ["mod", "↵"] : ["↵"]} /> to ask AI
       </span>
       <span className="flex items-center gap-1.5">
         <Kbd keys={["tab"]} /> to switch kind
       </span>
-      {alternatives ? (
+      {rowsListed ? (
+        <span className="flex items-center gap-1.5">
+          <Kbd keys={["↑↓"]} /> to navigate
+        </span>
+      ) : alternatives ? (
         <span className="flex items-center gap-1.5">
           <Kbd keys={["↑↓"]} /> for other actions
         </span>

@@ -207,6 +207,7 @@ export function Shell() {
     query,
     setQuery,
     navigate,
+    hasRows: groups.some((g) => g.items.some((i) => !i.disabled)),
   });
 
   return (
