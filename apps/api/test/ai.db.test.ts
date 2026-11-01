@@ -1,3 +1,4 @@
+import { aiRequests } from "@dlh/db";
 import { writeItems } from "@dlh/server";
 import { freshTestDb } from "@dlh/server/testing";
 import { TRPCClientError } from "@trpc/client";
@@ -11,6 +12,23 @@ const SUGGEST = JSON.stringify({
   ],
 });
 
+const LOG_FIELDS = [
+  "id",
+  "createdAt",
+  "actionId",
+  "kind",
+  "interpretedBy",
+  "provider",
+  "model",
+  "status",
+  "errorCode",
+  "durationMs",
+  "inputTokens",
+  "outputTokens",
+  "costUsd",
+  "canUndo",
+].sort();
+
 async function setup(opts: { noOpenRouter?: boolean } = {}) {
   const t = await freshTestDb();
   const api = createTestApi({
@@ -23,7 +41,7 @@ async function setup(opts: { noOpenRouter?: boolean } = {}) {
   const c = api.client(token);
   const mk = (title: string) =>
     writeItems(api.deps, (w) => w.createItem({ type: "test", title }));
-  return { api, c, mk, close: t.close };
+  return { api, c, mk, db: t.db, close: t.close };
 }
 
 async function failure(p: Promise<unknown>) {
@@ -204,6 +222,8 @@ test("log lists newest first, pages by 50 and flags canUndo", async () => {
   }
   const page1 = await c.ai.log.list.query({});
   expect(page1.entries).toHaveLength(50);
+  expect(Object.keys(page1.entries[0] ?? {}).sort()).toEqual(LOG_FIELDS);
+  expect(page1.entries[0]?.interpretedBy).toBeNull();
   expect(page1.nextCursor).not.toBeNull();
   expect(page1.entries[0]).toMatchObject({
     actionId: "answer",
@@ -231,5 +251,41 @@ test("log lists newest first, pages by 50 and flags canUndo", async () => {
     status: "undone",
     canUndo: false,
   });
+  await close();
+});
+
+test("log cursor neither skips nor repeats rows sharing a created_at", async () => {
+  const { c, db, close } = await setup();
+  const at = (s: number) => new Date(Date.UTC(2026, 9, 30, 12, 0, s));
+  const row = (createdAt: Date) => ({
+    createdAt,
+    actionId: "answer",
+    kind: "ask",
+    provider: "openrouter",
+    status: "answered",
+  });
+  // 2 newer rows, then 50 rows at one instant (the page boundary falls inside
+  // that group once the 2 newer rows are taken), then 1 older row.
+  const rows = [
+    row(at(30)),
+    row(at(29)),
+    ...Array.from({ length: 50 }, () => row(at(10))),
+    row(at(1)),
+  ];
+  await db.insert(aiRequests).values(rows);
+  const page1 = await c.ai.log.list.query({});
+  const page2 = await c.ai.log.list.query({
+    cursor: page1.nextCursor ?? undefined,
+  });
+  expect(page1.entries).toHaveLength(50);
+  expect(page2.entries).toHaveLength(3);
+  expect(page2.nextCursor).toBeNull();
+  const all = [...page1.entries, ...page2.entries];
+  expect(new Set(all.map((e) => e.id)).size).toBe(53);
+  const same = all.filter((e) => e.createdAt === at(10).toISOString());
+  expect(same).toHaveLength(50);
+  expect(same.map((e) => e.id)).toEqual(
+    [...same.map((e) => e.id)].sort().reverse(),
+  );
   await close();
 });

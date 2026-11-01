@@ -154,7 +154,7 @@ English only for now.
 4. **Check.** The output is parsed as JSON and checked against the runner's schema for the kind. Failure ends the request as `failed` with `bad_output`.
 5. **By kind.**
    - Ask: the answer is returned; status `answered`.
-   - Suggest: the options are stored in `output` and returned; status `suggested`. `ai.apply({ requestId, option })` applies one, once.
+   - Suggest: the options are stored in `output` and returned; status `suggested`. `ai.applyOption({ requestId, option })` applies one, once.
    - Do: applied at once through the scoped writer with the noted `updated_at` as `expectedUpdatedAt`; status `applied`. Returns a one-line summary and the request id for Undo.
 6. **Undo.** `ai.undo({ requestId })` runs the runner's `undo` with the stored record, once, and only while the items it changed have not been edited since; status `undone`.
 
@@ -194,7 +194,7 @@ Index on `created_at desc`. The typed text, prompt, context and Ask answers are 
 
 - **Expiry.** A pending CLI request expires after 5 minutes, an unpicked suggestion after 30. Expiry is checked on use; the purge job also marks old ones `expired`.
 - **Purge.** Core's existing purge job deletes `ai_requests` rows older than 90 days and clears `undo` older than 30.
-- **Staleness.** Do and `ai.apply` pass the noted `updated_at` to the writer; a mismatch ends the request as `stale` and writes nothing. Undo checks the changed items' versions the same way.
+- **Staleness.** Do and `ai.applyOption` pass the noted `updated_at` to the writer; a mismatch ends the request as `stale` and writes nothing. Undo checks the changed items' versions the same way.
 - **Single use.** Apply and Undo each succeed once per request; repeats are refused with `CONFLICT`.
 - **Timeouts.** OpenRouter 60 seconds on the server; CLI runs 120 seconds in the app. No automatic retries.
 - **Other provider.** "Use \<other provider>" runs the same request once with another provider and does not change the default.
@@ -208,11 +208,13 @@ A core `ai` router (`ai` joins the reserved router names). All procedures are pr
 | `ai.prepare` | `{ text, itemId?, actionId, kind, interpretedBy?, provider? }` | `{ requestId, status, answer? \| options? \| applied? }` or `{ requestId, run: { provider, system, prompt, schema } }` |
 | `ai.complete` | `{ requestId, raw }` | As `ai.prepare`'s finished forms |
 | `ai.cancel` | `{ requestId }` | `{ ok }` |
-| `ai.apply` | `{ requestId, option }` | `{ summary }` |
+| `ai.applyOption` | `{ requestId, option }` | `{ summary }` |
 | `ai.discard` | `{ requestId }` | `{ ok }` |
 | `ai.undo` | `{ requestId }` | `{ summary }` |
 | `ai.settings.get` / `ai.settings.set` | — / partial settings | Settings plus `providers: { id, available, reason? }[]` (server-side availability) |
 | `ai.log.list` | `{ cursor? }` | Latest 50 requests, newest first, with `canUndo` |
+
+tRPC reserves the procedure name `apply`, so the pick-an-option call is `ai.applyOption`.
 
 Errors use the codes in Errors, sent as `{ code, message }` in the tRPC error's `data`.
 

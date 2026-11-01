@@ -80,7 +80,7 @@ export const aiLogEntry = z.object({
   createdAt: z.string(),
   actionId: z.string(),
   kind: aiKind,
-  interpretedBy: z.string(),
+  interpretedBy: z.string().nullable(),
   provider: aiProviderId,
   model: z.string().nullable(),
   status: z.string(),

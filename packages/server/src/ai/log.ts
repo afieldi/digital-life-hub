@@ -52,7 +52,7 @@ export async function listLog(
       createdAt: r.createdAt.toISOString(),
       actionId: r.actionId,
       kind: r.kind as AiLogEntry["kind"],
-      interpretedBy: r.interpretedBy ?? "manual",
+      interpretedBy: r.interpretedBy,
       provider: r.provider as AiLogEntry["provider"],
       model: r.model,
       status: r.status,
