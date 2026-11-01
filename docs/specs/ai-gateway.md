@@ -142,7 +142,7 @@ export type Interpretation = {
 
 English only for now.
 
-**Measuring interpreters.** Labelled phrasings live in test files (`packages/server/test/ai-phrasings.ts` for Core, `modules/<id>/test/ai-phrasings.ts` for modules): text, item type, expected action and kind. A shared test runs every interpreter against all of them and requires 90% accuracy, and `pnpm ai:eval-interpreter --interpreter=<id>` prints accuracy, the confusions and time per guess.
+**Measuring interpreters.** Labelled phrasings live in test files (`packages/core/test/ai-phrasings.ts` for Core, `modules/<id>/test/ai-phrasings.ts` for modules): text, item type, expected action and kind. A shared test runs every interpreter against all of them and requires 90% accuracy, and `pnpm ai:eval-interpreter --interpreter=<id>` prints accuracy, the confusions and time per guess.
 
 ## Request flow
 
