@@ -546,16 +546,34 @@ test("validation: unknown action, inapplicable action, missing item", async () =
   expect(
     (await caught(prepare(s.deps, input(undefined, "retitle", "do")))).code,
   ).toBe("BAD_REQUEST");
-  expect(
-    (
-      await caught(
-        prepare(
-          s.deps,
-          input("01900000-0000-7000-8000-000000000000", "answer", "ask"),
-        ),
-      )
-    ).code,
-  ).toBe("NOT_FOUND");
+  const missing = await expectAiError(
+    prepare(
+      s.deps,
+      input("01900000-0000-7000-8000-000000000000", "answer", "ask"),
+    ),
+    "not_found",
+  );
+  expect(missing.code).toBe("NOT_FOUND");
+  expect(missing.message).toBe("This item was deleted.");
+  expect(await s.db.select().from(aiRequests)).toHaveLength(0);
+  await s.close();
+});
+
+test("prepare on a deleted item is not_found and records nothing", async () => {
+  const s = await setup();
+  s.tick();
+  await writeItems(s.deps, (w) =>
+    w.setDeleted({
+      id: s.item.id,
+      expectedUpdatedAt: s.item.updatedAt,
+      deleted: true,
+    }),
+  );
+  const e = await expectAiError(
+    prepare(s.deps, input(s.item.id, "retitle", "do")),
+    "not_found",
+  );
+  expect(e.message).toBe("This item was deleted.");
   expect(await s.db.select().from(aiRequests)).toHaveLength(0);
   await s.close();
 });

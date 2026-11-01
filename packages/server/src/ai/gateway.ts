@@ -14,6 +14,7 @@ import { AiError, aiErrorMessage, firstLine } from "./errors";
 import { runApply } from "./followups";
 import { type AiProvider, unwrapCliOutput } from "./providers";
 import {
+  aiFailure,
   badRequest,
   claim,
   conflict,
@@ -25,6 +26,7 @@ import {
   suggestShape,
   timing,
   usagePatch,
+  writeFailure,
 } from "./requests";
 import type { AiRunner } from "./runners";
 import { getSettings } from "./settings";
@@ -68,6 +70,20 @@ function optionLabel(o: Record<string, unknown>): string {
   return typeof label === "string" ? label : "";
 }
 
+/** The item, or the `not_found` AI error if it is missing or deleted. */
+async function itemOrNotFound(
+  deps: CoreDeps,
+  itemId: string,
+  provider: AiProviderId,
+): Promise<Awaited<ReturnType<typeof getItem>>> {
+  try {
+    return await getItem(deps.db, itemId);
+  } catch (e) {
+    const err = writeFailure(e, provider);
+    throw err?.code === "not_found" ? aiFailure(err) : e;
+  }
+}
+
 /**
  * Validates the request, records it as `pending` and either calls OpenRouter
  * and finishes, or hands a CLI run back to the app. The typed text, prompt and
@@ -78,8 +94,10 @@ export async function prepare(
   input: AiPrepareInput,
 ): Promise<AiResult> {
   const runner = runnerFor(deps, input.actionId);
+  const settings = await getSettings(deps.db);
+  const provider = input.provider ?? settings.defaultProvider;
   const itemId = input.itemId ?? null;
-  const item = itemId ? await getItem(deps.db, itemId) : null;
+  const item = itemId ? await itemOrNotFound(deps, itemId, provider) : null;
   if (!applies(runner.action, item?.type ?? null)) {
     throw badRequest(
       item
@@ -92,8 +110,6 @@ export async function prepare(
   if (kind !== "ask" && !runner.apply) {
     throw badRequest(`AI action "${runner.action.id}" has no apply`);
   }
-  const settings = await getSettings(deps.db);
-  const provider = input.provider ?? settings.defaultProvider;
   const model =
     provider === "openrouter"
       ? (settings.openrouterModel ?? deps.ai.defaultModel)
