@@ -1,3 +1,4 @@
+mod cli;
 mod loopback;
 mod token;
 
@@ -9,12 +10,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
         .manage(Arc::new(loopback::LoopbackState::default()))
+        .manage(Arc::new(cli::CliState::default()))
         .invoke_handler(tauri::generate_handler![
             loopback::auth_loopback_start,
             loopback::auth_loopback_wait,
             token::token_get,
             token::token_set,
             token::token_clear,
+            cli::ai_cli_status,
+            cli::ai_cli_run,
+            cli::ai_cli_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Digital Life Hub");
