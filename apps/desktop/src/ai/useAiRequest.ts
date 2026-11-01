@@ -16,7 +16,8 @@ export type AiRunRequest = {
   itemId: string | null;
   actionId: string;
   kind: AiKind;
-  interpretedBy: string;
+  /** The interpreter, when its own action and kind are what runs; omitted for a hand pick. */
+  interpretedBy?: string;
   /** Overrides the default provider ("Use <other>"). */
   provider?: AiProviderId;
 };

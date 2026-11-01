@@ -101,6 +101,11 @@ export function useAskAi({
   const kinds = action ? allowedKinds(action) : [];
   const wanted = pick?.kind ?? candidate?.kind;
   const kind = wanted && kinds.includes(wanted) ? wanted : kinds[0];
+  // The kind the interpreter's own first choice runs as, before any pick.
+  const firstKind =
+    interp && kinds.includes(interp.kind) ? interp.kind : kinds[0];
+  const interpreted =
+    !!interp && action?.id === interp.actionId && kind === firstKind;
   // The no-match fallback offers no AI: the bar keeps its own rows and keys.
   const showRow =
     open && query.trim() !== "" && !!interp?.matched && !!action && !!kind;
@@ -133,7 +138,12 @@ export function useAskAi({
 
   const showOptions = useCallback(
     (req: AiRunRequest) => {
-      const suggest = { ...req, kind: "suggest" as const };
+      // Picked by hand, so no longer the interpreter's choice.
+      const suggest = {
+        ...req,
+        kind: "suggest" as const,
+        interpretedBy: undefined,
+      };
       setChoice({ text: req.text, actionId: req.actionId, kind: "suggest" });
       setQuery(req.text);
       setOpen(true);
@@ -262,7 +272,7 @@ export function useAskAi({
           itemId,
           actionId: action.id,
           kind,
-          interpretedBy: interp.source,
+          ...(interpreted ? { interpretedBy: interp.source } : {}),
         });
       }
       return true;

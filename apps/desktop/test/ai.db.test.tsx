@@ -438,3 +438,33 @@ test("a CLI that exits non-zero with no output shows its exit code", async () =>
     expect(entries[0]?.errorCode).toBe("provider_error");
   });
 });
+
+test("the log records the interpreter only when its own pick ran", async () => {
+  const { client, fake } = await setup();
+  fake.queue(retitleOptions, retitleOptions);
+  await ask("suggest a few titles");
+  expect(await screen.findByRole("radio", { name: "Suggest" })).toBeChecked();
+  await userEvent.keyboard("{Enter}");
+  await screen.findByText("Second idea");
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries[0]?.interpretedBy).toBe("keywords");
+  });
+  await userEvent.click(screen.getByRole("button", { name: "None of these" }));
+  await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+
+  // Tab picks the kind by hand: Do → Suggest.
+  await ask("give this a better title");
+  expect(await screen.findByRole("radio", { name: "Do" })).toBeChecked();
+  await userEvent.keyboard("{Tab}");
+  expect(screen.getByRole("radio", { name: "Suggest" })).toBeChecked();
+  await screen.findByText("No items match");
+  await userEvent.keyboard("{Enter}");
+  await screen.findByText("Second idea");
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.kind).toBe("suggest");
+    expect(entries[0]?.interpretedBy).toBeNull();
+  });
+});
