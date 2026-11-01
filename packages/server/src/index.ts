@@ -1,4 +1,8 @@
-export type { AiContext } from "./ai/context";
+export {
+  type AiContext,
+  itemContext,
+  MAX_CONTEXT_CHARS,
+} from "./ai/context";
 export {
   type AiRunner,
   collectAiRunners,
