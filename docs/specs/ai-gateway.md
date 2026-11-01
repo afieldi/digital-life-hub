@@ -161,7 +161,7 @@ English only for now.
 
 Your text goes to the model as the instruction ("give this a shorter, more formal title"), but is not stored. Writes go through Core's writer, so other devices update through `/changes`.
 
-**Context.** `itemContext` reads the item, its `search_text`, and its links and backlinks (titles and kinds), trimmed to 12,000 characters, longest parts first. A runner may add module fields. The context is sent to the provider and never stored.
+**Context.** `itemContext` reads the item, its `search_text`, and its links and backlinks (titles, kinds and ids), trimmed to 12,000 characters, longest parts first. The title, type and id lines are never cut, and every link line keeps its id, so an Ask answer can list the items it `used`. A runner may add module fields. The context is sent to the provider and never stored.
 
 ## Data model
 

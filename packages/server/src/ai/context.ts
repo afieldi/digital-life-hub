@@ -30,8 +30,8 @@ function render({ header, body, links, backlinks }: Block): string {
 
 /**
  * Fit the block into MAX_CONTEXT_CHARS: shorten the body first, then drop link
- * lines from the end (backlinks before outgoing links). The title and type
- * lines are never cut.
+ * lines from the end (backlinks before outgoing links). The title, type and id
+ * lines are never cut, and each link line keeps its id.
  */
 function fit(block: Block): string {
   let text = render(block);
@@ -59,7 +59,10 @@ function fit(block: Block): string {
   return text;
 }
 
-/** Plain-text description of an item and its links, for use as model context. */
+/**
+ * Plain-text description of an item and its links, with their ids (so an
+ * answer can name the items it used), for use as model context.
+ */
 export async function itemContext(
   deps: CoreDeps,
   itemId: string | null,
@@ -70,10 +73,10 @@ export async function itemContext(
     getItemText(deps.db, itemId),
     linksForItem(deps.db, itemId),
   ]);
-  const line = (l: { kind: string; item: { title: string } }) =>
-    `- ${l.kind}: ${l.item.title}`;
+  const line = (l: { kind: string; item: { id: string; title: string } }) =>
+    `- ${l.kind}: ${l.item.title} (id ${l.item.id})`;
   const text = fit({
-    header: `Title: ${item.title}\nType: ${item.type}`,
+    header: `Title: ${item.title}\nType: ${item.type}\nId: ${item.id}`,
     body: body ?? "",
     links: outgoing.map(line),
     backlinks: backlinks.map(line),
