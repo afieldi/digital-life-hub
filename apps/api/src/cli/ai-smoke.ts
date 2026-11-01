@@ -240,7 +240,6 @@ async function main(): Promise<void> {
     devErrors: false,
     ai: {
       runners: aiRunners,
-      descriptions: [...aiRunners.values()].map((r) => r.action),
       providers,
       defaultModel: process.env.OPENROUTER_DEFAULT_MODEL ?? null,
     },

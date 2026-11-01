@@ -72,7 +72,6 @@ const deps = {
   now: () => new Date(),
   ai: {
     runners: aiRunners,
-    descriptions: [...aiRunners.values()].map((r) => r.action),
     ...(devFakeAi(process.env) ?? {
       providers: config.openrouter.apiKey
         ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }

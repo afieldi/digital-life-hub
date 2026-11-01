@@ -1,4 +1,4 @@
-import { type AiProviderId, coreAiActions } from "@dlh/core";
+import type { AiProviderId } from "@dlh/core";
 import { type Db, items } from "@dlh/db";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
@@ -28,7 +28,6 @@ export function testAiDeps(
 ): AiDeps {
   return {
     runners: new Map(coreAiRunners.map((r) => [r.action.id, r])),
-    descriptions: Object.values(coreAiActions),
     providers: { openrouter: fake },
     defaultModel: "test-model",
     ...overrides,

@@ -577,7 +577,7 @@ test("an action limited to other item types does not apply", async () => {
     },
   });
   const s = await setup({
-    ai: { runners: new Map([[action.id, runner]]), descriptions: [action] },
+    ai: { runners: new Map([[action.id, runner]]) },
   });
   const e = await caught(
     prepare(s.deps, input(s.item.id, "notes.tidy", "ask")),

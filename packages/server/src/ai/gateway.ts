@@ -33,7 +33,6 @@ export { apply, cancel, discard, undo } from "./followups";
 
 export type AiDeps = {
   runners: Map<string, AiRunner>;
-  descriptions: AiActionDescription[];
   providers: Partial<Record<"openrouter", AiProvider>>;
   defaultModel: string | null;
 };

@@ -96,7 +96,6 @@ export function createTestApi(
     now: clock.now,
     ai: {
       runners: collected.aiRunners,
-      descriptions: [...collected.aiRunners.values()].map((r) => r.action),
       providers: opts.noOpenRouter ? {} : { openrouter: ai },
       defaultModel: "test-model",
     },
