@@ -49,17 +49,18 @@ Write a clearer, more specific title for the item. When asked to suggest, give t
   async apply(w, out, ctx) {
     const { title } = out as { title: string };
     const old = ctx.item?.title ?? "";
-    const item = await w.updateItem?.({
+    if (!w.updateItem) throw new Error("retitle needs updateItem");
+    const item = await w.updateItem({
       id: ctx.item?.id ?? "",
       expectedUpdatedAt: ctx.version ?? "",
       title,
     });
-    if (!item) throw new Error("retitle needs updateItem");
     return { id: item.id, title: old, updatedAt: item.updatedAt };
   },
   async undo(w, record) {
+    if (!w.updateItem) throw new Error("retitle needs updateItem");
     const r = undoRecord.parse(record);
-    await w.updateItem?.({
+    await w.updateItem({
       id: r.id,
       expectedUpdatedAt: r.updatedAt,
       title: r.title,
@@ -84,17 +85,18 @@ Describe in one sentence what would be deleted, so the person can confirm it.`,
       .strict(),
   },
   async apply(w, _out, ctx) {
-    const item = await w.setDeleted?.({
+    if (!w.setDeleted) throw new Error("delete needs setDeleted");
+    const item = await w.setDeleted({
       id: ctx.item?.id ?? "",
       expectedUpdatedAt: ctx.version ?? "",
       deleted: true,
     });
-    if (!item) throw new Error("delete needs setDeleted");
     return { id: item.id, updatedAt: item.updatedAt };
   },
   async undo(w, record) {
+    if (!w.setDeleted) throw new Error("delete needs setDeleted");
     const r = deleteUndo.parse(record);
-    await w.setDeleted?.({
+    await w.setDeleted({
       id: r.id,
       expectedUpdatedAt: r.updatedAt,
       deleted: false,

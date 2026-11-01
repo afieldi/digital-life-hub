@@ -82,3 +82,23 @@ test("delete suggest output and summary", () => {
   expect(ok("delete", "suggest", { foo: 1 })).toBe(false);
   expect(runner("delete").summary?.({}, ctx)).toBe("Deleted “Old”");
 });
+
+test("apply and undo throw when the writer lacks the method they need", async () => {
+  const none = {} as Parameters<
+    NonNullable<ReturnType<typeof runner>["apply"]>
+  >[0];
+  const retitle = runner("retitle");
+  const del = runner("delete");
+  await expect(retitle.apply?.(none, { title: "New" }, ctx)).rejects.toThrow(
+    "retitle needs updateItem",
+  );
+  await expect(
+    retitle.undo?.(none, { id: "i", updatedAt: "v", title: "Old" }),
+  ).rejects.toThrow("retitle needs updateItem");
+  await expect(del.apply?.(none, {}, ctx)).rejects.toThrow(
+    "delete needs setDeleted",
+  );
+  await expect(del.undo?.(none, { id: "i", updatedAt: "v" })).rejects.toThrow(
+    "delete needs setDeleted",
+  );
+});
