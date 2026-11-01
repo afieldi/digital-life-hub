@@ -7,6 +7,11 @@ export type Interpretation = {
   /** 0 to 1; below `NOT_SURE_BELOW` the row shows "Not sure". */
   confidence: number;
   alternatives: { actionId: string; kind: AiKind }[];
+  /**
+   * False when nothing in the text pointed at an action and `actionId` is only
+   * the fallback; the command bar then does not offer AI.
+   */
+  matched: boolean;
   /** The interpreter's id, recorded in the log. */
   source: string;
 };

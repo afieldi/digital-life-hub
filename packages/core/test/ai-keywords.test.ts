@@ -124,6 +124,18 @@ describe("keyword interpreter", () => {
       actionId: "answer",
       kind: "ask",
       confidence: 0.3,
+      matched: false,
+    });
+  });
+
+  it("marks a word match as matched", async () => {
+    expect(await ask("give this a better title")).toMatchObject({
+      actionId: "retitle",
+      matched: true,
+    });
+    expect(await ask("summarise this", null)).toMatchObject({
+      actionId: "answer",
+      matched: true,
     });
   });
 

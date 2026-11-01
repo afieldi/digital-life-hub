@@ -125,6 +125,7 @@ export type Interpretation = {
   kind: AiKind;
   confidence: number;                          // 0–1; below 0.6 the row shows "Not sure"
   alternatives: { actionId: string; kind: AiKind }[];
+  matched: boolean;                            // false for the no-match fallback; the bar then offers no AI
   source: string;                              // the interpreter's id, recorded in the log
 };
 ```

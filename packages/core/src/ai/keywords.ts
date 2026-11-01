@@ -270,6 +270,7 @@ export const keywordInterpreter: RequestInterpreter = {
         kind: reconcile(fallback, wantedKind(input, text, null)),
         confidence: NO_MATCH_CONFIDENCE,
         alternatives: [],
+        matched: false,
         source: SOURCE,
       };
     }
@@ -291,6 +292,7 @@ export const keywordInterpreter: RequestInterpreter = {
         actionId: r.action.id,
         kind: reconcile(r.action, kind),
       })),
+      matched: true,
       source: SOURCE,
     };
   },
