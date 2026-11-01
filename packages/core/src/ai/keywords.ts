@@ -171,6 +171,43 @@ function scoreAction(
   return matched + (isTypeSpecific(action, itemType) ? TYPE_BONUS : 0);
 }
 
+/** Whether a word reads as a command: a common imperative or the action's own word. */
+function isCommandWord(
+  word: string,
+  action: AiActionDescription | null,
+): boolean {
+  if (LEADING_VERBS.has(word)) return true;
+  const wordStem = stem(word);
+  return (action?.words ?? []).some(
+    (w) => prepare(w).stems[0] === wordStem && !QUESTION_WORDS.has(w),
+  );
+}
+
+/**
+ * "can you rename this", "please give...", "delete this please": a polite marker
+ * next to a command word. "can you tell me what the title means" is a question.
+ */
+function politeCommand(
+  input: Prepared,
+  text: string,
+  action: AiActionDescription,
+): boolean {
+  const { raw } = input;
+  const modal = /^\s*(?:can|could|would|will) you\b/i.test(text);
+  const pleaseAt = raw.indexOf("please");
+  if (!modal && pleaseAt === -1) return false;
+  const afterModal = raw.slice(2);
+  const afterPlease = pleaseAt === 0 ? raw.slice(1) : afterModal;
+  // A trailing "please" leaves the command at the start of the text.
+  const next =
+    modal && raw[0] !== "please"
+      ? afterModal[0]
+      : pleaseAt === raw.length - 1
+        ? raw[0]
+        : afterPlease[0];
+  return next !== undefined && isCommandWord(next, action);
+}
+
 /** Step 3: the kind the wording asks for, or null when it is unclear. */
 function wantedKind(
   input: Prepared,
@@ -182,9 +219,7 @@ function wantedKind(
   if (raw.some((t) => NEGATIONS.has(t))) return null;
   if (ALTERNATIVE_PHRASES.some((p) => joined.includes(` ${p} `)))
     return "suggest";
-  const polite =
-    /^\s*(can|could|would|will) you\b/i.test(text) || raw.includes("please");
-  if (polite && matchedAction) return "do";
+  if (matchedAction && politeCommand(input, text, matchedAction)) return "do";
   const first = raw[0];
   if (
     (first !== undefined && QUESTION_STARTERS.has(first)) ||
@@ -193,13 +228,7 @@ function wantedKind(
   ) {
     return "ask";
   }
-  if (first !== undefined) {
-    const firstStem = stem(first);
-    const isActionWord = (matchedAction?.words ?? []).some(
-      (w) => prepare(w).stems[0] === firstStem && !QUESTION_WORDS.has(w),
-    );
-    if (LEADING_VERBS.has(first) || isActionWord) return "do";
-  }
+  if (first !== undefined && isCommandWord(first, matchedAction)) return "do";
   return null;
 }
 

@@ -83,6 +83,20 @@ describe("keyword interpreter", () => {
     expect(r.confidence).toBeGreaterThanOrEqual(NOT_SURE_BELOW);
   });
 
+  it("treats a polite question as a question and a polite command as a command", async () => {
+    expect((await ask("can you tell me what the title means?")).kind).not.toBe(
+      "do",
+    );
+    expect(await ask("can you rename this")).toMatchObject({
+      actionId: "retitle",
+      kind: "do",
+    });
+    expect(await ask("please rename this")).toMatchObject({
+      actionId: "retitle",
+      kind: "do",
+    });
+  });
+
   it("never returns 'do' for delete", async () => {
     for (const text of [
       "delete this",
