@@ -238,6 +238,7 @@ Only server providers implement `complete`; desktop providers are run by the app
 - Commands: `ai_cli_status(provider)` → installed, signed in, version; `ai_cli_run(runId, provider, system, prompt, schema)` → stdout and exit code; `ai_cli_cancel(runId)`.
 - Only `claude` and `codex`, found on `PATH` or at the device's path override. An override must be absolute and name a file called `claude` or `codex`.
 - A fixed argument list per CLI: print mode, JSON output, tools turned off. The prompt goes on stdin. The exact flags are fixed in the plan and checked against the installed versions.
+- Codex runs with `--sandbox read-only`, which still lets it read local files; until a verified way to turn its tools off exists, this is an accepted risk.
 - Each run uses a fresh, empty temporary directory as its working directory, deleted afterwards.
 - 120-second timeout and 1 MB output cap; both kill the process.
 - No shell plugin and no general process permission; the capabilities test checks this.

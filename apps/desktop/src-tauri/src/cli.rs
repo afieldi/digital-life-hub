@@ -89,9 +89,74 @@ pub struct Limits {
     pub max_output: usize,
 }
 
+/// Where the CLIs are looked for, and the `PATH` they run with. An app opened from
+/// Finder or the Dock gets a minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`), so
+/// the usual install locations are added after the inherited entries. Only
+/// absolute directories are used.
+pub struct SearchEnv {
+    home: Option<PathBuf>,
+    path: Option<OsString>,
+}
+
+impl SearchEnv {
+    pub fn current() -> Self {
+        Self { home: std::env::var_os("HOME").map(PathBuf::from), path: std::env::var_os("PATH") }
+    }
+
+    /// The usual install locations, in order; the `$HOME` ones only when `HOME` is an absolute path.
+    fn install_dirs(&self) -> Vec<PathBuf> {
+        let home = self.home.as_deref().filter(|h| h.is_absolute());
+        let in_home = |rel: &str| home.map(|h| h.join(rel));
+        [
+            in_home(".local/bin"),
+            in_home(".claude/local"),
+            Some(PathBuf::from("/opt/homebrew/bin")),
+            Some(PathBuf::from("/usr/local/bin")),
+            in_home(".npm-global/bin"),
+            in_home(".bun/bin"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
+
+    fn inherited(&self) -> Vec<PathBuf> {
+        self.path.as_deref().map(|p| std::env::split_paths(p).collect()).unwrap_or_default()
+    }
+
+    /// Inherited `PATH`, then the install locations.
+    fn search_path(&self) -> OsString {
+        join_dirs(self.inherited().into_iter().chain(self.install_dirs()))
+    }
+
+    /// The CLI's own directory first (an npm install's `#!/usr/bin/env node` finds
+    /// the `node` next to it), then the install locations, then the inherited `PATH`.
+    fn child_path(&self, bin: &Path) -> OsString {
+        let own = bin.parent().map(Path::to_path_buf);
+        join_dirs(own.into_iter().chain(self.install_dirs()).chain(self.inherited()))
+    }
+}
+
+/// Joins absolute, de-duplicated directories into a `PATH` value.
+fn join_dirs(dirs: impl Iterator<Item = PathBuf>) -> OsString {
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for d in dirs {
+        // An entry containing the separator can't be joined; it is skipped like a relative one.
+        if d.is_absolute() && !seen.contains(&d) && std::env::join_paths([&d]).is_ok() {
+            seen.push(d);
+        }
+    }
+    std::env::join_paths(seen).unwrap_or_default()
+}
+
 /// Finds the program for `provider` (`claude` or `codex` only): the override if
-/// given (absolute, no `.`/`..`, file name exactly the program's), else `PATH`.
+/// given (absolute, no `.`/`..`, file name exactly the program's), else the
+/// inherited `PATH` plus the usual install locations (see `SearchEnv`).
 pub fn resolve_binary(provider: &str, path_override: Option<&str>) -> Result<PathBuf, CliError> {
+    resolve_binary_in(provider, path_override, &SearchEnv::current())
+}
+
+fn resolve_binary_in(provider: &str, path_override: Option<&str>, env: &SearchEnv) -> Result<PathBuf, CliError> {
     let name = Provider::parse(provider)?.binary();
     let not_installed = || CliError::new("not_installed", format!("`{name}` isn't installed on this computer."));
     let path = match path_override.filter(|p| !p.is_empty()) {
@@ -106,9 +171,9 @@ pub fn resolve_binary(provider: &str, path_override: Option<&str>) -> Result<Pat
             }
             p
         }
-        None => which::which(name).map_err(|_| not_installed())?,
+        None => which::which_in(name, Some(env.search_path()), std::env::temp_dir()).map_err(|_| not_installed())?,
     };
-    // `which` can return a relative path when PATH has a relative entry.
+    // Every search entry is absolute; checked again so a relative result can never run.
     if !path.is_absolute() || !path.is_file() {
         return Err(not_installed());
     }
@@ -140,6 +205,9 @@ pub fn claude_args(system: &str, schema: &str) -> Vec<OsString> {
 
 /// Codex: read-only sandbox, prompt on stdin (`-`), final message to `out.txt`.
 /// UNVERIFIED: no `codex` binary was available to check these flags against.
+/// Accepted risk: `--sandbox read-only` still lets Codex read local files (only
+/// writes and network are blocked); until a verified way to turn its tools off
+/// exists, a prompt could make it read files outside the temporary directory.
 fn codex_args(dir: &Path) -> Vec<OsString> {
     vec![
         "exec".into(),
@@ -245,21 +313,67 @@ extern "C" {
     fn killpg(pgrp: i32, sig: i32) -> i32;
 }
 
-/// Kills the child's whole process group (the CLI and anything it started),
-/// then the child itself, and reaps it.
-fn kill_all(child: &mut Child) {
+/// SIGKILLs the child's process group (the CLI and anything it started). Only
+/// call it before the child is reaped: the group id is the child's pid
+/// (`process_group(0)`), which cannot be reused while the child is unreaped.
+fn kill_group(child: &Child) {
     #[cfg(unix)]
     if let Ok(pgid) = i32::try_from(child.id()) {
         const SIGKILL: i32 = 9;
-        // SAFETY: plain libc call with no memory arguments. The group id is the
-        // child's pid (`process_group(0)`); it cannot be reused while any member
-        // of the group, or the unreaped child, exists.
+        // SAFETY: plain libc call with no memory arguments.
         unsafe {
             killpg(pgid, SIGKILL);
         }
     }
+    #[cfg(not(unix))]
+    let _ = child;
+}
+
+/// Kills the group and the child, and reaps it. Only for a child not yet reaped.
+fn kill_all(child: &mut Child) {
+    kill_group(child);
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+extern "C" {
+    fn waitid(idtype: i32, id: u32, infop: *mut u64, options: i32) -> i32;
+}
+
+/// The child's exit status once it has exited. Its group is killed first, while
+/// the unreaped child still holds the group id, so background processes it left
+/// (which may hold stdout open) end with it and the pid can't have been reused.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn poll_exit(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
+    const P_PID: i32 = 1;
+    const WNOHANG: i32 = 1;
+    const WEXITED: i32 = 4;
+    #[cfg(target_os = "linux")]
+    const WNOWAIT: i32 = 0x0100_0000;
+    #[cfg(target_os = "macos")]
+    const WNOWAIT: i32 = 0x20;
+    // Larger than `siginfo_t` on both platforms. It stays all zero when the child
+    // hasn't exited (WNOHANG); otherwise si_signo is SIGCHLD.
+    let mut info = [0u64; 32];
+    // SAFETY: `info` is writable, aligned and big enough for a `siginfo_t`.
+    // WNOWAIT leaves the child unreaped.
+    let r = unsafe { waitid(P_PID, child.id(), info.as_mut_ptr(), WEXITED | WNOHANG | WNOWAIT) };
+    if r != 0 {
+        let e = std::io::Error::last_os_error();
+        return if e.kind() == std::io::ErrorKind::Interrupted { Ok(None) } else { Err(e) };
+    }
+    if info.iter().all(|&w| w == 0) {
+        return Ok(None);
+    }
+    kill_group(child);
+    child.wait().map(Some)
+}
+
+/// Elsewhere the exit is observed by reaping; leftover processes are not killed.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn poll_exit(child: &mut Child) -> std::io::Result<Option<std::process::ExitStatus>> {
+    child.try_wait()
 }
 
 /// Reads stdout until EOF; stops (returning `None`) once more than `max` bytes arrive.
@@ -292,7 +406,9 @@ fn run_process(
     cancel: &AtomicBool,
 ) -> Result<Finished, CliError> {
     let mut cmd = Command::new(bin);
-    // The environment is inherited on purpose: the CLIs need PATH and HOME for their sign-in.
+    // The environment is inherited on purpose: the CLIs need HOME and the rest for
+    // their sign-in. PATH is extended so a Finder-launched app can run them.
+    cmd.env("PATH", SearchEnv::current().child_path(bin));
     cmd.args(args).current_dir(cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     {
@@ -320,26 +436,33 @@ fn run_process(
 
     let mut stdout = None;
     let mut status = None;
+    // Once the child is reaped its group was already killed (`poll_exit`), and the
+    // group id may no longer be safe to signal.
+    let stop = |child: &mut Child, reaped: bool| {
+        if !reaped {
+            kill_all(child);
+        }
+    };
     loop {
         if cancel.load(Ordering::SeqCst) {
-            kill_all(&mut child);
+            stop(&mut child, status.is_some());
             return Err(CliError::new("cancelled", "The request was cancelled."));
         }
         if reader.as_ref().is_some_and(|r| r.is_finished()) {
             match reader.take().map(|r| r.join()) {
                 Some(Ok(Some(buf))) => stdout = Some(buf),
                 Some(Ok(None)) => {
-                    kill_all(&mut child);
+                    stop(&mut child, status.is_some());
                     return Err(too_large(max));
                 }
                 _ => {
-                    kill_all(&mut child);
+                    stop(&mut child, status.is_some());
                     return Err(CliError::new("spawn_failed", "Reading the program's output failed."));
                 }
             }
         }
         if status.is_none() {
-            match child.try_wait() {
+            match poll_exit(&mut child) {
                 Ok(s) => status = s,
                 Err(e) => {
                     kill_all(&mut child);
@@ -348,13 +471,11 @@ fn run_process(
             }
         }
         if let (Some(s), Some(out)) = (status, stdout.take()) {
-            // Leftover background processes the CLI started don't outlive the run.
-            kill_all(&mut child);
             // Killed by a signal has no code; report -1.
             return Ok(Finished { stdout: out, exit_code: s.code().unwrap_or(-1) });
         }
         if Instant::now() >= deadline {
-            kill_all(&mut child);
+            stop(&mut child, status.is_some());
             return Err(CliError::new(
                 "timeout",
                 format!("The program didn't finish within {} seconds.", limits.timeout.as_secs_f32()),
@@ -560,6 +681,54 @@ mod tests {
         assert_eq!(resolve_binary("codex", Some(codex.to_str().unwrap())).unwrap(), codex);
     }
 
+    fn fake_env(home: &Path, path: &str) -> SearchEnv {
+        SearchEnv { home: Some(home.to_path_buf()), path: Some(path.into()) }
+    }
+
+    #[test]
+    fn resolve_finds_the_cli_in_install_locations_outside_the_gui_path() {
+        for rel in [".local/bin", ".claude/local"] {
+            let home = tempfile::tempdir().unwrap();
+            let dir = home.path().join(rel);
+            fs::create_dir_all(&dir).unwrap();
+            let bin = stand_in(&dir, "claude", "exit 0");
+            assert_eq!(resolve_binary_in("claude", None, &fake_env(home.path(), "")).unwrap(), bin, "{rel}");
+            // A minimal GUI PATH without the install dir still finds it.
+            assert_eq!(resolve_binary_in("claude", None, &fake_env(home.path(), "/usr/bin:/bin")).unwrap(), bin);
+        }
+    }
+
+    #[test]
+    fn resolve_ignores_relative_path_entries_and_a_relative_home() {
+        let cwd_like = tempfile::tempdir().unwrap();
+        stand_in(cwd_like.path(), "codex", "exit 0");
+        let env = SearchEnv { home: Some(PathBuf::from("relative-home")), path: Some(".:bin".into()) };
+        // Nothing absolute to search except the fixed system dirs.
+        assert!(env.search_path().to_string_lossy().split(':').all(|d| d.starts_with('/')));
+        assert!(!env.install_dirs().iter().any(|d| d.starts_with("relative-home")));
+    }
+
+    #[test]
+    fn child_path_starts_with_the_cli_dir_then_install_dirs_then_inherited() {
+        let env = fake_env(Path::new("/h"), "/usr/bin:/opt/homebrew/bin:rel:/bin");
+        assert_eq!(
+            env.child_path(Path::new("/x/y/claude")),
+            OsString::from(
+                "/x/y:/h/.local/bin:/h/.claude/local:/opt/homebrew/bin:/usr/local/bin:/h/.npm-global/bin:/h/.bun/bin:/usr/bin:/bin"
+            )
+        );
+        let no_home = SearchEnv { home: None, path: None };
+        assert_eq!(no_home.child_path(Path::new("/x/claude")), OsString::from("/x:/opt/homebrew/bin:/usr/local/bin"));
+    }
+
+    #[test]
+    fn the_cli_runs_with_its_own_dir_first_on_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = stand_in(dir.path(), "claude", r#"cat > /dev/null; printf '%s' "$PATH""#);
+        let out = run(&bin, Provider::Claude, "s", "p", FAST).unwrap();
+        assert!(out.stdout.starts_with(&format!("{}:", dir.path().display())), "{}", out.stdout);
+    }
+
     // --- arguments and stdin ---
 
     const ECHO_ARGS: &str = r#"for a in "$@"; do printf '[%s]\n' "$a"; done; printf 'STDIN:'; cat"#;
@@ -630,6 +799,19 @@ echo "progress noise on stdout""#,
         let bin = dir.path().join("claude");
         fs::write(&bin, "not executable").unwrap();
         assert_eq!(run(&bin, Provider::Claude, "s", "p", FAST).unwrap_err().code, "spawn_failed");
+    }
+
+    #[test]
+    fn a_background_process_holding_stdout_does_not_delay_the_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("bg");
+        let body = format!("cat > /dev/null; echo done; sleep 5 & echo $! > '{}'; exit 0", pid_file.display());
+        let bin = stand_in(dir.path(), "claude", &body);
+        let began = Instant::now();
+        let out = run(&bin, Provider::Claude, "s", "p", FAST).unwrap();
+        assert_eq!(out, CliOutput { stdout: "done\n".into(), exit_code: 0 });
+        assert!(began.elapsed() < Duration::from_secs(3), "took {:?}", began.elapsed());
+        assert_dies(read_pid(&pid_file));
     }
 
     // --- limits ---
