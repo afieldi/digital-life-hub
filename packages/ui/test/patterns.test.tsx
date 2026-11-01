@@ -470,3 +470,45 @@ test("CommandBar onKeyDown returning true skips built-in handling", async () => 
   expect(onKeyDown).toHaveBeenCalled();
   expect(run).not.toHaveBeenCalled();
 });
+
+test("CommandBar announces results in a persistent live region", () => {
+  const { rerender } = render(slotBar());
+  const region = screen.getByRole("status");
+  expect(region.textContent).toBe("");
+  rerender(slotBar({ result: <p>The answer is 42</p> }));
+  expect(screen.getByRole("status")).toBe(region);
+  expect(region.textContent).toBe("The answer is 42");
+});
+
+test("CommandBar interpretation sits in a polite live region", () => {
+  render(slotBar({ interpretation: <span>Understood as: note</span> }));
+  const live = screen
+    .getByText("Understood as: note")
+    .closest("[aria-live='polite']");
+  expect(live).not.toBeNull();
+});
+
+test("CommandBar drops dangling ARIA references in result mode", () => {
+  const { rerender } = render(slotBar());
+  const input = screen.getByRole("combobox");
+  expect(input.getAttribute("aria-controls")).toBeTruthy();
+  rerender(slotBar({ result: <p>Answer</p> }));
+  expect(input.hasAttribute("aria-controls")).toBe(false);
+  expect(input.hasAttribute("aria-activedescendant")).toBe(false);
+});
+
+test("CommandBar onKeyDown hook sees Tab and ArrowDown", async () => {
+  const keys: string[] = [];
+  render(
+    slotBar({
+      onKeyDown: (e) => {
+        keys.push(e.key);
+        return e.key === "ArrowDown";
+      },
+    }),
+  );
+  await userEvent.keyboard("{ArrowDown}");
+  await userEvent.keyboard("{Tab}");
+  expect(keys).toContain("ArrowDown");
+  expect(keys).toContain("Tab");
+});

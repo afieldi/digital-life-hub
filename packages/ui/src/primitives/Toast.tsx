@@ -16,6 +16,8 @@ import { Button } from "./Button";
 export type { ToastAction, ToastContentValue, ToastQueue, ToastTone };
 
 const queue = createToastQueue();
+/** Keys of toasts whose action has already fired. */
+const fired = new Set<string>();
 
 /** Show a toast in the mounted ToastRegion. Returns its key for closeToast. */
 export function toast(
@@ -54,11 +56,15 @@ export function ToastRegion({
           <RACToastContent role="status" className="flex-1">
             {t.content.message}
           </RACToastContent>
-          {t.content.actions?.map((a) => (
+          {t.content.actions?.map((a, i) => (
             <Button
-              key={a.label}
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed list per toast
+              key={i}
               variant="ghost"
               onPress={() => {
+                // Actions fire once per toast, even if pressed again during exit.
+                if (fired.has(t.key)) return;
+                fired.add(t.key);
                 a.onAction();
                 q.close(t.key);
               }}

@@ -98,3 +98,18 @@ test("closeToast removes the toast by key", async () => {
   act(() => closeToast(key));
   await waitFor(() => expect(screen.queryByText("Working")).toBeNull());
 });
+
+test("toast actions fire once on rapid double press", async () => {
+  const onAction = vi.fn();
+  render(<ToastRegion />);
+  act(() => {
+    toast("Gone", { actions: [{ label: "Undo", onAction }] });
+  });
+  const btn = await screen.findByRole("button", { name: "Undo" });
+  await userEvent.dblClick(btn);
+  expect(onAction).toHaveBeenCalledOnce();
+});
+
+test("closeToast with an unknown key does not throw", () => {
+  expect(() => closeToast("unknown")).not.toThrow();
+});

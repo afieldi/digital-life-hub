@@ -161,9 +161,9 @@ export function CommandBar({
               autoFocus
               role="combobox"
               aria-expanded={!result && flat.length > 0}
-              aria-controls={listId}
+              aria-controls={result ? undefined : listId}
               aria-autocomplete="list"
-              aria-activedescendant={activeId}
+              aria-activedescendant={result ? undefined : activeId}
               aria-label={placeholder}
               placeholder={placeholder}
               value={query}
@@ -172,16 +172,27 @@ export function CommandBar({
               className="min-h-11 flex-1 bg-transparent text-[19px] text-ink-primary outline-hidden placeholder:text-ink-muted"
             />
           </div>
-          {interpretation ? (
-            <div className="border-b border-white/12 px-5 py-3">
-              {interpretation}
-            </div>
-          ) : null}
-          {result ? (
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-[15px]">
-              {result}
-            </div>
-          ) : (
+          {/* Live regions stay mounted so changes to their contents are announced. */}
+          <div
+            aria-live="polite"
+            className={
+              interpretation ? "border-b border-white/12 px-5 py-3" : undefined
+            }
+          >
+            {interpretation}
+          </div>
+          <div
+            role="status"
+            aria-live="polite"
+            className={
+              result
+                ? "min-h-0 flex-1 overflow-y-auto px-5 py-4 text-[15px]"
+                : undefined
+            }
+          >
+            {result}
+          </div>
+          {result ? null : (
             <div
               id={listId}
               role="listbox"
