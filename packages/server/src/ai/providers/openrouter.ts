@@ -58,7 +58,7 @@ export function createOpenRouter(opts: {
           );
         }
         throw providerError(
-          firstLine(e instanceof Error ? e.message : String(e)),
+          firstLine(e instanceof Error ? e.message : String(e), opts.apiKey),
         );
       }
       if (res.status === 401 || res.status === 403) {
@@ -72,7 +72,10 @@ export function createOpenRouter(opts: {
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         throw providerError(
-          firstLine(body.trim() ? body : res.statusText || String(res.status)),
+          firstLine(
+            body.trim() ? body : res.statusText || String(res.status),
+            opts.apiKey,
+          ),
         );
       }
       const body = (await res.json().catch(() => null)) as Completion | null;

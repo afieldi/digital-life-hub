@@ -99,11 +99,27 @@ export class FakeProvider implements AiProvider {
         aiErrorMessage(next.error, this.id, {
           seconds: 60,
           firstLine: "fake",
-          reason: "signed_out",
+          reason: this.id === "openrouter" ? "no_key" : "signed_out",
         }),
       );
     }
-    await new Promise((r) => setTimeout(r, next.delayMs));
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(
+          new AiError(
+            "provider_error",
+            aiErrorMessage("provider_error", this.id, { firstLine: "aborted" }),
+          ),
+        );
+      };
+      const timer = setTimeout(() => {
+        req.signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, next.delayMs);
+      if (req.signal.aborted) onAbort();
+      else req.signal.addEventListener("abort", onAbort, { once: true });
+    });
     return { raw: next.raw };
   }
 }

@@ -55,8 +55,16 @@ export function aiErrorMessage(
   }
 }
 
-/** First non-empty line of `text`, trimmed of a trailing period. */
-export function firstLine(text: string): string {
-  const line = text.split("\n").find((l) => l.trim() !== "") ?? "";
-  return line.trim().replace(/\.$/, "") || "unknown error";
+const MAX_FIRST_LINE = 200;
+
+/** First non-empty line of `text`, minus a trailing period, capped at 200 characters. */
+export function firstLine(text: string, redact?: string): string {
+  const safe = redact ? text.split(redact).join("[redacted]") : text;
+  const line = (safe.split("\n").find((l) => l.trim() !== "") ?? "")
+    .trim()
+    .replace(/\.$/, "");
+  if (!line) return "unknown error";
+  return line.length > MAX_FIRST_LINE
+    ? `${line.slice(0, MAX_FIRST_LINE)}…`
+    : line;
 }

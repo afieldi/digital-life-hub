@@ -108,6 +108,34 @@ describe("openrouter", () => {
     );
   });
 
+  test("a long single-line body is capped at 200 chars plus an ellipsis", async () => {
+    const f = fakeFetch(500, "x".repeat(1000));
+    const e = await codeOf(
+      createOpenRouter({ apiKey: "k", fetch: f.impl }).complete(req()),
+    );
+    const prefix = "OpenRouter returned an error: ";
+    const part = e.message.slice(prefix.length, -1);
+    expect(part).toHaveLength(201);
+    expect(part.endsWith("\u2026")).toBe(true);
+  });
+
+  test("the api key is redacted from body and fetch errors", async () => {
+    const key = "sk-or-secret-123";
+    const f = fakeFetch(500, `bad key ${key} rejected`);
+    const e1 = await codeOf(
+      createOpenRouter({ apiKey: key, fetch: f.impl }).complete(req()),
+    );
+    expect(e1.message).not.toContain(key);
+    expect(e1.message).toContain("[redacted]");
+    const impl: typeof fetch = async () => {
+      throw new TypeError(`failed with ${key}`);
+    };
+    const e2 = await codeOf(
+      createOpenRouter({ apiKey: key, fetch: impl }).complete(req()),
+    );
+    expect(e2.message).not.toContain(key);
+  });
+
   test("a rejected fetch is provider_error", async () => {
     const impl: typeof fetch = async () => {
       throw new TypeError("connection refused");
@@ -241,6 +269,35 @@ describe("FakeProvider", () => {
     expect(p.calls).toHaveLength(3);
     expect(p.calls[0]?.prompt).toBe("hello");
     expect(p.id).toBe("openrouter");
+  });
+
+  test("error copy depends on the provider", async () => {
+    const or = new FakeProvider("openrouter").queue({
+      error: "provider_unavailable",
+    });
+    expect((await codeOf(or.complete(req()))).message).toBe(
+      "OpenRouter isn't set up on the server.",
+    );
+    const cli = new FakeProvider("claude-cli").queue({
+      error: "provider_unavailable",
+    });
+    expect((await codeOf(cli.complete(req()))).message).toBe(
+      "Claude Code isn't signed in. Run `claude` once in a terminal to sign in.",
+    );
+  });
+
+  test("delayMs rejects when the signal aborts", async () => {
+    const p = new FakeProvider().queue({ delayMs: 10_000, raw: "x" });
+    const ac = new AbortController();
+    const pending = p.complete(req(ac.signal));
+    ac.abort();
+    expect((await codeOf(pending)).code).toBe("provider_error");
+    const p2 = new FakeProvider().queue({ delayMs: 10_000, raw: "x" });
+    const pre = new AbortController();
+    pre.abort();
+    expect((await codeOf(p2.complete(req(pre.signal)))).code).toBe(
+      "provider_error",
+    );
   });
 
   test("an empty queue throws", async () => {
