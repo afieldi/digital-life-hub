@@ -21,13 +21,18 @@ export function collectPhrasingFiles(): string[] {
     .map((f) => join(ROOT, f));
 }
 
+export const NO_PHRASINGS_MESSAGE =
+  "No phrasings loaded — check packages/core/test/ai-phrasings.ts";
+
 export function formatMiss({ phrasing, got }: Miss): string {
   return `expected ${phrasing.actionId}/${phrasing.kind}, got ${got.actionId}/${got.kind}: "${phrasing.text}"`;
 }
 
 /** Core phrasings plus every export named `*Phrasings` from each module file. */
 async function loadPhrasings(files: string[]): Promise<Phrasing[]> {
-  const all = [...corePhrasings];
+  // Test hook: simulates a broken phrasings import.
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: script-only, not a turbo input
+  const all = process.env.AI_EVAL_EMPTY ? [] : [...corePhrasings];
   for (const file of files) {
     const mod = (await import(pathToFileURL(file).href)) as Record<
       string,
@@ -57,6 +62,11 @@ async function main(): Promise<void> {
     ),
   ];
   const phrasings = await loadPhrasings(collectPhrasingFiles());
+
+  if (phrasings.length === 0) {
+    console.error(NO_PHRASINGS_MESSAGE);
+    process.exit(1);
+  }
 
   const started = performance.now();
   const { accuracy, misses } = await runInterpreterSuite(

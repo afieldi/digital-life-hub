@@ -105,6 +105,8 @@ function spawnCli(
             new Error(`${bin} exited ${code ?? signal}: ${err.slice(0, 500)}`),
           ),
     );
+    // EPIPE if the CLI exits before reading stdin; `close` reports the failure.
+    child.stdin.on("error", () => {});
     child.stdin.end(stdin);
   });
 }
@@ -245,10 +247,11 @@ async function main(): Promise<void> {
   };
   let itemId: string | null = null;
   try {
-    for (const t of targets()) {
+    const all = targets();
+    for (const t of all) {
       if (t.skip) console.log(`${t.label}: skipped — ${t.skip}`);
     }
-    const active = targets().filter((t) => !t.skip);
+    const active = all.filter((t) => !t.skip);
     if (active.length === 0) return;
     const item = await writeItems(deps, (w) =>
       w.createItem({
@@ -266,8 +269,15 @@ async function main(): Promise<void> {
       }
     }
   } finally {
-    if (itemId) await softDelete(deps, itemId);
-    await close();
+    try {
+      if (itemId) await softDelete(deps, itemId);
+    } catch (e) {
+      console.log(
+        `Could not soft-delete smoke item ${itemId} — clean it up manually: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      await close();
+    }
   }
 }
 

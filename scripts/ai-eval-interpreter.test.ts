@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
-import { collectPhrasingFiles, formatMiss } from "./ai-eval-interpreter";
+import {
+  collectPhrasingFiles,
+  formatMiss,
+  NO_PHRASINGS_MESSAGE,
+} from "./ai-eval-interpreter";
 
 it("runs on the Core phrasings, exits 0 and prints Accuracy", () => {
   const r = spawnSync(
@@ -30,3 +34,13 @@ it("formats a miss as expected vs got", () => {
     }),
   ).toBe('expected retitle/do, got answer/ask: "rename this"');
 });
+
+it("refuses to pass with an empty phrasing list", () => {
+  const r = spawnSync(
+    "pnpm",
+    ["exec", "tsx", "scripts/ai-eval-interpreter.ts", "--interpreter=keywords"],
+    { encoding: "utf8", env: { ...process.env, AI_EVAL_EMPTY: "1" } },
+  );
+  expect(r.status).toBe(1);
+  expect(r.stderr).toContain(NO_PHRASINGS_MESSAGE);
+}, 60_000);
