@@ -117,7 +117,7 @@ test("OpenRouter is Ready when the server has a key", async () => {
   fakeStatus();
   await setup();
   expect(
-    within(await row("OpenRouter")).getByText("Ready"),
+    within(await row("OpenRouter")).getByText(/^Ready/),
   ).toBeInTheDocument();
 });
 
@@ -137,19 +137,19 @@ test("CLI rows show Not installed or Signed out, and Check again re-runs the che
   await setup();
   const claude = await row("Claude Code");
   const codex = await row("Codex");
-  expect(await within(claude).findByText("Not installed")).toBeInTheDocument();
-  expect(await within(codex).findByText("Signed out")).toBeInTheDocument();
+  expect(await within(claude).findByText(/^Not installed/)).toBeInTheDocument();
+  expect(await within(codex).findByText(/^Signed out/)).toBeInTheDocument();
   const before = fake.calls.filter((c) => c.provider === "claude-cli").length;
 
   fake.statuses["claude-cli"] = ready;
   await userEvent.click(
     within(claude).getByRole("button", { name: "Check again" }),
   );
-  expect(await within(claude).findByText("Ready")).toBeInTheDocument();
+  expect(await within(claude).findByText(/^Ready/)).toBeInTheDocument();
   expect(fake.calls.filter((c) => c.provider === "claude-cli").length).toBe(
     before + 1,
   );
-  expect(within(codex).getByText("Signed out")).toBeInTheDocument();
+  expect(within(codex).getByText(/^Signed out/)).toBeInTheDocument();
 });
 
 test("a program path is kept on this device and used by the next check", async () => {
@@ -265,4 +265,72 @@ test("with no requests yet, Recent requests says so", async () => {
   fakeStatus();
   await setup();
   expect(await screen.findByText("No requests yet.")).toBeInTheDocument();
+});
+
+test("a stored status shows before any check finishes, and Check again updates it", async () => {
+  const stored = {
+    installed: true,
+    signedIn: false,
+    version: null,
+    checkedAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+  };
+  localStorage.setItem("dlh.ai.cliStatus.claude-cli", JSON.stringify(stored));
+  let release: (s: CliStatus) => void = () => {};
+  const runner: CliRunner = {
+    run: async () => ({ stdout: "", exitCode: 0 }),
+    status: (provider) =>
+      provider === "claude-cli"
+        ? new Promise<CliStatus>((r) => {
+            release = r;
+          })
+        : Promise.resolve(ready),
+    cancel: async () => {},
+  };
+  setCliRunnerForTests(runner);
+  await setup();
+  // The check is still pending, yet the last result is on screen.
+  const claude = await row("Claude Code");
+  expect(await within(claude).findByText(/Signed out/)).toBeInTheDocument();
+  release(ready);
+  expect(await within(claude).findByText(/^Ready/)).toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      JSON.parse(localStorage.getItem("dlh.ai.cliStatus.claude-cli") ?? "{}"),
+    ).toMatchObject({ installed: true, signedIn: true }),
+  );
+  expect(within(claude).getByText(/Last checked just now/)).toBeInTheDocument();
+
+  // Check again updates the stored value.
+  setCliRunnerForTests({
+    ...runner,
+    status: async () => ({ installed: false, signedIn: false, version: null }),
+  });
+  await userEvent.click(
+    within(claude).getByRole("button", { name: "Check again" }),
+  );
+  await waitFor(() =>
+    expect(
+      JSON.parse(localStorage.getItem("dlh.ai.cliStatus.claude-cli") ?? "{}"),
+    ).toMatchObject({ installed: false }),
+  );
+});
+
+test("a relative program path shows an error and is not saved", async () => {
+  fakeStatus();
+  await setup();
+  await userEvent.click(await screen.findByText("Advanced"));
+  expect(
+    await screen.findByText(
+      /Use the full path, e\.g\. \/Users\/you\/\.local\/bin\/claude/,
+    ),
+  ).toBeInTheDocument();
+  const path = await screen.findByRole("textbox", {
+    name: "Claude Code program path",
+  });
+  await userEvent.type(path, "bin/claude");
+  await userEvent.tab();
+  expect(
+    await screen.findByText("Enter the full path, starting with /"),
+  ).toBeInTheDocument();
+  expect(localStorage.getItem("dlh.ai.cliPath.claude-cli")).toBeNull();
 });

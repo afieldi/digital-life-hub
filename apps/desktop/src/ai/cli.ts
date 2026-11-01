@@ -152,6 +152,56 @@ export function cliPathOverride(provider: CliProviderId): string | null {
   }
 }
 
+export type StoredCliStatus = CliStatus & { checkedAt: string };
+
+export function cliStatusKey(provider: CliProviderId): string {
+  return `dlh.ai.cliStatus.${provider}`;
+}
+
+/** The last status check made on this device, if one was kept. */
+export function storedCliStatus(
+  provider: CliProviderId,
+): StoredCliStatus | null {
+  try {
+    const raw = localStorage.getItem(cliStatusKey(provider));
+    if (!raw) return null;
+    const v: unknown = JSON.parse(raw);
+    if (
+      typeof v === "object" &&
+      v !== null &&
+      "installed" in v &&
+      "signedIn" in v &&
+      "checkedAt" in v &&
+      typeof v.installed === "boolean" &&
+      typeof v.signedIn === "boolean" &&
+      typeof v.checkedAt === "string"
+    ) {
+      const version =
+        "version" in v && typeof v.version === "string" ? v.version : null;
+      return {
+        installed: v.installed,
+        signedIn: v.signedIn,
+        version,
+        checkedAt: v.checkedAt,
+      };
+    }
+  } catch {
+    // Unreadable storage or JSON: treat as never checked.
+  }
+  return null;
+}
+
+export function saveCliStatus(
+  provider: CliProviderId,
+  status: StoredCliStatus,
+): void {
+  try {
+    localStorage.setItem(cliStatusKey(provider), JSON.stringify(status));
+  } catch {
+    // Storage unavailable: the status just isn't remembered.
+  }
+}
+
 const CLI_TIMEOUT_SECONDS = 120;
 
 function firstLine(text: string): string {

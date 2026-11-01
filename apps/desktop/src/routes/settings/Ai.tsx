@@ -18,10 +18,12 @@ import { type Key, useState } from "react";
 import { ALL_ACTIONS } from "../../ai/actions";
 import {
   type CliProviderId,
-  type CliStatus,
   cliPathKey,
   cliPathOverride,
   cliStatus,
+  type StoredCliStatus,
+  saveCliStatus,
+  storedCliStatus,
 } from "../../ai/cli";
 import { PROVIDER_NAMES } from "../../ai/providers";
 import { undoAiRequest } from "../../ai/useAiRequest";
@@ -32,7 +34,10 @@ const PROVIDERS: AiProviderId[] = ["openrouter", "claude-cli", "codex-cli"];
 const CLI_PROVIDERS: CliProviderId[] = ["claude-cli", "codex-cli"];
 const KINDS = { ask: "Ask", suggest: "Suggest", do: "Do" } as const;
 
-function cliLabel(status: CliStatus | undefined, failed: boolean): string {
+function cliLabel(
+  status: StoredCliStatus | undefined,
+  failed: boolean,
+): string {
   if (failed) return "Could not check";
   if (!status) return "Checking…";
   if (!status.installed) return "Not installed";
@@ -42,18 +47,31 @@ function cliLabel(status: CliStatus | undefined, failed: boolean): string {
 function CliProviderRow({ provider }: { provider: CliProviderId }) {
   const status = useQuery({
     queryKey: ["ai", "cliStatus", provider],
-    queryFn: () => cliStatus(provider, cliPathOverride(provider)),
+    queryFn: async (): Promise<StoredCliStatus> => {
+      const checked = {
+        ...(await cliStatus(provider, cliPathOverride(provider))),
+        checkedAt: new Date().toISOString(),
+      };
+      saveCliStatus(provider, checked);
+      return checked;
+    },
+    initialData: () => storedCliStatus(provider) ?? undefined,
     retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
   });
   return (
     <ItemRow
       title={PROVIDER_NAMES[provider]}
-      meta={
+      meta={[
+        cliLabel(status.data, status.isError),
         status.isFetching && status.data
           ? "Checking…"
-          : cliLabel(status.data, status.isError)
-      }
+          : status.data
+            ? `Last checked ${formatWhen(status.data.checkedAt, new Date())}`
+            : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
       trailing={
         <Button
           variant="ghost"
@@ -67,15 +85,31 @@ function CliProviderRow({ provider }: { provider: CliProviderId }) {
   );
 }
 
+const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/]|\\\\)/;
+
 function CliPathField({ provider }: { provider: CliProviderId }) {
   const queryClient = useQueryClient();
+  const [invalid, setInvalid] = useState(false);
+  const example =
+    provider === "claude-cli"
+      ? "/Users/you/.local/bin/claude"
+      : "/Users/you/.local/bin/codex";
   return (
     <TextField
       label={`${PROVIDER_NAMES[provider]} program path`}
-      description="Leave empty to find it automatically. Kept on this device."
+      description={`Use the full path, e.g. ${example}. Leave empty to find it automatically. Kept on this device.`}
+      errorMessage={
+        invalid ? "Enter the full path, starting with /" : undefined
+      }
+      isInvalid={invalid}
       defaultValue={cliPathOverride(provider) ?? ""}
+      onChange={() => setInvalid(false)}
       onBlur={(e) => {
         const value = e.target.value.trim();
+        if (value !== "" && !ABSOLUTE_PATH.test(value)) {
+          setInvalid(true);
+          return;
+        }
         if (value === (cliPathOverride(provider) ?? "")) return;
         try {
           if (value) localStorage.setItem(cliPathKey(provider), value);
@@ -92,6 +126,12 @@ function CliPathField({ provider }: { provider: CliProviderId }) {
   );
 }
 
+function formatWhen(iso: string, now: Date): string {
+  return now.getTime() - new Date(iso).getTime() < 60_000
+    ? "just now"
+    : formatLastActive(iso, now);
+}
+
 function formatDuration(ms: number): string {
   return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
@@ -102,10 +142,8 @@ function formatResult(e: AiLogEntry): string {
 }
 
 function entryMeta(e: AiLogEntry, now: Date): string {
-  const when =
-    now.getTime() - new Date(e.createdAt).getTime() < 60_000
-      ? "Just now"
-      : formatLastActive(e.createdAt, now);
+  const ago = formatWhen(e.createdAt, now);
+  const when = ago.charAt(0).toUpperCase() + ago.slice(1);
   const tokens =
     e.inputTokens !== null || e.outputTokens !== null
       ? `${(e.inputTokens ?? 0) + (e.outputTokens ?? 0)} tokens`
@@ -202,6 +240,7 @@ export function Ai() {
   const [error, setError] = useState<string | null>(null);
   const save = useMutation(
     trpc.ai.settings.set.mutationOptions({
+      onMutate: () => setError(null),
       onSuccess: () => {
         setError(null);
         return settings.refetch();
