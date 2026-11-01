@@ -1,4 +1,4 @@
-import { ApiClientProvider } from "@dlh/client";
+import { ApiClientProvider, OpenItemProvider } from "@dlh/client";
 import { Scene } from "@dlh/ui";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
@@ -51,11 +51,13 @@ export function App({ router, auth }: { router: AppRouter; auth: AuthSetup }) {
           sessionCheckMs={auth.sessionCheckMs}
         >
           <ApiClientProvider client={api.trpcClient}>
-            <Gate
-              router={router}
-              method={auth.method}
-              subscribe={api.subscribeChanges}
-            />
+            <OpenItemProvider>
+              <Gate
+                router={router}
+                method={auth.method}
+                subscribe={api.subscribeChanges}
+              />
+            </OpenItemProvider>
           </ApiClientProvider>
         </AuthProvider>
       </TRPCProvider>

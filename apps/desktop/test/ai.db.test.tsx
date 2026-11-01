@@ -1,0 +1,310 @@
+import { resolve } from "node:path";
+import { freshTestDb } from "@dlh/db/testing";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach } from "vitest";
+import {
+  CliError,
+  type CliRunInput,
+  type CliRunner,
+  setCliRunnerForTests,
+} from "../src/ai/cli";
+import { signedInApp } from "./apiHarness";
+
+// jsdom gives @dlh/db no file URL to find its migrations from; tests run from apps/desktop.
+const MIGRATIONS = resolve(process.cwd(), "../../packages/db/drizzle");
+
+const closers: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  // Toasts live in a module-level queue that outlives each render: dismiss
+  // them while the region is still mounted, then unmount.
+  for (const b of screen.queryAllByRole("button", { name: "Dismiss" })) {
+    fireEvent.click(b);
+  }
+  await waitFor(() =>
+    expect(screen.queryAllByRole("button", { name: "Dismiss" })).toHaveLength(
+      0,
+    ),
+  );
+  cleanup();
+  setCliRunnerForTests(null);
+  await Promise.all(closers.splice(0).map((close) => close()));
+});
+
+async function setup(opts: { onHome?: boolean } = {}) {
+  const t = await freshTestDb(MIGRATIONS);
+  closers.push(t.close);
+  const app = await signedInApp("/", { db: t.db });
+  const client = app.api.client(app.token);
+  const sample = await client.sample.create.mutate({ title: "Hello item" });
+  if (!opts.onHome) app.router.history.push(`/sample/${sample.id}`);
+  app.renderApp();
+  if (!opts.onHome) {
+    await screen.findByRole("heading", { name: "Hello item", level: 1 });
+  }
+  const title = async () => (await client.items.get.query(sample)).title;
+  return { ...app, client, sample, fake: app.api.ai, title };
+}
+
+async function ask(text: string) {
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Command bar" }),
+  );
+  const input = await screen.findByRole("combobox");
+  await userEvent.type(input, text);
+  return input;
+}
+
+const retitleOptions = JSON.stringify({
+  options: [
+    { title: "First idea", reason: "Short." },
+    { title: "Second idea", reason: "Clear." },
+    { title: "Third idea", reason: "Specific." },
+  ],
+});
+
+/** A CLI runner that answers with `stdout`, recording its requests. */
+function fakeCli(stdout: (req: CliRunInput) => string | Promise<string>) {
+  const calls: CliRunInput[] = [];
+  const runner: CliRunner = {
+    run: async (req) => {
+      calls.push(req);
+      return { stdout: await stdout(req), exitCode: 0 };
+    },
+    status: async () => ({ installed: true, signedIn: true, version: "1" }),
+    cancel: async () => {},
+  };
+  setCliRunnerForTests(runner);
+  return { calls, runner };
+}
+
+test("a rename request on an item is understood as Rename, Do; Tab switches to Suggest", async () => {
+  await setup();
+  await ask("give this a better title");
+  expect(await screen.findByText("Rename")).toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Do" })).toBeChecked();
+  expect(
+    await screen.findByText("Changes it now, with Undo after · OpenRouter"),
+  ).toBeInTheDocument();
+  // Search results stay visible under the row while typing.
+  expect(screen.getByRole("listbox", { name: "Results" })).toBeInTheDocument();
+  await userEvent.keyboard("{Tab}");
+  expect(screen.getByRole("radio", { name: "Suggest" })).toBeChecked();
+  expect(
+    screen.getByText(
+      "Shows options, changes nothing until you pick · OpenRouter",
+    ),
+  ).toBeInTheDocument();
+  await userEvent.keyboard("{Tab}");
+  expect(screen.getByRole("radio", { name: "Do" })).toBeChecked();
+});
+
+test("↵ on Do renames at once with an Undo toast, and Undo restores", async () => {
+  const { fake, title } = await setup();
+  fake.queue(JSON.stringify({ title: "Better title" }));
+  await ask("give this a better title");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+  expect(
+    await screen.findByText("Renamed to “Better title”"),
+  ).toBeInTheDocument();
+  expect(await title()).toBe("Better title");
+  await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(await screen.findByText("Undid rename")).toBeInTheDocument();
+  expect(await title()).toBe("Hello item");
+});
+
+test("Suggest shows three options and Use applies the one picked", async () => {
+  const { fake, title } = await setup();
+  fake.queue(retitleOptions);
+  await ask("suggest a few titles");
+  expect(await screen.findByRole("radio", { name: "Suggest" })).toBeChecked();
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByText("Second idea")).toBeInTheDocument();
+  expect(screen.getByText("Clear.")).toBeInTheDocument();
+  const uses = screen.getAllByRole("button", { name: /^Use / });
+  expect(uses).toHaveLength(3);
+  await userEvent.click(uses[1] as HTMLElement);
+  expect(
+    await screen.findByText("Renamed to “Second idea”"),
+  ).toBeInTheDocument();
+  expect(await title()).toBe("Second idea");
+  expect(screen.queryByRole("combobox")).toBeNull();
+});
+
+test("keys 1–3 pick a suggested option", async () => {
+  const { fake, title } = await setup();
+  fake.queue(retitleOptions);
+  await ask("suggest a few titles");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  await screen.findByText("Third idea");
+  await userEvent.keyboard("3");
+  await waitFor(async () => expect(await title()).toBe("Third idea"));
+});
+
+test("None of these discards the options and changes nothing", async () => {
+  const { fake, title, client } = await setup();
+  fake.queue(retitleOptions);
+  await ask("suggest a few titles");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "None of these" }),
+  );
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries[0]?.status).toBe("discarded");
+  });
+  expect(await title()).toBe("Hello item");
+});
+
+test("“delete this” is offered as Suggest only, shown first", async () => {
+  await setup();
+  await ask("delete this");
+  expect(await screen.findByText("Delete")).toBeInTheDocument();
+  expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([
+    "Suggest",
+  ]);
+  expect(screen.getByRole("radio", { name: "Suggest" })).toBeChecked();
+  expect(
+    await screen.findByText("Deletes always show you first · OpenRouter"),
+  ).toBeInTheDocument();
+});
+
+test("Show options after a Do runs the same request as Suggest", async () => {
+  const { fake } = await setup();
+  fake.queue(JSON.stringify({ title: "Better title" }), retitleOptions);
+  await ask("give this a better title");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Show options" }),
+  );
+  expect(await screen.findByRole("combobox")).toHaveValue(
+    "give this a better title",
+  );
+  expect(await screen.findByText("Second idea")).toBeInTheDocument();
+  expect(await screen.findByRole("radio", { name: "Suggest" })).toBeChecked();
+  expect(fake.calls).toHaveLength(2);
+  expect(fake.calls[1]?.prompt).toContain("give this a better title");
+});
+
+test("an Ask answer shows the items it used as links, and Copy", async () => {
+  const { fake, client } = await setup();
+  const other = await client.sample.create.mutate({ title: "Linked note" });
+  fake.queue(
+    JSON.stringify({ answer: "It greets the world.", used: [other.id] }),
+  );
+  await ask("summarise this");
+  expect(await screen.findByRole("radio", { name: "Ask" })).toBeChecked();
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByText("It greets the world.")).toBeInTheDocument();
+  const link = await screen.findByRole("link", { name: "Linked note" });
+  expect(link).toHaveAttribute("href", `/sample/${other.id}`);
+  expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+});
+
+test("a Claude Code bad_output shows the exact message and Use OpenRouter retries", async () => {
+  const { fake, client, title } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  const cli = fakeCli(() => "not json at all");
+  await ask("suggest a few titles");
+  expect(
+    await screen.findByText(
+      "Shows options, changes nothing until you pick · Claude Code",
+    ),
+  ).toBeInTheDocument();
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByText(
+      "Claude Code's answer wasn't in the expected format, so nothing was changed.",
+    ),
+  ).toBeInTheDocument();
+  expect(cli.calls).toHaveLength(1);
+  expect(cli.calls[0]?.provider).toBe("claude-cli");
+  expect(JSON.parse(cli.calls[0]?.schema ?? "")).toHaveProperty("type");
+  expect(await title()).toBe("Hello item");
+
+  fake.queue(retitleOptions);
+  await userEvent.click(screen.getByRole("button", { name: "Use OpenRouter" }));
+  expect(await screen.findByText("Second idea")).toBeInTheDocument();
+  expect(cli.calls).toHaveLength(1);
+});
+
+test("a failed Do shows its message in a toast with the error's actions", async () => {
+  const { client } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  fakeCli(() => {
+    throw new CliError("not_installed", "claude was not found");
+  });
+  await ask("give this a better title");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByText("Claude Code isn't installed on this computer."),
+  ).toBeInTheDocument();
+  const region = screen.getByRole("region", { name: /notification/i });
+  expect(
+    within(region).getByRole("button", { name: "Use OpenRouter" }),
+  ).toBeInTheDocument();
+  expect(
+    within(region).getByRole("button", { name: "Open Settings" }),
+  ).toBeInTheDocument();
+  // The request does not stay pending on the server.
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries[0]?.status).toBe("cancelled");
+  });
+});
+
+test("Cancel on a running Claude Code Do stops it and ends the request", async () => {
+  const { client, title } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  let rejectRun: ((e: unknown) => void) | undefined;
+  const cancelled: string[] = [];
+  setCliRunnerForTests({
+    run: () =>
+      new Promise((_, reject) => {
+        rejectRun = reject;
+      }),
+    status: async () => ({ installed: true, signedIn: true, version: "1" }),
+    cancel: async (runId) => {
+      cancelled.push(runId);
+      rejectRun?.(new CliError("cancelled", "Cancelled"));
+    },
+  });
+  await ask("give this a better title");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByText("Claude Code is working…"),
+  ).toBeInTheDocument();
+  await waitFor(() => expect(rejectRun).toBeDefined());
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await waitFor(() =>
+    expect(screen.queryByText("Claude Code is working…")).toBeNull(),
+  );
+  expect(cancelled).toHaveLength(1);
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries[0]?.status).toBe("cancelled");
+  });
+  expect(await title()).toBe("Hello item");
+});
+
+test("on Home only answer is offered", async () => {
+  await setup({ onHome: true });
+  await ask("give this a better title");
+  expect(await screen.findByText("Answer")).toBeInTheDocument();
+  expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual([
+    "Ask",
+  ]);
+});

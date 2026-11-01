@@ -9,7 +9,8 @@ import {
 import { createTRPCContext } from "@trpc/tanstack-react-query";
 import { type SubscribeChanges, subscribeChanges } from "./changes";
 
-export const { TRPCProvider, useTRPC } = createTRPCContext<ApiRouter>();
+export const { TRPCProvider, useTRPC, useTRPCClient } =
+  createTRPCContext<ApiRouter>();
 
 export const API_URL: string =
   import.meta.env.VITE_API_URL || "http://127.0.0.1:8787";

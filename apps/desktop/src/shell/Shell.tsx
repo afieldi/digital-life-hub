@@ -15,6 +15,7 @@ import { Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import { House, Settings as SettingsIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RouterProvider } from "react-aria-components";
+import { useAskAi } from "../ai/useAskAi";
 import { useTRPC } from "../api/client";
 import { registry } from "../modules";
 import { createHotkeys } from "./hotkeys";
@@ -200,6 +201,14 @@ export function Shell() {
     recents.data,
   ]);
 
+  const ai = useAskAi({
+    open: commandOpen,
+    setOpen: setCommandOpen,
+    query,
+    setQuery,
+    navigate,
+  });
+
   return (
     <RouterProvider
       navigate={(to) => navigate(to)}
@@ -227,10 +236,14 @@ export function Shell() {
         />
         <CommandBar
           isOpen={commandOpen}
-          onOpenChange={setCommandOpen}
+          onOpenChange={ai.onOpenChange}
           query={query}
-          onQueryChange={setQuery}
+          onQueryChange={ai.onQueryChange}
           groups={groups}
+          interpretation={ai.interpretation}
+          result={ai.result}
+          footer={ai.footer}
+          onKeyDown={ai.onKeyDown}
         />
         <ToastRegion />
       </SceneOverrideContext>
