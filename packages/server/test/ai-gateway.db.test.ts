@@ -259,8 +259,10 @@ test("do renames at once, undo restores, a second undo conflicts", async () => {
   expect(applied.itemVersion?.toISOString()).toBe(s.item.updatedAt);
 
   s.tick();
-  const undone = await undo(s.deps, { requestId });
-  expect(undone).toEqual({ summary: "Undid rename" });
+  await expectTracked(s, async () => {
+    const undone = await undo(s.deps, { requestId });
+    expect(undone).toEqual({ summary: "Undid rename" });
+  });
   expect(await titleOf(s)).toBe("Old");
   const row = await rowOf(s, requestId);
   expect(row.status).toBe("undone");
