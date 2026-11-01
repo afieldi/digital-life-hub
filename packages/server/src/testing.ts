@@ -1,6 +1,13 @@
+import type { AiProviderId } from "@dlh/core";
 import { type Db, items } from "@dlh/db";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
+import { AiError, aiErrorMessage } from "./ai/errors";
+import type {
+  AiCompleteRequest,
+  AiCompleteResult,
+  AiProvider,
+} from "./ai/providers";
 import { createChangeBus } from "./changes";
 import type { CoreDeps } from "./trpc";
 
@@ -61,5 +68,42 @@ export async function expectTracked(
     }
   } finally {
     unsubscribe();
+  }
+}
+
+type FakeOutput =
+  | string
+  | { error: AiError["code"] }
+  | { delayMs: number; raw: string };
+
+/** Scripted AiProvider: `queue` outputs are replayed in order; requests are kept in `calls`. */
+export class FakeProvider implements AiProvider {
+  readonly calls: AiCompleteRequest[] = [];
+  private outputs: FakeOutput[] = [];
+
+  constructor(readonly id: AiProviderId = "openrouter") {}
+
+  queue(...outputs: FakeOutput[]): this {
+    this.outputs.push(...outputs);
+    return this;
+  }
+
+  async complete(req: AiCompleteRequest): Promise<AiCompleteResult> {
+    this.calls.push(req);
+    const next = this.outputs.shift();
+    if (next === undefined) throw new Error("FakeProvider: queue is empty");
+    if (typeof next === "string") return { raw: next };
+    if ("error" in next) {
+      throw new AiError(
+        next.error,
+        aiErrorMessage(next.error, this.id, {
+          seconds: 60,
+          firstLine: "fake",
+          reason: "signed_out",
+        }),
+      );
+    }
+    await new Promise((r) => setTimeout(r, next.delayMs));
+    return { raw: next.raw };
   }
 }

@@ -3,6 +3,14 @@ export {
   itemContext,
   MAX_CONTEXT_CHARS,
 } from "./ai/context";
+export { AiError, aiErrorMessage, PROVIDER_NAMES } from "./ai/errors";
+export {
+  type AiCompleteRequest,
+  type AiCompleteResult,
+  type AiProvider,
+  createOpenRouter,
+  unwrapCliOutput,
+} from "./ai/providers";
 export {
   type AiRunner,
   collectAiRunners,
