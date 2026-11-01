@@ -298,6 +298,7 @@ Four milestones, each ending in something you can run. Core is done when all fou
 4. **AI gateway.** Provider interface, OpenRouter, Claude Code and Codex runners, AI actions (Ask, Suggest, Do with Undo), request interpreter, settings.
    - Done when: "summarise this item" and "give this a better title" (with Undo) work through all three providers, a malformed answer is rejected with a clear message, "delete this" is shown first, and all of it shows in the request log.
    - Deep dive: [AI Gateway](ai-gateway.md).
+   - Status: implemented; pending the manual Done check (`pnpm ai:smoke` with each provider signed in).
 
 ## Open questions
 

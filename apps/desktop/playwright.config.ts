@@ -27,6 +27,8 @@ export default defineConfig({
         GOOGLE_CLIENT_ID: "e2e-client-id",
         GOOGLE_CLIENT_SECRET: "e2e-client-secret",
         ALLOWED_EMAIL: "e2e@example.test",
+        // A scripted OpenRouter stand-in (honoured only under NODE_ENV=development).
+        AI_FAKE_PROVIDER: "1",
       },
     },
     {

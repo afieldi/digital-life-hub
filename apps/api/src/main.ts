@@ -5,6 +5,7 @@ import {
   coreAi,
   createChangeBus,
   createOpenRouter,
+  devFakeAi,
 } from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
@@ -72,10 +73,12 @@ const deps = {
   ai: {
     runners: aiRunners,
     descriptions: [...aiRunners.values()].map((r) => r.action),
-    providers: config.openrouter.apiKey
-      ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }
-      : {},
-    defaultModel: config.openrouter.defaultModel,
+    ...(devFakeAi(process.env) ?? {
+      providers: config.openrouter.apiKey
+        ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }
+        : {},
+      defaultModel: config.openrouter.defaultModel,
+    }),
   },
 };
 const app = createApp(deps);

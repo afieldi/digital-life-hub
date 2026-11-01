@@ -20,6 +20,8 @@ test("migrations create sessions with uuidv7 ids", async () => {
     sql`select table_name from information_schema.tables where table_schema = 'public' order by 1`,
   );
   expect(tables.map((t) => t.table_name)).toEqual([
+    "ai_requests",
+    "ai_settings",
     "item_views",
     "items",
     "links",

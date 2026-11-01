@@ -20,14 +20,16 @@ mise install && pnpm install
 pnpm dev
 ```
 
-`pnpm dev` starts Postgres in Docker, applies migrations, then runs the API and the desktop app. For Google sign-in, copy `apps/api/.env.example` to `apps/api/.env` and fill it in.
+`pnpm dev` starts Postgres in Docker, applies migrations, then runs the API and the desktop app. For Google sign-in, copy `apps/api/.env.example` to `apps/api/.env` and fill it in. To use OpenRouter for AI, also set `OPENROUTER_API_KEY` there, and optionally `OPENROUTER_DEFAULT_MODEL`; the Claude Code and Codex CLI providers need no key.
 
-| Command                        | Does                                                               |
-| ------------------------------ | ------------------------------------------------------------------ |
-| `pnpm dev`                     | Starts everything                                                  |
-| `pnpm dev:down`                | Stops Postgres                                                     |
-| `pnpm db:reset`                | Wipes the dev database and reseeds sample items                    |
-| `pnpm gen:modules`             | Regenerates the module registry (`pnpm lint` fails if it is stale) |
-| `pnpm test`                    | Unit tests                                                         |
-| `pnpm test:db`                 | Database tests (needs Postgres)                                    |
-| `pnpm typecheck` / `pnpm lint` | Type and lint checks                                               |
+| Command                        | Does                                                                 |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `pnpm dev`                     | Starts everything                                                    |
+| `pnpm dev:down`                | Stops Postgres                                                       |
+| `pnpm db:reset`                | Wipes the dev database and reseeds sample items                      |
+| `pnpm gen:modules`             | Regenerates the module registry (`pnpm lint` fails if it is stale)   |
+| `pnpm test`                    | Unit tests                                                           |
+| `pnpm test:db`                 | Database tests (needs Postgres)                                      |
+| `pnpm typecheck` / `pnpm lint` | Type and lint checks                                                 |
+| `pnpm ai:eval-interpreter`     | Scores the request interpreter against its example phrases           |
+| `pnpm ai:smoke`                | Runs an answer, a rename and an undo through each signed-in provider |
