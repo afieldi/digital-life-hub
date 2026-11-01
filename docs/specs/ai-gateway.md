@@ -147,8 +147,8 @@ English only for now.
 
 ## Request flow
 
-1. **Typing.** The interpreter updates Understood as. Tab cycles the kinds the action allows; ↑↓ picks an alternative. Nothing is sent yet.
-2. **↵ → `ai.prepare({ text, itemId, actionId, kind, interpretedBy, provider? })`.** The server checks the action exists, applies to the item's type and allows the kind, and downgrades the kind to the cap if needed. It checks the provider is available, builds the context, notes the item's `updated_at` and creates the request row.
+1. **Typing.** The interpreter updates Understood as. Tab cycles the kinds the action allows; ↑↓ picks an alternative while the bar lists no result rows. Nothing is sent yet.
+2. **↵ (⌘↵ while result rows are listed) → `ai.prepare({ text, itemId, actionId, kind, interpretedBy?, provider? })`.** `interpretedBy` is the interpreter's id when its own action and kind run, and is left out when you picked either by hand. The server checks the action exists, applies to the item's type and allows the kind, and downgrades the kind to the cap if needed. It checks the provider is available, builds the context, notes the item's `updated_at` and creates the request row.
 3. **Model call.**
    - OpenRouter: the server calls it in the same request and continues at step 4.
    - Claude Code or Codex: the server returns `{ requestId, system, prompt, schema }`. The app runs the CLI and posts the output to `ai.complete({ requestId, raw })`.
@@ -208,7 +208,7 @@ A core `ai` router (`ai` joins the reserved router names). All procedures are pr
 | --- | --- | --- |
 | `ai.prepare` | `{ text, itemId?, actionId, kind, interpretedBy?, provider? }` | `{ requestId, status, answer? \| options? \| applied? }` or `{ requestId, run: { provider, system, prompt, schema } }` |
 | `ai.complete` | `{ requestId, raw }` | As `ai.prepare`'s finished forms |
-| `ai.cancel` | `{ requestId }` | `{ ok }` |
+| `ai.cancel` | `{ requestId, error?: { code, message } }` | `{ ok }`. Ends a pending CLI request `cancelled`; with `error` (a failure on the app's side: timeout, not installed, too large, spawn failed, a non-zero exit with no output) it ends `failed` with that code and the message's first line. |
 | `ai.applyOption` | `{ requestId, option }` | `{ summary }` |
 | `ai.discard` | `{ requestId }` | `{ ok }` |
 | `ai.undo` | `{ requestId }` | `{ summary }` |
@@ -217,7 +217,7 @@ A core `ai` router (`ai` joins the reserved router names). All procedures are pr
 
 tRPC reserves the procedure name `apply`, so the pick-an-option call is `ai.applyOption`.
 
-Errors use the codes in Errors, sent as `{ code, message }` in the tRPC error's `data`.
+Errors use the codes in Errors, sent as `{ code, message }` in the tRPC error's `data.ai`.
 
 ## Providers
 
@@ -237,7 +237,7 @@ Only server providers implement `complete`; desktop providers are run by the app
 **CLI runner** (`apps/desktop/src-tauri/src/cli.rs`)
 
 - Commands: `ai_cli_status(provider)` → installed, signed in, version; `ai_cli_run(runId, provider, system, prompt, schema)` → stdout and exit code; `ai_cli_cancel(runId)`.
-- Only `claude` and `codex`, found on `PATH` or at the device's path override. An override must be absolute and name a file called `claude` or `codex`.
+- Only `claude` and `codex`, found at the device's path override, else on `PATH`, else in the usual install folders: `$HOME/.local/bin`, `$HOME/.claude/local`, `/opt/homebrew/bin`, `/usr/local/bin`, `$HOME/.npm-global/bin`, `$HOME/.bun/bin`. An override must be absolute and name a file called `claude` or `codex`.
 - A fixed argument list per CLI: print mode, JSON output, tools turned off. The prompt goes on stdin. The exact flags are fixed in the plan and checked against the installed versions.
 - Codex runs with `--sandbox read-only`, which still lets it read local files; until a verified way to turn its tools off exists, this is an accepted risk.
 - Each run uses a fresh, empty temporary directory as its working directory, deleted afterwards.
@@ -246,7 +246,7 @@ Only server providers implement `complete`; desktop providers are run by the app
 
 ## Desktop
 
-**Command bar.** With an item open, typing shows an **Understood as** row above the results: an AI tile, the action's label, an Ask · Suggest · Do switch (only the kinds the action allows), and a line saying what that kind does and which provider runs it ("Changes it now, with Undo after · Claude Code"). Low confidence adds "Not sure". Keys: ↵ runs, Tab switches kind, ↑↓ picks an alternative, Esc closes. `CommandBar` in `@dlh/ui` gains an `interpretation` slot for this row and a `result` slot that replaces the result rows.
+**Command bar.** With an item open, typing shows an **Understood as** row above the results: an AI tile, the action's label, an Ask · Suggest · Do switch (only the kinds the action allows), and a line saying what that kind does and which provider runs it ("Changes it now, with Undo after · Claude Code"). Low confidence adds "Not sure". Keys: while the bar lists any result row (Jump to, Recents, Go to, actions), ↵ and ↑↓ keep working on the rows and ⌘↵ (Ctrl+↵ off macOS) runs the request; with no rows, ↵ runs it and ↑↓ picks an alternative. Tab switches kind, Esc closes. The footer shows which key asks AI ("⌘↵ to ask AI" or "↵ to ask AI"). `CommandBar` in `@dlh/ui` gains an `interpretation` slot for this row and a `result` slot that replaces the result rows.
 
 - **Ask** shows the answer in the result slot, with the items it used as links and Copy.
 - **Suggest** shows the options with their reasons, a Use button each and None of these; keys 1–3 pick.
