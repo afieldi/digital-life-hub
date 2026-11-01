@@ -1,10 +1,5 @@
 import { useOpenItem } from "@dlh/client";
-import {
-  type AiActionDescription,
-  type AiKind,
-  applicableActions,
-  coreAiActions,
-} from "@dlh/core";
+import { type AiKind, applicableActions } from "@dlh/core";
 import { closeToast, Kbd, toast } from "@dlh/ui";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import {
@@ -16,8 +11,8 @@ import {
   useState,
 } from "react";
 import { useTRPC, useTRPCClient } from "../api/client";
-import { registry } from "../modules";
 import { AiResult } from "./AiResult";
+import { ALL_ACTIONS } from "./actions";
 import { errorActions } from "./errorActions";
 import { PROVIDER_NAMES } from "./providers";
 import { allowedKinds, UnderstoodAs } from "./UnderstoodAs";
@@ -28,11 +23,6 @@ import {
   useAiRequest,
 } from "./useAiRequest";
 import { useInterpretation } from "./useInterpretation";
-
-const ALL_ACTIONS: AiActionDescription[] = [
-  ...Object.values(coreAiActions),
-  ...registry.aiActions,
-];
 
 const APPLIED_TOAST_MS = 10_000;
 
