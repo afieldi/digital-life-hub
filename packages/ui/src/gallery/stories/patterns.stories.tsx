@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Chip } from "../../dusk/Chip";
 import { TypeTile } from "../../dusk/TypeTile";
 import { Board, type BoardColumnDef } from "../../patterns/Board";
@@ -223,9 +223,13 @@ const recents: CommandGroup[] = [
 function CommandBarDemo({
   initial,
   groups,
+  interpretation,
+  result,
 }: {
   initial: string;
   groups: CommandGroup[];
+  interpretation?: ReactNode;
+  result?: ReactNode;
 }) {
   const [query, setQuery] = useState(initial);
   return (
@@ -237,6 +241,8 @@ function CommandBarDemo({
           query={query}
           onQueryChange={setQuery}
           groups={groups}
+          interpretation={interpretation}
+          result={result}
           contained
         />
       )}
@@ -260,6 +266,17 @@ const row = (
   </div>
 );
 
+const interpretationRow = (
+  <div className="flex items-center gap-2 text-sm">
+    <span className="flex-1 text-ink-secondary">
+      Understood as: <span className="text-ink-primary">remind me Friday</span>
+    </span>
+    <Button variant="ghost">Ask</Button>
+    <Button variant="ghost">Suggest</Button>
+    <Button variant="ghost">Do</Button>
+  </div>
+);
+
 registerStories("patterns", [
   {
     id: "patterns/board",
@@ -280,6 +297,34 @@ registerStories("patterns", [
     id: "patterns/command-bar-recents",
     title: "Command bar (recents and go to)",
     render: () => <CommandBarDemo initial="" groups={recents} />,
+  },
+  {
+    id: "patterns/command-bar-interpretation",
+    title: "Command bar (interpretation)",
+    render: () => (
+      <CommandBarDemo
+        initial="remind me friday"
+        groups={populated}
+        interpretation={interpretationRow}
+      />
+    ),
+  },
+  {
+    id: "patterns/command-bar-result",
+    title: "Command bar (result)",
+    render: () => (
+      <CommandBarDemo
+        initial="what is due this week?"
+        groups={populated}
+        interpretation={interpretationRow}
+        result={
+          <p>
+            Two tasks are due this week: Draft Q4 budget (Friday) and Review
+            launch checklist (Thursday).
+          </p>
+        }
+      />
+    ),
   },
   {
     id: "patterns/item-row",

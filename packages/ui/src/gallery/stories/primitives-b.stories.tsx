@@ -23,10 +23,14 @@ function ToastDemo() {
     addToast(q, "Couldn't reach the server", "error");
     addToast(q, "Saved", "success");
     addToast(q, "Syncing in the background", "info");
+    addToast(q, "Task deleted", "info", [
+      { label: "Undo", onAction: noop },
+      { label: "Show", onAction: noop },
+    ]);
     return q;
   });
   return (
-    <OverlayBox height={260}>
+    <OverlayBox height={340}>
       {() => (
         <ToastRegion
           queue={queue}

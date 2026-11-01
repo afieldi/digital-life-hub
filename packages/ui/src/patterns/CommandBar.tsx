@@ -42,6 +42,12 @@ export type CommandBarProps = {
   placeholder?: string;
   /** Replaces the default ↵ / ↑↓ / esc hints. */
   footer?: ReactNode;
+  /** Shown between the input row and the results. */
+  interpretation?: ReactNode;
+  /** Shown in place of the results list (no rows, no ↑↓/↵ handling). */
+  result?: ReactNode;
+  /** Called first on every input keydown; return true to skip the built-in handling. */
+  onKeyDown?: (e: KeyboardEvent<HTMLInputElement>) => boolean;
   /**
    * Backdrop covers its portal container instead of the viewport.
    * @internal gallery only
@@ -82,6 +88,9 @@ export function CommandBar({
   groups,
   placeholder = "Search, create, or ask AI",
   footer,
+  interpretation,
+  result,
+  onKeyDown: onKeyDownProp,
   contained,
 }: CommandBarProps) {
   const baseId = useId();
@@ -115,7 +124,8 @@ export function CommandBar({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (flat.length === 0) return;
+    if (onKeyDownProp?.(e)) return;
+    if (result || flat.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((activeIndex + 1) % flat.length);
@@ -150,7 +160,7 @@ export function CommandBar({
               // biome-ignore lint/a11y/noAutofocus: the command bar exists to be typed into
               autoFocus
               role="combobox"
-              aria-expanded={flat.length > 0}
+              aria-expanded={!result && flat.length > 0}
               aria-controls={listId}
               aria-autocomplete="list"
               aria-activedescendant={activeId}
@@ -162,76 +172,87 @@ export function CommandBar({
               className="min-h-11 flex-1 bg-transparent text-[19px] text-ink-primary outline-hidden placeholder:text-ink-muted"
             />
           </div>
-          <div
-            id={listId}
-            role="listbox"
-            aria-label="Results"
-            className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2"
-          >
-            {visible.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-ink-tertiary">
-                {query
-                  ? `No results for “${query}”`
-                  : "Start typing to search, create, or ask AI"}
-              </p>
-            ) : null}
-            {visible.map((group) => (
-              // A listbox may only own option/group children; fieldset is not allowed.
-              // biome-ignore lint/a11y/useSemanticElements: ARIA listbox group
-              <div
-                key={group.id}
-                role="group"
-                aria-labelledby={`${baseId}-group-${group.id}`}
-              >
+          {interpretation ? (
+            <div className="border-b border-white/12 px-5 py-3">
+              {interpretation}
+            </div>
+          ) : null}
+          {result ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-[15px]">
+              {result}
+            </div>
+          ) : (
+            <div
+              id={listId}
+              role="listbox"
+              aria-label="Results"
+              className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2"
+            >
+              {visible.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-ink-tertiary">
+                  {query
+                    ? `No results for “${query}”`
+                    : "Start typing to search, create, or ask AI"}
+                </p>
+              ) : null}
+              {visible.map((group) => (
+                // A listbox may only own option/group children; fieldset is not allowed.
+                // biome-ignore lint/a11y/useSemanticElements: ARIA listbox group
                 <div
-                  id={`${baseId}-group-${group.id}`}
-                  className="px-3 pt-2 pb-1 text-xs font-semibold text-ink-tertiary"
+                  key={group.id}
+                  role="group"
+                  aria-labelledby={`${baseId}-group-${group.id}`}
                 >
-                  {group.label}
+                  <div
+                    id={`${baseId}-group-${group.id}`}
+                    className="px-3 pt-2 pb-1 text-xs font-semibold text-ink-tertiary"
+                  >
+                    {group.label}
+                  </div>
+                  {group.items.length === 0 ? (
+                    <p className="px-3 py-3 text-sm text-ink-muted">
+                      {group.message}
+                    </p>
+                  ) : null}
+                  {group.items.map((item) => {
+                    const index = flat.indexOf(item);
+                    const selected = index === activeIndex;
+                    return (
+                      // Focus stays in the input (aria-activedescendant); rows are
+                      // reached with ↑↓, so they need no key handler of their own.
+                      // biome-ignore lint/a11y/useKeyWithClickEvents: see above
+                      <div
+                        key={item.id}
+                        id={optionId(item.id)}
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={selected}
+                        aria-disabled={item.disabled || undefined}
+                        onMouseMove={() => !item.disabled && setActive(index)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => run(item)}
+                        className={`flex min-h-[52px] items-center gap-3 rounded-14 px-3 ${item.disabled ? "cursor-default text-ink-muted" : "cursor-pointer"} ${selected ? "bg-white/12" : ""}`}
+                      >
+                        {item.icon ? (
+                          <span className="flex size-[30px] shrink-0 items-center justify-center">
+                            {item.icon}
+                          </span>
+                        ) : null}
+                        <span className="flex-1 truncate text-[15px]">
+                          {item.label}
+                        </span>
+                        {item.hint ? (
+                          <span className="text-xs text-ink-tertiary">
+                            {item.hint}
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
-                {group.items.length === 0 ? (
-                  <p className="px-3 py-3 text-sm text-ink-muted">
-                    {group.message}
-                  </p>
-                ) : null}
-                {group.items.map((item) => {
-                  const index = flat.indexOf(item);
-                  const selected = index === activeIndex;
-                  return (
-                    // Focus stays in the input (aria-activedescendant); rows are
-                    // reached with ↑↓, so they need no key handler of their own.
-                    // biome-ignore lint/a11y/useKeyWithClickEvents: see above
-                    <div
-                      key={item.id}
-                      id={optionId(item.id)}
-                      role="option"
-                      tabIndex={-1}
-                      aria-selected={selected}
-                      aria-disabled={item.disabled || undefined}
-                      onMouseMove={() => !item.disabled && setActive(index)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => run(item)}
-                      className={`flex min-h-[52px] items-center gap-3 rounded-14 px-3 ${item.disabled ? "cursor-default text-ink-muted" : "cursor-pointer"} ${selected ? "bg-white/12" : ""}`}
-                    >
-                      {item.icon ? (
-                        <span className="flex size-[30px] shrink-0 items-center justify-center">
-                          {item.icon}
-                        </span>
-                      ) : null}
-                      <span className="flex-1 truncate text-[15px]">
-                        {item.label}
-                      </span>
-                      {item.hint ? (
-                        <span className="text-xs text-ink-tertiary">
-                          {item.hint}
-                        </span>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
           <div className="flex min-h-11 items-center gap-5 border-t border-white/12 px-5 text-xs text-ink-tertiary">
             {footer ?? <DefaultFooter />}
           </div>

@@ -1,7 +1,12 @@
 import { UNSTABLE_ToastQueue as RACToastQueue } from "react-aria-components";
 
 export type ToastTone = "info" | "success" | "error";
-export type ToastContentValue = { message: string; tone: ToastTone };
+export type ToastAction = { label: string; onAction: () => void };
+export type ToastContentValue = {
+  message: string;
+  tone: ToastTone;
+  actions?: ToastAction[];
+};
 export type ToastQueue = RACToastQueue<ToastContentValue>;
 
 /** Own queue instance for galleries/tests. Not exported from the package index. */
@@ -14,8 +19,9 @@ export function addToast(
   target: ToastQueue,
   message: string,
   tone: ToastTone = "info",
+  actions?: ToastAction[],
 ): void {
-  target.add({ message, tone });
+  target.add({ message, tone, actions });
 }
 
 const tones: Record<ToastTone, string> = {
