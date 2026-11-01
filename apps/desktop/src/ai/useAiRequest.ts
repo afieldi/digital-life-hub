@@ -108,7 +108,9 @@ export function startAiRequest(
         provider = job.provider;
         if (job.provider === "openrouter") throw new Error("not a CLI run");
         const cli = job.provider;
-        const abandon = () => quietly(client.ai.cancel.mutate({ requestId }));
+        // Ends the server request: `failed` with `error`, else `cancelled`.
+        const abandon = (error?: AiErrorData) =>
+          quietly(client.ai.cancel.mutate({ requestId, error }));
         if (cancelled) {
           abandon();
           return IDLE;
@@ -126,8 +128,8 @@ export function startAiRequest(
             schema: JSON.stringify(job.schema),
           });
         } catch (e) {
-          abandon();
           const error = cliErrorToAi(e, cli);
+          abandon(error ?? undefined);
           return error ? failed(error) : finish(IDLE);
         }
         if (cancelled) {
@@ -136,11 +138,12 @@ export function startAiRequest(
         }
         // With no output there is nothing for the server to check; the exit code is the error.
         if (out.exitCode !== 0 && out.stdout.trim() === "") {
-          abandon();
-          return failed({
+          const error: AiErrorData = {
             code: "provider_error",
             message: `${PROVIDER_NAMES[cli]} returned an error: exited with code ${out.exitCode}.`,
-          });
+          };
+          abandon(error);
+          return failed(error);
         }
         res = await client.ai.complete.mutate({ requestId, raw: out.stdout });
       }

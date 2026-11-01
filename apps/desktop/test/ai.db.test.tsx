@@ -258,10 +258,30 @@ test("a failed Do shows its message in a toast with the error's actions", async 
   expect(
     within(region).getByRole("button", { name: "Open Settings" }),
   ).toBeInTheDocument();
-  // The request does not stay pending on the server.
+  // The request does not stay pending on the server; it ends failed.
   await waitFor(async () => {
     const { entries } = await client.ai.log.list.query({});
-    expect(entries[0]?.status).toBe("cancelled");
+    expect(entries[0]?.status).toBe("failed");
+    expect(entries[0]?.errorCode).toBe("provider_unavailable");
+  });
+});
+
+test("a CLI timeout ends the request failed with timeout", async () => {
+  const { client } = await setup();
+  await client.ai.settings.set.mutate({ defaultProvider: "claude-cli" });
+  fakeCli(() => {
+    throw new CliError("timeout", "timed out");
+  });
+  await ask("suggest a few titles");
+  await screen.findByText("Rename");
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByText(/^Claude Code didn't answer within \d+ seconds\.$/),
+  ).toBeInTheDocument();
+  await waitFor(async () => {
+    const { entries } = await client.ai.log.list.query({});
+    expect(entries[0]?.status).toBe("failed");
+    expect(entries[0]?.errorCode).toBe("timeout");
   });
 });
 
@@ -414,6 +434,7 @@ test("a CLI that exits non-zero with no output shows its exit code", async () =>
   expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   await waitFor(async () => {
     const { entries } = await client.ai.log.list.query({});
-    expect(entries[0]?.status).toBe("cancelled");
+    expect(entries[0]?.status).toBe("failed");
+    expect(entries[0]?.errorCode).toBe("provider_error");
   });
 });
