@@ -1,3 +1,31 @@
+export type { AiActionDescription } from "./ai/actions";
+export { coreAiActions, describeAiAction, kindAllowed } from "./ai/actions";
+export type {
+  AiCompleteInput,
+  AiErrorData,
+  AiLogEntry,
+  AiPrepareInput,
+  AiResult,
+  AiSettings,
+} from "./ai/api";
+export {
+  aiCompleteInput,
+  aiErrorCode,
+  aiErrorData,
+  aiLogEntry,
+  aiPrepareInput,
+  aiResult,
+  aiRetitleOutput,
+  aiSettings,
+} from "./ai/api";
+export type { AiEffect, AiKind, AiProviderId } from "./ai/kinds";
+export {
+  AI_KIND_ORDER,
+  aiEffect,
+  aiKind,
+  aiProviderId,
+  capFor,
+} from "./ai/kinds";
 export type {
   Item,
   ItemSummary,
