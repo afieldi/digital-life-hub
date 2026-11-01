@@ -16,7 +16,9 @@
     "test:db": "turbo run test:db --concurrency=1",
     "dev:down": "docker compose down",
     "db:reset": "pnpm --filter @dlh/db reset && pnpm --filter @dlh/api seed",
-    "gen:modules": "tsx scripts/gen-modules.ts"
+    "gen:modules": "tsx scripts/gen-modules.ts",
+    "ai:eval-interpreter": "tsx scripts/ai-eval-interpreter.ts",
+    "ai:smoke": "pnpm --filter @dlh/api ai:smoke"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",

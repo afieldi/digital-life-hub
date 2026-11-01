@@ -14,6 +14,7 @@ export {
   prepare,
   undo,
 } from "./ai/gateway";
+export { listLog } from "./ai/log";
 export {
   type AiCompleteRequest,
   type AiCompleteResult,
