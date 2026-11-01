@@ -525,7 +525,9 @@ test("cancel ends a pending request once", async () => {
     input(s.item.id, "answer", "ask", { provider: "claude-cli" }),
   );
   await cancel(s.deps, { requestId: res.requestId });
-  expect((await rowOf(s, res.requestId)).status).toBe("cancelled");
+  const cancelled = await rowOf(s, res.requestId);
+  expect(cancelled.status).toBe("cancelled");
+  expect(cancelled.errorCode).toBeNull();
   expect(
     (await caught(cancel(s.deps, { requestId: res.requestId }))).code,
   ).toBe("CONFLICT");
@@ -533,6 +535,38 @@ test("cancel ends a pending request once", async () => {
     (
       await caught(
         complete(s.deps, { requestId: res.requestId, raw: envelope("{}") }),
+      )
+    ).code,
+  ).toBe("CONFLICT");
+  await s.close();
+});
+
+test("cancel with an error ends a pending request failed with its code", async () => {
+  const s = await setup();
+  const res = await prepare(
+    s.deps,
+    input(s.item.id, "answer", "ask", { provider: "claude-cli" }),
+  );
+  s.tick(2000);
+  await cancel(s.deps, {
+    requestId: res.requestId,
+    error: {
+      code: "timeout",
+      message: `Claude Code didn't answer within 60 seconds.\n${"x".repeat(300)}`,
+    },
+  });
+  const row = await rowOf(s, res.requestId);
+  expect(row.status).toBe("failed");
+  expect(row.errorCode).toBe("timeout");
+  expect(row.errorMessage).toBe("Claude Code didn't answer within 60 seconds");
+  expect(row.durationMs).toBe(2000);
+  expect(
+    (
+      await caught(
+        cancel(s.deps, {
+          requestId: res.requestId,
+          error: { code: "timeout", message: "again" },
+        }),
       )
     ).code,
   ).toBe("CONFLICT");

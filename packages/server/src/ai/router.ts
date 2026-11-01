@@ -1,4 +1,5 @@
 import {
+  aiCancelInput,
   aiCompleteInput,
   aiLogEntry,
   aiPrepareInput,
@@ -66,7 +67,7 @@ export const aiRouter = router({
     .mutation(({ ctx, input }) => complete(ctx.deps, input)),
 
   cancel: protectedProcedure
-    .input(requestId)
+    .input(aiCancelInput)
     .output(ok)
     .mutation(({ ctx, input }) => cancel(ctx.deps, input)),
 

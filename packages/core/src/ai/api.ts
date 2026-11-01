@@ -75,6 +75,18 @@ export const aiErrorData = z.object({
 });
 export type AiErrorData = z.infer<typeof aiErrorData>;
 
+/**
+ * Abandons a pending CLI request. With `error` (a failure on the app's side,
+ * such as a CLI timeout) the request ends `failed` instead of `cancelled`.
+ */
+export const aiCancelInput = z.object({
+  requestId: z.uuid(),
+  error: z
+    .object({ code: aiErrorCode, message: z.string().max(4000) })
+    .optional(),
+});
+export type AiCancelInput = z.infer<typeof aiCancelInput>;
+
 export const aiLogEntry = z.object({
   id: z.string(),
   createdAt: z.string(),

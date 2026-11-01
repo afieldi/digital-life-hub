@@ -1,6 +1,7 @@
 export type { AiActionDescription } from "./ai/actions";
 export { coreAiActions, describeAiAction, kindAllowed } from "./ai/actions";
 export type {
+  AiCancelInput,
   AiCompleteInput,
   AiErrorData,
   AiLogEntry,
@@ -9,6 +10,7 @@ export type {
   AiSettings,
 } from "./ai/api";
 export {
+  aiCancelInput,
   aiCompleteInput,
   aiErrorCode,
   aiErrorData,

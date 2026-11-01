@@ -1,9 +1,9 @@
-import type { AiProviderId, AiResult } from "@dlh/core";
+import type { AiCancelInput, AiProviderId, AiResult } from "@dlh/core";
 import { TRPCError } from "@trpc/server";
 import { writeItems } from "../items/writer";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
-import { AiError, aiErrorMessage } from "./errors";
+import { AiError, aiErrorMessage, firstLine } from "./errors";
 import {
   aiFailure,
   badRequest,
@@ -123,16 +123,23 @@ export async function discard(
   return { ok: true };
 }
 
-/** Abandons a pending CLI request. */
+/**
+ * Abandons a pending CLI request: `cancelled`, or `failed` with the error's
+ * code and first line when the app reports why the CLI run failed.
+ */
 export async function cancel(
   deps: CoreDeps,
-  input: { requestId: string },
+  input: AiCancelInput,
 ): Promise<{ ok: true }> {
   const row = await loadRow(deps, input.requestId);
-  await claim(deps.db, row.id, "pending", {
-    status: "cancelled",
-    ...timing(deps, row),
-  });
+  const end = input.error
+    ? {
+        status: "failed",
+        errorCode: input.error.code,
+        errorMessage: firstLine(input.error.message),
+      }
+    : { status: "cancelled" };
+  await claim(deps.db, row.id, "pending", { ...end, ...timing(deps, row) });
   return { ok: true };
 }
 
