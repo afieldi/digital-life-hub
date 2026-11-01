@@ -3,6 +3,9 @@ import {
   check,
   customType,
   index,
+  integer,
+  jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -102,4 +105,51 @@ export const itemViews = pgTable(
     index("item_views_viewed_idx").on(t.viewedAt.desc()),
     index("item_views_item_idx").on(t.itemId, t.viewedAt.desc()),
   ],
+);
+
+export const aiRequests = pgTable(
+  "ai_requests",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true, precision: 3 }),
+    actionId: text("action_id").notNull(),
+    kind: text("kind").notNull(),
+    interpretedBy: text("interpreted_by"),
+    provider: text("provider").notNull(),
+    model: text("model"),
+    itemId: uuid("item_id").references(() => items.id, {
+      onDelete: "set null",
+    }),
+    itemVersion: timestamp("item_version", {
+      withTimezone: true,
+      precision: 3,
+    }),
+    status: text("status").notNull(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    durationMs: integer("duration_ms"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    costUsd: numeric("cost_usd"),
+    output: jsonb("output"),
+    undo: jsonb("undo"),
+  },
+  (t) => [index("ai_requests_created_idx").on(t.createdAt.desc())],
+);
+
+export const aiSettings = pgTable(
+  "ai_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    defaultProvider: text("default_provider").notNull(),
+    openrouterModel: text("openrouter_model"),
+    interpreter: text("interpreter").notNull().default("keywords"),
+    updatedAt: timestamp("updated_at", { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [check("ai_settings_single_row", sql`${t.id} = 1`)],
 );

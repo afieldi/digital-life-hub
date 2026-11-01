@@ -47,6 +47,15 @@ export async function getItem(db: Db, id: string): Promise<Item> {
   return toItem(row);
 }
 
+/** The item's searchable body text; null when the item is missing or deleted. */
+export async function getItemText(db: Db, id: string): Promise<string | null> {
+  const [row] = await db
+    .select({ searchText: items.searchText })
+    .from(items)
+    .where(and(eq(items.id, id), isNull(items.deletedAt)));
+  return row?.searchText ?? null;
+}
+
 export async function listItems(
   db: Db,
   opts: {

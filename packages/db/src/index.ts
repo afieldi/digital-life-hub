@@ -6,4 +6,12 @@ export {
   databaseUrlFrom,
 } from "./client";
 export { migrate } from "./migrate";
-export { items, itemViews, links, loginAttempts, sessions } from "./schema";
+export {
+  aiRequests,
+  aiSettings,
+  items,
+  itemViews,
+  links,
+  loginAttempts,
+  sessions,
+} from "./schema";

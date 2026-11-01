@@ -1,3 +1,36 @@
+export type { AiActionDescription } from "./ai/actions";
+export { coreAiActions, describeAiAction, kindAllowed } from "./ai/actions";
+export type {
+  AiCancelInput,
+  AiCompleteInput,
+  AiErrorData,
+  AiLogEntry,
+  AiPrepareInput,
+  AiResult,
+  AiSettings,
+} from "./ai/api";
+export {
+  aiCancelInput,
+  aiCompleteInput,
+  aiErrorCode,
+  aiErrorData,
+  aiLogEntry,
+  aiPrepareInput,
+  aiResult,
+  aiRetitleOutput,
+  aiSettings,
+} from "./ai/api";
+export type { Interpretation, RequestInterpreter } from "./ai/interpreter";
+export { applicableActions, NOT_SURE_BELOW } from "./ai/interpreter";
+export { keywordInterpreter } from "./ai/keywords";
+export type { AiEffect, AiKind, AiProviderId } from "./ai/kinds";
+export {
+  AI_KIND_ORDER,
+  aiEffect,
+  aiKind,
+  aiProviderId,
+  capFor,
+} from "./ai/kinds";
 export type {
   Item,
   ItemSummary,

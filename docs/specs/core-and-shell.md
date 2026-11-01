@@ -274,7 +274,7 @@ export interface AiProvider {
 2. The server gathers context: the item, its links, and search results when the action needs them (you allowed access to everything, on request).
 3. If your chosen provider runs on the server (OpenRouter), the server calls it and goes to step 5.
 4. If it is a CLI, the server returns the prepared prompt. The Tauri app runs `claude -p` or `codex exec` with JSON output, the prompt on stdin, a 120-second timeout, then posts the raw answer back with `ai.complete`.
-5. The server validates the answer against the schema and returns proposed changes ("create 3 tasks"). Nothing is written until you confirm.
+5. The server validates the answer against the schema and returns the result. Ask actions only answer, Suggest actions wait for you to pick, and Do actions apply at once with Undo; deletes and changes to other items always show first. See [AI Gateway](ai-gateway.md).
 
 **Rules**
 
@@ -295,8 +295,10 @@ Four milestones, each ending in something you can run. Core is done when all fou
    - Done when: a test module creates 10,000 items, search returns under 50 ms, and an edit made through a second client (a test script against the local API) shows in the open app within 2 seconds.
    - Deep dive: [Items, Links, Search](items-links-search.md).
    - Status: done (Oct 31, 2026). Search p95 about 29 ms over 10,000 items; the e2e rename check passes in Chromium and WebKit.
-4. **AI gateway.** Provider interface, OpenRouter, Claude Code and Codex runners, the confirm-before-write flow, settings.
-   - Done when: one test action ("summarise this item") works through all three providers, and a malformed answer is rejected with a clear message.
+4. **AI gateway.** Provider interface, OpenRouter, Claude Code and Codex runners, AI actions (Ask, Suggest, Do with Undo), request interpreter, settings.
+   - Done when: "summarise this item" and "give this a better title" (with Undo) work through all three providers, a malformed answer is rejected with a clear message, "delete this" is shown first, and all of it shows in the request log.
+   - Deep dive: [AI Gateway](ai-gateway.md).
+   - Status: implemented; pending the manual Done check (`pnpm ai:smoke` with each provider signed in).
 
 ## Open questions
 

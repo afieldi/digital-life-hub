@@ -6,6 +6,7 @@ export type Config = {
   google: { clientId: string; clientSecret: string };
   allowedEmail: string;
   devAuth: boolean;
+  openrouter: { apiKey: string | null; defaultModel: string | null };
 };
 
 export class ConfigError extends Error {
@@ -37,5 +38,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     google: { clientId, clientSecret },
     allowedEmail,
     devAuth: env.NODE_ENV === "development",
+    openrouter: {
+      apiKey: env.OPENROUTER_API_KEY?.trim() || null,
+      defaultModel: env.OPENROUTER_DEFAULT_MODEL?.trim() || null,
+    },
   };
 }

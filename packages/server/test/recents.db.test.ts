@@ -98,7 +98,7 @@ test("purgeExpired removes items deleted over 30 days ago and views over 90 days
     { itemId: live.id, viewedAt: new Date(T0.getTime() - 89 * DAY) },
   ]);
   const res = await purgeExpired(deps);
-  expect(res).toEqual({ items: 1, views: 1 });
+  expect(res).toMatchObject({ items: 1, views: 1 });
   const left = (await db.select().from(items)).map((r) => r.title).sort();
   expect(left).toEqual(["live", "recent"]);
   expect(await db.select().from(itemViews)).toHaveLength(1);

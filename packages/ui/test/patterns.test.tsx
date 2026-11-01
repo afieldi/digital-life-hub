@@ -400,3 +400,115 @@ test("Board: arrow keys move between cards; + Add card calls onAdd with the colu
   await userEvent.keyboard("{Enter}");
   expect(onAdd).toHaveBeenCalledWith("todo");
 });
+
+const slotBar = (extra: Partial<Parameters<typeof CommandBar>[0]> = {}) => (
+  <CommandBar
+    isOpen
+    onOpenChange={() => {}}
+    query=""
+    onQueryChange={() => {}}
+    groups={[
+      {
+        id: "create",
+        label: "Create",
+        items: [{ id: "c1", label: "New note", onAction: () => {} }],
+      },
+    ]}
+    {...extra}
+  />
+);
+
+test("CommandBar interpretation renders above the results", () => {
+  render(slotBar({ interpretation: <div>Understood as: note</div> }));
+  const interp = screen.getByText("Understood as: note");
+  const list = screen.getByRole("listbox");
+  expect(
+    interp.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+
+test("CommandBar result replaces the results listbox", async () => {
+  const run = vi.fn();
+  render(
+    slotBar({
+      result: <p>The answer is 42</p>,
+      groups: [
+        {
+          id: "create",
+          label: "Create",
+          items: [{ id: "c1", label: "New note", onAction: run }],
+        },
+      ],
+    }),
+  );
+  expect(screen.getByText("The answer is 42")).toBeTruthy();
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(screen.queryByText("New note")).toBeNull();
+  expect(screen.getByRole("combobox").getAttribute("aria-expanded")).toBe(
+    "false",
+  );
+  await userEvent.keyboard("{Enter}");
+  expect(run).not.toHaveBeenCalled();
+});
+
+test("CommandBar onKeyDown returning true skips built-in handling", async () => {
+  const run = vi.fn();
+  const onKeyDown = vi.fn(() => true);
+  render(
+    slotBar({
+      onKeyDown,
+      groups: [
+        {
+          id: "create",
+          label: "Create",
+          items: [{ id: "c1", label: "New note", onAction: run }],
+        },
+      ],
+    }),
+  );
+  await userEvent.keyboard("{Enter}");
+  expect(onKeyDown).toHaveBeenCalled();
+  expect(run).not.toHaveBeenCalled();
+});
+
+test("CommandBar announces results in a persistent live region", () => {
+  const { rerender } = render(slotBar());
+  const region = screen.getByRole("status");
+  expect(region.textContent).toBe("");
+  rerender(slotBar({ result: <p>The answer is 42</p> }));
+  expect(screen.getByRole("status")).toBe(region);
+  expect(region.textContent).toBe("The answer is 42");
+});
+
+test("CommandBar interpretation sits in a polite live region", () => {
+  render(slotBar({ interpretation: <span>Understood as: note</span> }));
+  const live = screen
+    .getByText("Understood as: note")
+    .closest("[aria-live='polite']");
+  expect(live).not.toBeNull();
+});
+
+test("CommandBar drops dangling ARIA references in result mode", () => {
+  const { rerender } = render(slotBar());
+  const input = screen.getByRole("combobox");
+  expect(input.getAttribute("aria-controls")).toBeTruthy();
+  rerender(slotBar({ result: <p>Answer</p> }));
+  expect(input.hasAttribute("aria-controls")).toBe(false);
+  expect(input.hasAttribute("aria-activedescendant")).toBe(false);
+});
+
+test("CommandBar onKeyDown hook sees Tab and ArrowDown", async () => {
+  const keys: string[] = [];
+  render(
+    slotBar({
+      onKeyDown: (e) => {
+        keys.push(e.key);
+        return e.key === "ArrowDown";
+      },
+    }),
+  );
+  await userEvent.keyboard("{ArrowDown}");
+  await userEvent.keyboard("{Tab}");
+  expect(keys).toContain("ArrowDown");
+  expect(keys).toContain("Tab");
+});

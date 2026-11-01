@@ -2,7 +2,10 @@ import { createDb, migrate } from "@dlh/db";
 import {
   CORE_ROUTER_IDS,
   collectServerModules,
+  coreAi,
   createChangeBus,
+  createOpenRouter,
+  devFakeAi,
 } from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
@@ -37,9 +40,10 @@ function hostPort(url: string): string {
 
 const config = loadConfigOrExit();
 // Throws on a duplicate module id or item type, or an id that clashes with a core router.
-const { itemTypes } = collectServerModules(
+const { itemTypes, aiRunners } = collectServerModules(
   [...serverModules],
   [...CORE_ROUTER_IDS],
+  coreAi,
 );
 const { db, close } = createDb(config.databaseUrl);
 
@@ -66,6 +70,15 @@ const deps = {
   store: drizzleAuthStore(db),
   google: createGoogleOAuth(config.google),
   now: () => new Date(),
+  ai: {
+    runners: aiRunners,
+    ...(devFakeAi(process.env) ?? {
+      providers: config.openrouter.apiKey
+        ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }
+        : {},
+      defaultModel: config.openrouter.defaultModel,
+    }),
+  },
 };
 const app = createApp(deps);
 startPurgeJob(deps);

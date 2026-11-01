@@ -5,6 +5,7 @@ import {
 } from "react-aria-components";
 import {
   createToastQueue,
+  type ToastAction,
   type ToastContentValue,
   type ToastQueue,
   type ToastTone,
@@ -12,19 +13,26 @@ import {
 } from "../internal/toast";
 import { Button } from "./Button";
 
-export type { ToastContentValue, ToastQueue, ToastTone };
+export type { ToastAction, ToastContentValue, ToastQueue, ToastTone };
 
 const queue = createToastQueue();
+/** Keys of toasts whose action has already fired. */
+const fired = new Set<string>();
 
-/** Show a toast in the mounted ToastRegion. */
+/** Show a toast in the mounted ToastRegion. Returns its key for closeToast. */
 export function toast(
   message: string,
-  opts: { tone?: ToastTone; timeout?: number } = {},
-): void {
-  queue.add(
-    { message, tone: opts.tone ?? "info" },
+  opts: { tone?: ToastTone; timeout?: number; actions?: ToastAction[] } = {},
+): string {
+  return queue.add(
+    { message, tone: opts.tone ?? "info", actions: opts.actions },
     { timeout: opts.timeout ?? 5000 },
   );
+}
+
+/** Close a toast shown with toast(). */
+export function closeToast(key: string): void {
+  queue.close(key);
 }
 
 export function ToastRegion({
@@ -48,6 +56,22 @@ export function ToastRegion({
           <RACToastContent role="status" className="flex-1">
             {t.content.message}
           </RACToastContent>
+          {t.content.actions?.map((a, i) => (
+            <Button
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed list per toast
+              key={i}
+              variant="ghost"
+              onPress={() => {
+                // Actions fire once per toast, even if pressed again during exit.
+                if (fired.has(t.key)) return;
+                fired.add(t.key);
+                a.onAction();
+                q.close(t.key);
+              }}
+            >
+              {a.label}
+            </Button>
+          ))}
           <Button slot="close" variant="ghost" aria-label="Dismiss">
             ✕
           </Button>

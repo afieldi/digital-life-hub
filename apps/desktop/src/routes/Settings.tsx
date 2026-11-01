@@ -1,5 +1,6 @@
 import { type SceneVariant, Tab, TabList, TabPanel, Tabs } from "@dlh/ui";
 import { useSceneOverride } from "../shell/sceneOverride";
+import { Ai } from "./settings/Ai";
 import { Devices } from "./settings/Devices";
 
 type Choice = "auto" | SceneVariant;
@@ -55,6 +56,7 @@ export function Settings() {
           ))}
         </Tabs>
       </section>
+      <Ai />
       <Devices />
     </div>
   );

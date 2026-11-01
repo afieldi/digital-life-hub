@@ -1,4 +1,5 @@
 import type { AnyRoute } from "@tanstack/react-router";
+import type { AiActionDescription } from "./ai/actions";
 
 export interface CommandContext {
   pathname: string;
@@ -35,6 +36,7 @@ export interface ModuleManifest {
   };
   routes: (parent: AnyRoute) => AnyRoute[];
   paletteActions?: PaletteAction[];
+  aiActions?: AiActionDescription[];
 }
 
 export function defineModule(m: ModuleManifest): ModuleManifest {

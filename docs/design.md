@@ -122,6 +122,7 @@ Newest first. A changed decision gets a new row; the old one is marked Supersede
 
 | Date | Decision | Alternatives considered | Why | Status |
 | --- | --- | --- | --- | --- |
+| 2026-10-31 | AI requests run as Ask (answer only), Suggest (pick from options) or Do (applied at once with Undo); deletes and changes to other items always show first | Every AI change waits for a click | A direct request should just happen; Undo and caps from effects keep it safe ([AI Gateway](specs/ai-gateway.md)) | Settled |
 | 2026-10-29 | Design docs hold the why; once built, code (tokens, Storybook) holds the what | Markdown specs of every value | Specs that copy code values drift | Settled |
 | 2026-10-28 | Four routes back to a project: Jump back in, project tags, Dock → Projects, ⌘K recents | Palette only | Returning to work is the most common trip; it should take one click | Settled |
 | 2026-10-28 | Palette opens on recents and Go to before you type | Empty input | ⌘K then ↵ reopens what you were just in | Settled |
@@ -138,12 +139,12 @@ Newest first. A changed decision gets a new row; the old one is marked Supersede
 - [ ] Real wallpapers (user-chosen, or changing with time of day) instead of the drawn scene?
 - [ ] Do text and panels stay legible in the morning and night scenes?
 - [ ] Quick-link icons: favicons fetched from each site, or plain monograms?
-- [ ] How much does AI act on its own vs. suggest and wait for a click?
+- [x] How much does AI act on its own vs. suggest and wait for a click? Settled: see the 2026-10-31 decision.
 - [ ] Which mail and calendar providers come first?
 
 **Proposed in the wireframes, to confirm**
 
-- [ ] AI never changes anything without a click (suggestions wait for confirm).
+- [x] ~~AI never changes anything without a click (suggestions wait for confirm).~~ Replaced by Ask, Suggest and Do; see the 2026-10-31 decision.
 - [ ] Making a task from an email moves the email to Waiting on until the task is done.
 - [ ] Notes search also returns matching tasks and emails.
 - [ ] Time-blocked tasks show on the calendar as dashed blocks, next to events.

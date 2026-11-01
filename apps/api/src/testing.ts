@@ -3,8 +3,10 @@ import type { Db } from "@dlh/db";
 import {
   CORE_ROUTER_IDS,
   collectServerModules,
+  coreAi,
   createChangeBus,
 } from "@dlh/server";
+import { FakeProvider } from "@dlh/server/testing";
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";
 import { createApp } from "./app";
 import type { GoogleOAuth } from "./auth/google";
@@ -54,6 +56,8 @@ export function createTestApi(
     allowedEmail?: string;
     db?: Db;
     itemTypes?: string[];
+    aiProvider?: FakeProvider;
+    noOpenRouter?: boolean;
   } = {},
 ) {
   const allowedEmail = opts.allowedEmail ?? "arek@example.com";
@@ -67,14 +71,17 @@ export function createTestApi(
   const store = memoryAuthStore();
   const google = new FakeGoogle(allowedEmail);
   const devAuth = opts.devAuth ?? false;
+  const collected = collectServerModules(
+    [...serverModules],
+    [...CORE_ROUTER_IDS],
+    coreAi,
+  );
+  // OpenRouter in tests: queue model outputs on `ai`.
+  const ai = opts.aiProvider ?? new FakeProvider();
   const deps = {
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
-    itemTypes: new Set([
-      ...collectServerModules([...serverModules], [...CORE_ROUTER_IDS])
-        .itemTypes,
-      ...(opts.itemTypes ?? []),
-    ]),
+    itemTypes: new Set([...collected.itemTypes, ...(opts.itemTypes ?? [])]),
     devErrors: devAuth,
     config: {
       port: 0,
@@ -82,10 +89,16 @@ export function createTestApi(
       google: { clientId: "test", clientSecret: "test" },
       allowedEmail,
       devAuth,
+      openrouter: { apiKey: null, defaultModel: null },
     },
     store,
     google,
     now: clock.now,
+    ai: {
+      runners: collected.aiRunners,
+      providers: opts.noOpenRouter ? {} : { openrouter: ai },
+      defaultModel: "test-model",
+    },
   };
   const app = createApp(deps);
 
@@ -114,5 +127,15 @@ export function createTestApi(
     return token;
   };
 
-  return { app, deps, store, google, clock, fetch: fetchApi, client, signIn };
+  return {
+    app,
+    deps,
+    store,
+    google,
+    ai,
+    clock,
+    fetch: fetchApi,
+    client,
+    signIn,
+  };
 }

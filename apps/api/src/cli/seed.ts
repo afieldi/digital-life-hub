@@ -4,6 +4,7 @@ import {
   CORE_ROUTER_IDS,
   type CoreDeps,
   collectServerModules,
+  coreAi,
   createChangeBus,
   type ServerModule,
   writeItems,
@@ -25,9 +26,10 @@ export async function seedIfEmpty(
 
 async function main(): Promise<void> {
   const { db, close } = createDb(databaseUrlFrom(process.env));
-  const { modules, itemTypes } = collectServerModules(
+  const { modules, itemTypes, aiRunners } = collectServerModules(
     [...serverModules],
     [...CORE_ROUTER_IDS],
+    coreAi,
   );
   try {
     const seeded = await seedIfEmpty(
@@ -37,6 +39,11 @@ async function main(): Promise<void> {
         itemTypes,
         now: () => new Date(),
         devErrors: false,
+        ai: {
+          runners: aiRunners,
+          providers: {},
+          defaultModel: null,
+        },
       },
       modules,
     );

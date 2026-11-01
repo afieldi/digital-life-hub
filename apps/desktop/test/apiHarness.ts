@@ -18,6 +18,8 @@ export async function signedInApp(
   opts: {
     /** Seed database for DB-backed tests. */
     db?: Db;
+    /** Runs the server with no OpenRouter key. */
+    noOpenRouter?: boolean;
     /** Wraps the API fetch, e.g. to delay or fail a request. */
     wrapFetch?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch;
   } = {},
@@ -28,7 +30,11 @@ export async function signedInApp(
   renderApp(opts?: { sessionCheckMs?: number }): RenderResult;
   router: ReturnType<typeof createAppRouter>;
 }> {
-  const api = createTestApi({ devAuth: true, db: opts.db });
+  const api = createTestApi({
+    devAuth: true,
+    db: opts.db,
+    noOpenRouter: opts.noOpenRouter,
+  });
   const { token } = await api.client().auth.devSignIn.mutate({
     device: { name: "Browser (dev)", platform: "web" },
   });

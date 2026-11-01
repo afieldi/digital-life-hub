@@ -4,7 +4,7 @@ import { Button } from "../src/primitives/Button";
 import { Dialog, DialogTrigger, Modal } from "../src/primitives/Dialog";
 import { Menu, MenuItem, MenuTrigger } from "../src/primitives/Menu";
 import { Tab, TabList, TabPanel, Tabs } from "../src/primitives/Tabs";
-import { ToastRegion, toast } from "../src/primitives/Toast";
+import { closeToast, ToastRegion, toast } from "../src/primitives/Toast";
 
 test("Tabs move with arrow keys", async () => {
   render(
@@ -74,4 +74,42 @@ test("toast() renders a status message", async () => {
   act(() => toast("Saved"));
   const status = await screen.findByText("Saved");
   expect(status.closest('[role="status"]')).not.toBeNull();
+});
+
+test("toast actions call onAction and close the toast", async () => {
+  const onAction = vi.fn();
+  render(<ToastRegion />);
+  act(() => {
+    toast("Deleted", { actions: [{ label: "Undo", onAction }] });
+  });
+  await screen.findByText("Deleted");
+  await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(onAction).toHaveBeenCalledOnce();
+  await waitFor(() => expect(screen.queryByText("Deleted")).toBeNull());
+});
+
+test("closeToast removes the toast by key", async () => {
+  render(<ToastRegion />);
+  let key = "";
+  act(() => {
+    key = toast("Working");
+  });
+  await screen.findByText("Working");
+  act(() => closeToast(key));
+  await waitFor(() => expect(screen.queryByText("Working")).toBeNull());
+});
+
+test("toast actions fire once on rapid double press", async () => {
+  const onAction = vi.fn();
+  render(<ToastRegion />);
+  act(() => {
+    toast("Gone", { actions: [{ label: "Undo", onAction }] });
+  });
+  const btn = await screen.findByRole("button", { name: "Undo" });
+  await userEvent.dblClick(btn);
+  expect(onAction).toHaveBeenCalledOnce();
+});
+
+test("closeToast with an unknown key does not throw", () => {
+  expect(() => closeToast("unknown")).not.toThrow();
 });

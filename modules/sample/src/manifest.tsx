@@ -39,7 +39,9 @@ export default defineModule({
       label: "Hello from Sample",
       icon: "FlaskConical",
       group: "actions",
-      run: () => toast("Hello from Sample"),
+      run: () => {
+        toast("Hello from Sample");
+      },
     },
   ],
 });
