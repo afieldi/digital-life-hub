@@ -8,8 +8,13 @@ import {
 
 it("runs on the Core phrasings, exits 0 and prints Accuracy", () => {
   const r = spawnSync(
-    "pnpm",
-    ["exec", "tsx", "scripts/ai-eval-interpreter.ts", "--interpreter=keywords"],
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "scripts/ai-eval-interpreter.ts",
+      "--interpreter=keywords",
+    ],
     { encoding: "utf8" },
   );
   expect(r.status).toBe(0);
@@ -37,8 +42,13 @@ it("formats a miss as expected vs got", () => {
 
 it("refuses to pass with an empty phrasing list", () => {
   const r = spawnSync(
-    "pnpm",
-    ["exec", "tsx", "scripts/ai-eval-interpreter.ts", "--interpreter=keywords"],
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "scripts/ai-eval-interpreter.ts",
+      "--interpreter=keywords",
+    ],
     { encoding: "utf8", env: { ...process.env, AI_EVAL_EMPTY: "1" } },
   );
   expect(r.status).toBe(1);
