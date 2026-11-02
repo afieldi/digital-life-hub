@@ -77,6 +77,15 @@ export function nextUp(
     : null;
 }
 
+/** "in Plan the trip", "+N" for more parents; null for a task with none. */
+export function parentLabel(row: TaskRow): string | null {
+  const [parent, ...others] = row.parents;
+  if (!parent) return null;
+  return others.length > 0
+    ? `in ${parent.title} +${others.length}`
+    : `in ${parent.title}`;
+}
+
 /**
  * What a row shows under its title: when ("Today 12:00 · 9:00 PT" when set in
  * another zone), its subtasks, the parent of a dated subtask, linked notes.
@@ -90,14 +99,8 @@ export function rowMeta(row: TaskRow, today: Day, tz: string): string[] {
   const { total, done, next } = row.subtasks;
   if (total > 0)
     parts.push(next ? `${done}/${total} · Next: ${next}` : `${done}/${total}`);
-  const [parent, ...others] = row.parents;
-  if (parent) {
-    parts.push(
-      others.length > 0
-        ? `in ${parent.title} +${others.length}`
-        : `in ${parent.title}`,
-    );
-  }
+  const parent = parentLabel(row);
+  if (parent) parts.push(parent);
   if (row.linkedNotes > 0) {
     parts.push(
       `${row.linkedNotes} ${row.linkedNotes === 1 ? "note" : "notes"}`,

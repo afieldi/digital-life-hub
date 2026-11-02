@@ -341,6 +341,23 @@ test("done pages and groups by completion day", async () => {
   await close();
 });
 
+test("done lists completed undated subtasks too, as stats counts them", async () => {
+  const { caller, mk, completeAt, close } = await setup();
+  const trip = await mk("Plan the trip");
+  const flights = await mk("Book flights", { parentId: trip.id });
+  await completeAt(flights.id, NOW);
+  const { rows } = await caller.tasks.list({ view: "done", timeZone: LA });
+  expect(titles(rows)).toEqual(["Book flights"]);
+  expect(rows[0]?.parents.map((p) => p.title)).toEqual(["Plan the trip"]);
+  const stats = await caller.tasks.stats({
+    timeZone: LA,
+    weekOf: "2026-11-02",
+  });
+  const today = stats.perDay.find((d) => d.day === "2026-11-02");
+  expect(today?.count).toBe(rows.length);
+  await close();
+});
+
 test("stats counts on time and overdue cleared", async () => {
   const { caller, mk, completeAt, close } = await setup();
   const onTime = await mk("On time", { due: { date: "2026-11-03" } });

@@ -1,5 +1,6 @@
 import { addDays, clock, type Day, todayIn } from "../dates";
 import type { TaskRow } from "../schema";
+import { parentLabel } from "./openView";
 
 export type DoneGroup = { day: Day; label: string; rows: TaskRow[] };
 
@@ -44,9 +45,14 @@ export function groupDone(
   return groups;
 }
 
-/** When a done row was completed, 24-hour in `tz`. */
-export function doneTime(row: TaskRow, tz: string): string {
-  return row.completedAt ? clock(new Date(row.completedAt), tz) : "";
+/**
+ * What a done row shows under its title: when it was completed, 24-hour in
+ * `tz`, and for a subtask its parent ("15:20 · in Plan the trip").
+ */
+export function doneMeta(row: TaskRow, tz: string): string {
+  const time = row.completedAt ? clock(new Date(row.completedAt), tz) : "";
+  const parent = parentLabel(row);
+  return parent ? [time, parent].filter(Boolean).join(" · ") : time;
 }
 
 /** `stats.perDay` as bars labelled by weekday. */

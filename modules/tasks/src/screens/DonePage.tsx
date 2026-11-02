@@ -17,7 +17,7 @@ import type { ReactNode } from "react";
 import { todayIn, weekStartOf } from "../dates";
 import type { TaskRow } from "../schema";
 import { deviceTimeZone, taskHref, useTasksApi } from "./api";
-import { dayBars, doneTime, groupDone } from "./doneView";
+import { dayBars, doneMeta, groupDone } from "./doneView";
 import type { ListSearch } from "./lastList";
 import { taskKeys, useOpenList, useWeekStats } from "./queries";
 import { useRowCache, useTaskToggle } from "./rowWrites";
@@ -88,7 +88,7 @@ export function DonePage(_: { search?: ListSearch }) {
                 done
                 title={row.title}
                 href={taskHref(row.id)}
-                meta={doneTime(row, timeZone)}
+                meta={doneMeta(row, timeZone)}
                 leading={
                   <Checkbox
                     aria-label={`Mark not done: ${row.title}`}

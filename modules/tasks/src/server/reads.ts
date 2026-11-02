@@ -237,7 +237,11 @@ function decodeCursor(cursor: string): z.infer<typeof doneCursor> {
   }
 }
 
-/** Done tasks, last completed first, a page at a time. */
+/**
+ * Done tasks, last completed first, a page at a time. Done is a history of
+ * completions, so undated subtasks are listed too (with their parents), as
+ * `stats` counts them.
+ */
 async function doneRows(
   db: Db,
   tz: string,
@@ -250,7 +254,7 @@ async function doneRows(
   const rows = await readRows(
     db,
     rowsQuery(
-      sql`t.completed_at is not null and ${shownOnItsOwn} ${before}`,
+      sql`t.completed_at is not null ${before}`,
       sql`order by t.completed_at desc, t.item_id desc limit ${DONE_PAGE + 1}`,
     ),
     tz,

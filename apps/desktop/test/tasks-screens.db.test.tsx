@@ -324,6 +324,40 @@ describe("Done", () => {
     });
   });
 
+  test("a completed undated subtask shows in Done with its parent, as stats counts it", async () => {
+    const { renderApp, client, db } = await setup("/tasks/done");
+    const { result: trip } = await client.tasks.create.mutate({
+      title: "Plan the trip",
+    });
+    const { result: flights } = await client.tasks.create.mutate({
+      title: "Book flights",
+      parentId: trip.id,
+    });
+    await client.tasks.complete.mutate({
+      id: flights.id,
+      expectedUpdatedAt: flights.updatedAt,
+    });
+    // The test server's clock is fixed: done now, by the database's clock.
+    await db.$client.unsafe(
+      "update tasks set completed_at = now() where item_id = $1",
+      [flights.id],
+    );
+    renderApp();
+    const today = await screen.findByRole("region", { name: /^Today/ });
+    expect(within(today).getByText("Book flights")).toBeInTheDocument();
+    expect(within(today).getByText(/in Plan the trip$/)).toBeInTheDocument();
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(
+      new Date(),
+    );
+    const { perDay } = await client.tasks.stats.query({
+      timeZone: zone,
+      weekOf: day,
+    });
+    expect(perDay.find((d) => d.day === day)?.count).toBe(
+      within(today).getAllByRole("link").length,
+    );
+  });
+
   test('done empty "Nothing done yet"', async () => {
     const { renderApp } = await setup("/tasks/done");
     renderApp();

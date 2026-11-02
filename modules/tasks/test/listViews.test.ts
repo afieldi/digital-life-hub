@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import type { TaskRow } from "../src/schema";
 import { editedLine, linkedRows } from "../src/screens/detailView";
-import { dayBars, doneTime, groupDone } from "../src/screens/doneView";
+import { dayBars, doneMeta, groupDone } from "../src/screens/doneView";
 import {
   cardWhen,
   dropPosition,
@@ -108,8 +108,17 @@ test("done groups by the day it was completed, in the device's zone", () => {
     ["Thu, Oct 29", ["c"]],
   ]);
   expect(
-    doneTime(row({ title: "a", completedAt: "2026-11-04T23:20:00.000Z" }), LA),
+    doneMeta(row({ title: "a", completedAt: "2026-11-04T23:20:00.000Z" }), LA),
   ).toBe("15:20");
+  const sub = row({
+    title: "d",
+    completedAt: "2026-11-04T23:20:00.000Z",
+    parents: [
+      { id: "p1", type: "task", title: "Plan the trip", archivedAt: null },
+      { id: "p2", type: "task", title: "Packing", archivedAt: null },
+    ],
+  });
+  expect(doneMeta(sub, LA)).toBe("15:20 · in Plan the trip +1");
 });
 
 test("day bars name each weekday", () => {
