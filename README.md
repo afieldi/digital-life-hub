@@ -8,6 +8,7 @@ One personal home for tasks, notes, projects, events and saved things: a single-
 - [Design](docs/design.md): visual direction, navigation, key flows and decision log
 - [Core + Shell spec](docs/specs/core-and-shell.md): the shared platform every module plugs into
 - [Items, Links, Search spec](docs/specs/items-links-search.md): the shared data layer (milestone 3)
+- [Tasks spec](docs/specs/tasks.md): the first module, and Core operations and module migrations
 - [Command Bar capture spec](docs/specs/command-bar-capture.md): natural-language capture (deferred)
 - [Implementation plans](docs/superpowers/plans/)
 
