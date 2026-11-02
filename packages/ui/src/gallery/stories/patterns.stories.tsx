@@ -1,13 +1,18 @@
 import { Inbox } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Chip } from "../../dusk/Chip";
+import { Kbd } from "../../dusk/Kbd";
 import { TypeTile } from "../../dusk/TypeTile";
 import { Board, type BoardColumnDef } from "../../patterns/Board";
+import { CaptureField } from "../../patterns/CaptureField";
 import { CommandBar, type CommandGroup } from "../../patterns/CommandBar";
 import { EmptyState } from "../../patterns/EmptyState";
 import { ItemRow } from "../../patterns/ItemRow";
+import { ListGroup } from "../../patterns/ListGroup";
+import { PageHeader } from "../../patterns/PageHeader";
 import { SectionCard } from "../../patterns/SectionCard";
 import { Button } from "../../primitives/Button";
+import { Caption } from "../../primitives/Caption";
 import { Checkbox } from "../../primitives/Checkbox";
 import { statusColors, typeColors } from "../../tokens";
 import { registerStories } from "../registry";
@@ -395,6 +400,73 @@ registerStories("patterns", [
           body="Tasks you add will show up here."
           action={<Button variant="solid">Add a task</Button>}
         />
+      </div>
+    ),
+  },
+  {
+    id: "patterns/capture-field",
+    title: "Capture field (highlights)",
+    render: () => (
+      <div className="w-[520px]">
+        <CaptureField
+          label="Add a task"
+          value="Call the bank Friday 9am !"
+          onChange={noop}
+          onSubmit={noop}
+          highlights={[
+            { start: 14, end: 24 },
+            { start: 25, end: 26 },
+          ]}
+          leading={<TypeTile type="task" size={30} />}
+          trailing={<Kbd keys={["↵"]} />}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "patterns/capture-field-empty",
+    title: "Capture field (placeholder)",
+    render: () => (
+      <div className="w-[520px]">
+        <CaptureField
+          label="Add a task"
+          value=""
+          onChange={noop}
+          onSubmit={noop}
+          placeholder="Add a task… try “Call the bank Friday 9am !”"
+          leading={<TypeTile type="task" size={30} />}
+          trailing={<Kbd keys={["↵"]} />}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "patterns/list-group",
+    title: "List group (Overdue and Today)",
+    render: () => (
+      <div className="glass-panel flex w-[480px] flex-col gap-0.5 p-2.5">
+        <ListGroup
+          label="Overdue"
+          count={1}
+          tone="danger"
+          action={<Button variant="ghost">Reschedule all</Button>}
+        >
+          {row({ title: "Renew car insurance", meta: "Tue" })}
+        </ListGroup>
+        <ListGroup label="Today" count={1}>
+          {row({ title: "Review vendor contracts", meta: "Today 10:00" })}
+          {row({ title: "Pick up pumpkins", meta: "Today", done: true })}
+        </ListGroup>
+      </div>
+    ),
+  },
+  {
+    id: "patterns/page-header",
+    title: "Page header and caption",
+    render: () => (
+      <div className="flex w-[480px] flex-col gap-3 p-4">
+        <PageHeader title="Tasks" subtitle="3 things left today" />
+        <Caption>Next up at 10:00: Review vendor contracts</Caption>
       </div>
     ),
   },

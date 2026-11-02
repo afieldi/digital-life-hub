@@ -112,7 +112,8 @@ function describeDay(day: Day, today: Day): string {
     : dayLabelYear.format(utcNoon(day));
 }
 
-function clock(date: Date, tz: string): string {
+/** The 24-hour wall time of `date` in `tz`, like "9:00". */
+export function clock(date: Date, tz: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",

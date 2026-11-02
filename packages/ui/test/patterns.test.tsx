@@ -3,9 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { Inbox } from "lucide-react";
 import { RouterProvider } from "react-aria-components";
 import { Board } from "../src/patterns/Board";
+import { CaptureField } from "../src/patterns/CaptureField";
 import { CommandBar, type CommandGroup } from "../src/patterns/CommandBar";
 import { EmptyState } from "../src/patterns/EmptyState";
 import { ItemRow } from "../src/patterns/ItemRow";
+import { ListGroup } from "../src/patterns/ListGroup";
+import { PageHeader } from "../src/patterns/PageHeader";
 import { SectionCard } from "../src/patterns/SectionCard";
 import { Button } from "../src/primitives/Button";
 
@@ -539,4 +542,54 @@ test("CommandBar: keepOpen rows don't close the bar", async () => {
   expect(onOpenChange).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("option", { name: /Close/ }));
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("CaptureField marks the highlighted ranges and submits on Enter", async () => {
+  const submit = vi.fn();
+  render(
+    <CaptureField
+      label="Add a task"
+      value="Pay rent tomorrow p1"
+      onChange={() => {}}
+      onSubmit={submit}
+      highlights={[
+        { start: 18, end: 20 },
+        { start: 9, end: 17 },
+      ]}
+    />,
+  );
+  expect(
+    screen.getAllByTestId("capture-highlight").map((m) => m.textContent),
+  ).toEqual(["tomorrow", "p1"]);
+  await userEvent.type(
+    screen.getByRole("textbox", { name: "Add a task" }),
+    "{Enter}",
+  );
+  expect(submit).toHaveBeenCalledOnce();
+});
+
+test("ListGroup is a region named by its heading, with count and action", () => {
+  render(
+    <ListGroup
+      label="Overdue"
+      count={2}
+      tone="danger"
+      action={<Button variant="ghost">Reschedule all</Button>}
+    >
+      <p>row</p>
+    </ListGroup>,
+  );
+  const region = screen.getByRole("region", { name: "Overdue 2" });
+  expect(within(region).getByText("row")).toBeInTheDocument();
+  expect(
+    within(region).getByRole("button", { name: "Reschedule all" }),
+  ).toBeInTheDocument();
+});
+
+test("PageHeader is the page's h1", () => {
+  render(<PageHeader title="Tasks" subtitle="3 left today" />);
+  expect(
+    screen.getByRole("heading", { level: 1, name: "Tasks" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("3 left today")).toBeInTheDocument();
 });

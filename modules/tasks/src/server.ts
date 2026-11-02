@@ -1,4 +1,4 @@
-import { defineServerModule } from "@dlh/server";
+import { defineServerModule, type OperationsRouter } from "@dlh/server";
 import { deleteWith } from "./server/deleteWith";
 import { due, get, list, stats } from "./server/reads";
 import { seed } from "./server/seed";
@@ -14,7 +14,7 @@ import {
   update,
 } from "./server/writes";
 
-export default defineServerModule({
+const tasksServer = defineServerModule({
   id: "tasks",
   itemTypes: ["task"],
   migrations: true,
@@ -36,3 +36,8 @@ export default defineServerModule({
     stats,
   },
 });
+
+/** The `tasks` router as the screens call it (type only: no server code in the bundle). */
+export type TasksRouter = OperationsRouter<typeof tasksServer.operations>;
+
+export default tasksServer;

@@ -5,7 +5,9 @@ import { RouterProvider } from "react-aria-components";
 import { Breadcrumb } from "../src/dusk/Breadcrumb";
 import { Chip } from "../src/dusk/Chip";
 import { Dock } from "../src/dusk/Dock";
+import { Flag } from "../src/dusk/Flag";
 import { Kbd } from "../src/dusk/Kbd";
+import { KeyHints } from "../src/dusk/KeyHints";
 import { ProgressBar } from "../src/dusk/ProgressBar";
 import { TypeTile } from "../src/dusk/TypeTile";
 import { modKeyLabel } from "../src/platform";
@@ -145,4 +147,22 @@ test("linked Chip is focusable and Enter follows it; unlinked Chip is not focusa
   expect(screen.getByRole("link", { name: "Website" })).toHaveFocus();
   await userEvent.keyboard("{Enter}");
   expect(navigate).toHaveBeenCalledWith("/projects/web", undefined);
+});
+
+test("Flag and KeyHints show their labels", () => {
+  render(
+    <>
+      <Flag>High</Flag>
+      <KeyHints
+        hints={[
+          { keys: ["N"], label: "new task" },
+          { keys: ["X"], label: "complete" },
+        ]}
+      />
+    </>,
+  );
+  expect(screen.getByText("High")).toBeInTheDocument();
+  const list = screen.getByRole("list", { name: "Keyboard shortcuts" });
+  expect(list).toHaveTextContent("Nnew task");
+  expect(list).toHaveTextContent("Xcomplete");
 });

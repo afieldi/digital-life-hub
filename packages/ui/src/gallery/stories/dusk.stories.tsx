@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { Breadcrumb } from "../../dusk/Breadcrumb";
 import { Chip } from "../../dusk/Chip";
 import { Dock } from "../../dusk/Dock";
+import { Flag } from "../../dusk/Flag";
 import { Kbd } from "../../dusk/Kbd";
+import { KeyHints } from "../../dusk/KeyHints";
 import { ProgressBar } from "../../dusk/ProgressBar";
 import { TypeTile } from "../../dusk/TypeTile";
 import { Button } from "../../primitives/Button";
@@ -127,6 +129,31 @@ registerStories("dusk", [
       <div className="flex items-center gap-4 p-4">
         <Kbd keys={["mod", "K"]} platform="MacIntel" />
         <Kbd keys={["mod", "K"]} platform="Win32" />
+      </div>
+    ),
+  },
+  {
+    id: "dusk/key-hints",
+    title: "Key hints",
+    render: () => (
+      <div className="p-4">
+        <KeyHints
+          platform="MacIntel"
+          hints={[
+            { keys: ["N"], label: "new task" },
+            { keys: ["X"], label: "complete" },
+            { keys: ["↵"], label: "open" },
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "dusk/flag",
+    title: "Flag",
+    render: () => (
+      <div className="p-4">
+        <Flag>High</Flag>
       </div>
     ),
   },

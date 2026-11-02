@@ -1,5 +1,7 @@
 import { defineModule } from "@dlh/core";
+import { createRoute } from "@tanstack/react-router";
 import { taskOps } from "./operations";
+import { OpenPage } from "./screens/OpenPage";
 
 export default defineModule({
   id: "tasks",
@@ -17,6 +19,12 @@ export default defineModule({
     order: 10,
     key: "t",
   },
-  routes: () => [],
+  routes: (parent) => [
+    createRoute({
+      getParentRoute: () => parent,
+      path: "/tasks",
+      component: OpenPage,
+    }),
+  ],
   operations: Object.values(taskOps),
 });
