@@ -1,5 +1,6 @@
 import { defineServerModule } from "@dlh/server";
 import { deleteWith } from "./server/deleteWith";
+import { due, get, list, stats } from "./server/reads";
 import { seed } from "./server/seed";
 import {
   addParent,
@@ -29,5 +30,9 @@ export default defineServerModule({
     reorder,
     addParent,
     removeParent,
+    due,
+    list,
+    get,
+    stats,
   },
 });

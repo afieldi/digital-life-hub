@@ -169,3 +169,32 @@ export function formatDue(due: Due): string {
   const [hour = "0", minute = "00"] = due.dateTime.slice(11, 16).split(":");
   return `${day} ${Number(hour)}:${minute}`;
 }
+
+/** Whether `tz` is an IANA zone this runtime knows. */
+export function isTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The heading for tasks due from `from` up to (not including) `to`: one day is
+ * "Due Fri, Nov 6"; a range names its last day, "Due Nov 2 – 8".
+ */
+export function dueHeading(from: Day, to: Day): string {
+  const last = addDays(to, -1);
+  if (last <= from) return `Due ${fullDayLabel.format(utcNoon(from))}`;
+  const start = utcNoon(from);
+  const end = utcNoon(last);
+  if (from.slice(0, 4) !== last.slice(0, 4)) {
+    return `Due ${dayLabelYear.format(start)} – ${dayLabelYear.format(end)}`;
+  }
+  const endText =
+    from.slice(0, 7) === last.slice(0, 7)
+      ? String(Number(last.slice(8)))
+      : dayLabel.format(end);
+  return `Due ${dayLabel.format(start)} – ${endText}`;
+}

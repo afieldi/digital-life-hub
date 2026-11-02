@@ -9,14 +9,14 @@ import { sql } from "drizzle-orm";
 // A "task" here is a live item with a row in `tasks`; a subtask is a task that a
 // live task `contains`.
 
-type SummaryRow = {
+export type SummaryRow = {
   id: string;
   type: string;
   title: string;
   archived_at: string | Date | null;
 };
 
-function toSummary(r: SummaryRow): ItemSummary {
+export function toSummary(r: SummaryRow): ItemSummary {
   return {
     id: r.id,
     type: r.type,

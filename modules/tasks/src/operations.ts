@@ -7,7 +7,15 @@ import {
 } from "@dlh/core";
 import { z } from "zod";
 import { parseDue, parseTaskInput } from "./capture";
-import { formatDue } from "./dates";
+import {
+  addDays,
+  dayOfDue,
+  dueHeading,
+  formatDue,
+  isTimeZone,
+  todayIn,
+  weekStartOf,
+} from "./dates";
 import { priority } from "./schema";
 
 const id = z.uuid();
@@ -220,6 +228,112 @@ const removeParent = describeOperation({
   summary: () => "Remove from parent",
 });
 
+const timeZone = z
+  .string()
+  .refine(isTimeZone, "Unknown time zone")
+  .describe("IANA time zone of the device");
+const day = z.iso.date();
+
+/**
+ * "this week", "next week", or the day of the first date in the text ("friday",
+ * "next tue"), as a half-open range of days.
+ */
+function rangeFrom(ctx: PaletteContext): { from: string; to: string } | null {
+  const today = todayIn(ctx.now, ctx.timeZone);
+  const week = /\b(this|next) week\b/i.exec(ctx.text);
+  if (week) {
+    const from = addDays(
+      weekStartOf(today),
+      week[1]?.toLowerCase() === "next" ? 7 : 0,
+    );
+    return { from, to: addDays(from, 7) };
+  }
+  const from = dayOfDue(parseDue(ctx.text, ctx), ctx.timeZone);
+  return from ? { from, to: addDays(from, 1) } : null;
+}
+
+const dueQuery = describeOperation({
+  id: "tasks.due",
+  kind: "query",
+  label: "Due",
+  description:
+    "Lists tasks due on a day or in a range of days. `to` is the day after the last one: Friday alone is from Friday to Saturday. Open tasks only unless include is all.",
+  appliesTo: ["*", "none"],
+  words: ["due", "what's due", "agenda", "deadline"],
+  input: z.object({
+    from: day.describe("First day"),
+    to: day.describe("Day after the last day"),
+    timeZone,
+    include: z
+      .enum(["open", "all"])
+      .optional()
+      .describe("Open tasks only (the default), or done ones too"),
+  }),
+  subject: () => null,
+  effects: [],
+  summary: (input) => dueHeading(input.from, input.to),
+  // "due friday", "due this week"; nothing until a date is read.
+  palette: (ctx) => {
+    const range = rangeFrom(ctx);
+    return range ? { ...range, timeZone: ctx.timeZone } : null;
+  },
+});
+
+const list = describeOperation({
+  id: "tasks.list",
+  kind: "query",
+  label: "Tasks",
+  description:
+    "Rows for the Open, Upcoming (the week of `weekOf`, and later) and Done (paged by `cursor`) screens.",
+  appliesTo: "none",
+  input: z.object({
+    view: z.enum(["open", "upcoming", "done"]),
+    timeZone,
+    /** Upcoming only: any day of the week to show. */
+    weekOf: day.optional(),
+    /** Done only: `nextCursor` from the previous page. */
+    cursor: z.string().optional(),
+  }),
+  subject: () => null,
+  effects: [],
+  summary: (input) => `Tasks: ${input.view}`,
+  palette: false,
+  ai: false,
+});
+
+const get = describeOperation({
+  id: "tasks.get",
+  kind: "query",
+  label: "Task",
+  description: "A task with its subtasks and parents, for the detail panel.",
+  appliesTo: ["task"],
+  input: z.object({
+    id,
+    /** For each row's `day`; without it, the zone the due was set in, or UTC. */
+    timeZone: timeZone.optional(),
+  }),
+  subject: (input) => input.id,
+  effects: [],
+  summary: () => "Task",
+  palette: false,
+  ai: false,
+});
+
+const stats = describeOperation({
+  id: "tasks.stats",
+  kind: "query",
+  label: "Task stats",
+  description:
+    "Completions per day of the week holding `weekOf`, on time, overdue cleared, and last week's total.",
+  appliesTo: "none",
+  input: z.object({ timeZone, weekOf: day }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Task stats",
+  palette: false,
+  ai: false,
+});
+
 export const taskOps = {
   create,
   update,
@@ -230,4 +344,8 @@ export const taskOps = {
   reorder,
   addParent,
   removeParent,
+  due: dueQuery,
+  list,
+  get,
+  stats,
 };

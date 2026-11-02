@@ -705,7 +705,10 @@ test("each mutation's undo restores the prior state", async () => {
     expect(await snapshot(deps), c.op).toEqual(before);
     ops.add(c.op);
   }
-  expect([...ops].sort()).toEqual(Object.keys(tasksServer.operations).sort());
+  const mutations = Object.entries(tasksServer.operations)
+    .filter(([, op]) => op.kind === "mutation")
+    .map(([key]) => key);
+  expect([...ops].sort()).toEqual(mutations.sort());
   await close();
 });
 

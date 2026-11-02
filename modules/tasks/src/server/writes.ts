@@ -10,6 +10,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { generateKeyBetween } from "fractional-indexing";
 import { z } from "zod";
+import { isTimeZone } from "../dates";
 import { tasks } from "../db/schema";
 import { taskOps } from "../operations";
 import { priority } from "../schema";
@@ -46,15 +47,6 @@ function allowed<T>(method: T | undefined): T {
 /** Notes as stored: empty notes are no notes. */
 function notesValue(notes: string | null | undefined): string | null {
   return notes ? notes : null;
-}
-
-function isTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** A `Due` as the three due columns. */
