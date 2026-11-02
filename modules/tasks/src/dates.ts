@@ -151,3 +151,21 @@ export function formatWhen(
     origin: `${clock(instant, due.timeZone)} ${zoneAbbreviation(instant, due.timeZone)}`,
   };
 }
+
+const fullDayLabel = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+/**
+ * A due without a "today" to compare against, as an operation's summary shows
+ * it: "Fri, Nov 6", or "Fri, Nov 6 9:00" at the wall time it was set at.
+ */
+export function formatDue(due: Due): string {
+  if ("date" in due) return fullDayLabel.format(utcNoon(due.date));
+  const day = fullDayLabel.format(utcNoon(due.dateTime.slice(0, 10)));
+  const [hour = "0", minute = "00"] = due.dateTime.slice(11, 16).split(":");
+  return `${day} ${Number(hour)}:${minute}`;
+}

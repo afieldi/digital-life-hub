@@ -106,3 +106,14 @@ test("existing AppRouter procedures keep their types", () => {
   expectTypeOf<AppOut["ops"]["undo"]>().toEqualTypeOf<{ summary: string }>();
   expect(Object.keys(appRouter._def.procedures)).toContain("ops.undo");
 });
+
+test("tasks operations are typed on the real AppRouter", () => {
+  expectTypeOf<AppIn["tasks"]["complete"]>().toEqualTypeOf<{
+    id: string;
+    expectedUpdatedAt: string;
+  }>();
+  expectTypeOf<
+    AppOut["tasks"]["complete"]["result"]["task"]
+  >().toEqualTypeOf<Item>();
+  expect(Object.keys(appRouter._def.procedures)).toContain("tasks.complete");
+});

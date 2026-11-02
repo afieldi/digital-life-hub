@@ -32,6 +32,7 @@ export { type ScopedWriter, scopedWriter } from "./ai/scoped";
 export { getSettings } from "./ai/settings";
 export { type ChangeBus, createChangeBus } from "./changes";
 export { purgeExpired } from "./items/purge";
+export { getItem } from "./items/read";
 export { type ItemWriter, writeItems } from "./items/writer";
 export { migrationsRoot, moduleMigrations } from "./migrations";
 export {

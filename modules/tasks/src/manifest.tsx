@@ -1,4 +1,5 @@
 import { defineModule } from "@dlh/core";
+import { taskOps } from "./operations";
 
 export default defineModule({
   id: "tasks",
@@ -17,4 +18,5 @@ export default defineModule({
     key: "t",
   },
   routes: () => [],
+  operations: Object.values(taskOps),
 });

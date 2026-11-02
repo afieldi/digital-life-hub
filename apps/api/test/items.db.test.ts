@@ -1,12 +1,13 @@
 import { writeItems } from "@dlh/server";
-import { freshTestDb } from "@dlh/server/testing";
+import { freshModuleDb } from "@dlh/server/testing";
 import { TRPCClientError } from "@trpc/client";
 import { seedIfEmpty } from "../src/cli/seed";
 import { serverModules } from "../src/modules.gen";
 import { createTestApi } from "../src/testing";
 
 async function setup() {
-  const t = await freshTestDb();
+  // Module tables too: the seed writes through every module.
+  const t = await freshModuleDb(serverModules);
   const api = createTestApi({ db: t.db, devAuth: true, itemTypes: ["test"] });
   const token = await api.signIn();
   const c = api.client(token);

@@ -8,6 +8,7 @@ import {
 import { type Db, items, links } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import type { Tx } from "../trpc";
 import { toLink } from "./links";
 import { toItem } from "./writer";
 
@@ -37,7 +38,8 @@ export function toSummary(row: SummaryRow): ItemSummary {
   };
 }
 
-export async function getItem(db: Db, id: string): Promise<Item> {
+/** A live item, read with `db` or inside a transaction. */
+export async function getItem(db: Db | Tx, id: string): Promise<Item> {
   const [row] = await db
     .select()
     .from(items)

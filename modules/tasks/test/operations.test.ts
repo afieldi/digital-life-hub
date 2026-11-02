@@ -1,0 +1,71 @@
+import type { PaletteContext } from "@dlh/core";
+import { expect, test } from "vitest";
+import { formatDue } from "../src/dates";
+import { taskOps } from "../src/operations";
+
+const ctx: PaletteContext = {
+  text: "",
+  now: new Date("2026-11-02T17:00:00Z"),
+  timeZone: "America/Los_Angeles",
+  item: {
+    id: "8d3f1c0e-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+    type: "task",
+    updatedAt: "2026-11-02T16:00:00.000Z",
+  },
+};
+
+test("formatDue shows the day, and the wall time it was set at", () => {
+  expect(formatDue({ date: "2026-11-06" })).toBe("Fri, Nov 6");
+  expect(
+    formatDue({
+      dateTime: "2026-11-06T09:05:00-08:00",
+      timeZone: "America/Los_Angeles",
+    }),
+  ).toBe("Fri, Nov 6 9:05");
+});
+
+test("create prefills from quick add and leaves missing parts unset", () => {
+  const palette = taskOps.create.palette;
+  if (typeof palette !== "object") throw new Error("expected a form");
+  expect(palette.prefill?.({ ...ctx, text: "Call the bank fri p1" })).toEqual({
+    title: "Call the bank",
+    due: { date: "2026-11-06" },
+    priority: "high",
+  });
+  expect(palette.prefill?.({ ...ctx, text: "" })).toEqual({
+    title: undefined,
+    due: undefined,
+    priority: undefined,
+  });
+  expect(palette.params.safeParse({}).success).toBe(false);
+});
+
+test("reschedule reads a date and summarises it", () => {
+  const palette = taskOps.reschedule.palette;
+  if (typeof palette !== "object") throw new Error("expected a form");
+  const params = palette.prefill?.({ ...ctx, text: "friday" });
+  expect(params).toEqual({ due: { date: "2026-11-06" } });
+  const input = palette.toInput(ctx, { due: { date: "2026-11-06" } });
+  expect(input).toEqual({
+    id: ctx.item?.id,
+    expectedUpdatedAt: ctx.item?.updatedAt,
+    due: { date: "2026-11-06" },
+  });
+  expect(taskOps.reschedule.summary(input)).toBe("Reschedule to Fri, Nov 6");
+});
+
+test("reorder's palette offers top and bottom only; rescheduleMany is hidden", () => {
+  const palette = taskOps.reorder.palette;
+  if (typeof palette !== "object") throw new Error("expected a form");
+  expect(palette.params.shape.position.options).toEqual(["top", "bottom"]);
+  expect(taskOps.rescheduleMany.palette).toBe(false);
+  expect(taskOps.rescheduleMany.ai).toBe(false);
+});
+
+test("subjects: create and parent links act on the parent", () => {
+  const parentId = "1d3f1c0e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
+  expect(taskOps.create.subject({ title: "x" })).toBeNull();
+  expect(taskOps.create.subject({ title: "x", parentId })).toBe(parentId);
+  expect(taskOps.addParent.subject({ id: "a", parentId })).toBe(parentId);
+  expect(taskOps.removeParent.subject({ id: "a", parentId })).toBe(parentId);
+});
