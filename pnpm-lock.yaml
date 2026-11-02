@@ -225,6 +225,67 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(jsdom@30.1.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
+  modules/tasks:
+    dependencies:
+      '@dlh/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@dlh/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@dlh/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      '@dlh/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@internationalized/date':
+        specifier: ^3.12.4
+        version: 3.12.4
+      '@tanstack/react-query':
+        specifier: ^5.105.0
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      '@tanstack/react-router':
+        specifier: ^1.170.46
+        version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@trpc/server':
+        specifier: ^11.22.1
+        version: 11.22.1(typescript@5.9.3)
+      chrono-node:
+        specifier: ^2.10.3
+        version: 2.10.3
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(postgres@4.0.0)
+      fractional-indexing:
+        specifier: ^4.0.0
+        version: 4.0.0
+      lucide-react:
+        specifier: ^1.64.0
+        version: 1.64.0(@types/react@19.3.0)(react@19.3.1)
+      react:
+        specifier: ^19
+        version: 19.3.1
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      drizzle-kit:
+        specifier: ^0.31.11
+        version: 0.31.11
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(jsdom@30.1.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
   packages/api-contract:
     dependencies:
       zod:
@@ -1694,6 +1755,10 @@ packages:
     resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
     engines: {node: '>= 20.19.0'}
 
+  chrono-node@2.10.3:
+    resolution: {integrity: sha512-MOfrzXgSMZTH4SZ5gyRKQCVwiCrCKY+uYkSJiWoRLXS88DA6WGJm8UjgS+VVEuUQeew/UUXaxrO+SeDn/WCisg==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
   client-only@0.0.1:
     resolution: {integrity: sha512-IV3Ou0jSMzZrd3pZ48nLkT9DA7Ag1pnPzaiQhpW7c3RbcqqzvzzVu+L8gfqMp/8IM2MQtSiqaCxrrcfu8I8rMA==}
 
@@ -1898,6 +1963,10 @@ packages:
 
   fix-dts-default-cjs-exports@1.0.1:
     resolution: {integrity: sha512-pVIECanWFC61Hzl2+oOCtoJ3F17kglZC/6N94eRWycFgBH35hHx0Li604ZIzhseh97mf2p0cv7vVrOZGoqhlEg==}
+
+  fractional-indexing@4.0.0:
+    resolution: {integrity: sha512-Nr2P1Yyaj2sy1Qdt/wI3GcByxrUdbSKg5+cGvw8f18hT2SkQt6V72iOjBpk7IO3UkzBsdlGRs2a4z6dLrJprgw==}
+    engines: {node: ^14.13.1 || >=16.0.0}
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -3387,6 +3456,8 @@ snapshots:
     dependencies:
       readdirp: 5.1.1
 
+  chrono-node@2.10.3: {}
+
   client-only@0.0.1: {}
 
   clsx@2.1.1: {}
@@ -3554,6 +3625,8 @@ snapshots:
       magic-string: 0.30.21
       mlly: 1.8.2
       rollup: 4.66.0
+
+  fractional-indexing@4.0.0: {}
 
   fsevents@2.3.3:
     optional: true
