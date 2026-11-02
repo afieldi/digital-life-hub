@@ -27,6 +27,7 @@ pnpm dev
 | ------------------------------ | -------------------------------------------------------------------- |
 | `pnpm dev`                     | Starts everything                                                    |
 | `pnpm dev:down`                | Stops Postgres                                                       |
+| `pnpm db:migrate`              | Applies Core's migrations, then each module's (Tasks)                |
 | `pnpm db:reset`                | Wipes the dev database and reseeds sample items                      |
 | `pnpm gen:modules`             | Regenerates the module registry (`pnpm lint` fails if it is stale)   |
 | `pnpm test`                    | Unit tests                                                           |

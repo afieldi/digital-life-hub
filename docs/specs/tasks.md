@@ -2,6 +2,8 @@
 
 Nov 2, 2026 · Arek · Draft
 
+**Status:** implemented (Nov 2026); the manual Done check is pending.
+
 ## Scope
 
 The first module built on Core. Tasks is the smallest useful module and the first thing you can use every day: capture a task, see what's due, tick it off. It also tests the module contract end to end: a module-owned table and migrations, writes through Core's item writer, `contains` links, search, ⌘K and AI. Part of the [Digital Life Hub overview](../overview.md).
@@ -100,7 +102,7 @@ export default defineServerModule({
 - **Endpoints.** `defineServerModule` takes `operations` in place of `router`. Each becomes `protectedProcedure.input(desc.input).query()` or `.mutation()`, mounted under the module id (`tasks.reschedule`). Operations are an object with literal keys, so `AppRouter` keeps full tRPC types and screens call `trpc.tasks.reschedule.useMutation()` as today. A type test pins this.
 - **Effects apply to every call.** A mutation runs with Core's scoped writer: only the methods its `effects` allow, and only on `subject(input)` unless it declares `writeOtherItems`. This holds for calls from the screens too, not only AI. The module's own table is written through `w.tx`; effects cannot govern it. Queries get a read handle, no writer.
 - **New effect `removeLinks`.** Removing a link from the subject. Reversible, so it allows Do.
-- **Undo.** A mutation returns `{ result, undo }`. `ops.undo({ id, record })` (a Core router) checks `record` against the operation's `undoRecord` and runs its `undo`. Items a mutation created are recorded by the writer and soft-deleted by Core on undo, before the operation's own `undo` runs. Undo checks `updatedAt` like any write; a task changed since fails with `CONFLICT` "Changed since".
+- **Undo.** A mutation returns `{ result, undo }`, where `undo` is a token `{ record, created }`. `ops.undo({ id, token })` (a Core router) checks `token.record` against the operation's `undoRecord` and runs its `undo`. Items a mutation created are recorded by the writer and soft-deleted by Core on undo, before the operation's own `undo` runs. Undo checks `updatedAt` like any write; a task changed since fails with `CONFLICT` "Changed since".
 - **`palette` and `ai`** both default to on and are set to `false` to hide an operation from ⌘K or AI. Leave a code comment where the reason isn't obvious.
 - **Reads on ⌘K or AI** must return `{ heading, items }`, where `items` are rows with at least an `ItemSummary`. The command bar renders them with no module code.
 - **Registration fails** if an operation id lacks its module prefix or repeats, `palette` can't be built (below), or an `appliesTo` type belongs to another module.
@@ -269,7 +271,7 @@ It returns the fields and the spans it read, so the field highlights them; backs
 
 **From operations.** The adapter turns each `ai` operation into an AI action:
 
-- The model fills the input except `id` and `expectedUpdatedAt`, which come from the item on screen. `subject(input)` must be the item on screen or null (creating a task with no parent), unless `writeOtherItems` is declared.
+- The model fills the input except `id` and `expectedUpdatedAt`, which come from the item on screen. `subject(input)` must be the item on screen or null (creating a task with no parent), unless `writeOtherItems` is declared. The item on screen may also be the one filling `input.id` ("make this a subtask of …", whose subject is the parent).
 - The cap comes from `effects` as for any AI action: mutations here can Do with Undo; queries are Ask, their result shown as rows, with no second model call.
 - `fields.item` values are filled with a title. The server matches it with `search`, limited to the field's types: one clear match runs; an ambiguous one or none drops to Suggest with the top three matches.
 - Undo is the operation's own, through `ai.undo`.
@@ -278,13 +280,13 @@ It returns the fields and the spans it read, so the field highlights them; backs
 
 | Action | Applies to | Kinds | Effects | Does |
 | --- | --- | --- | --- | --- |
-| `tasks.breakDown` | `task`, top level | Suggest, Do | `createItems`, `addLinks` | From the title, notes and existing subtasks, proposes 3–7 subtask titles. Suggest shows a checklist and creates those you tick; Do creates all. On a subtask: "Subtasks can't have subtasks" |
+| `tasks.breakDown` | `task`, top level | Suggest, Do | `createItems`, `addLinks` | From the title, notes and existing subtasks, proposes 3–7 subtask titles. Suggest shows a checklist (multi-select, applied with `ai.applyOption({ options })`) and creates those you tick; Do creates all. On a subtask: "Subtasks can't have subtasks" |
 | `tasks.rewriteNotes` | `task` | Suggest, Do | `updateItem` | Rewrites the notes more clearly without adding facts. Suggest offers two versions; Do replaces them. Undo restores the old text |
 | `tasks.planToday` | `"none"`, `"*"` | Ask | none | Context: overdue, today's and the next two days' open tasks (title, due, priority, subtask progress), at most 60. Answers with an ordered list of `{ taskId, reason }` and one line of advice, shown as task rows. Ids outside the context are rejected |
 
 **Time.** `ai.prepare` takes `timeZone`; every task action's context starts with "Today is Mon, Nov 2, 2026 (America/Los_Angeles)".
 
-**Created items.** No Core AI action creates items today; `breakDown` and `create` are the first. The writer records every item created, and Undo soft-deletes exactly those (Core does it, since the runner's writer has no delete). `addLinks` still starts only from the item on screen, so new subtasks can only go under the task you're on.
+**Created items.** No Core AI action creates items today; `breakDown` and `create` are the first. The writer records every item created, for operation actions and hand-written runners alike, and Undo soft-deletes exactly those (Core does it, since the runner's writer has no delete). `addLinks` still starts only from the item on screen, so new subtasks can only go under the task you're on.
 
 **Registration.** Operations can't drift between app and server, since both import one description. For the hand-written runners, a module test checks the manifest's `aiActions` and the server's `aiRunners` list the same ids.
 
@@ -297,13 +299,14 @@ The Tasks canvas (Dusk design system) holds the designs. Every screen has a brea
 **Open** (`/tasks`)
 
 - Quick add at the top, highlighting what `parseTaskInput` read.
-- Groups: Overdue (with "Reschedule all", to today), Today, This week, Later (only when non-empty) and No date. Tasks done today stay in Today, struck through, until midnight.
+- Groups: Overdue (with "Reschedule all", which moves them to today as a day, dropping any time), Today, This week, Later (only when non-empty) and No date. Tasks done today stay in Today, struck through, until midnight.
 - Rows: checkbox, title, when ("12:00 · 9:00 PT" when zones differ), High flag, subtask summary, "in \<parent>" on dated subtasks, linked-note count.
-- Side column: Today's progress, "Next up at …", a High-only switch, and the keys N (new task), X (complete), ↵ (open).
+- Side column: Today's progress, "Next up at …", a High-only switch (kept in the URL as `?high=true`), and the keys N (new task), X (complete), ↵ (open).
+- Times show in 24-hour form ("9:00", "14:30"), here and on every screen.
 
 **Upcoming** (`/tasks/upcoming`)
 
-- Seven days, Monday first, with previous and next week. Each day has Add (quick add with that day filled in). Dragging a card to another day runs `reschedule`.
+- Seven days, Monday first, with previous and next week (the week shown is kept in the URL as `?week=`). Each day has Add (quick add with that day filled in). Dragging a card to another day runs `reschedule`.
 - Later: tasks after the week.
 
 **Done** (`/tasks/done`)

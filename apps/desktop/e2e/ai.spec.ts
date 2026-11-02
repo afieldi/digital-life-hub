@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { modEnter } from "./keys";
 import { openPalette } from "./palette";
 import { signIn } from "./signIn";
 
@@ -36,24 +37,6 @@ async function ask(page: Page, text: string, action: string): Promise<void> {
   await expect(page.getByText("Understood as")).toBeVisible();
   await expect(page.getByText(action, { exact: true })).toBeVisible();
   await expect(page.getByText("to ask AI")).toBeVisible();
-}
-
-/**
- * Presses Mod+↵ with the modifier the app uses. The app picks ⌘ or Ctrl from
- * the browser's reported platform, which can differ from the host OS that
- * Playwright's ControlOrMeta follows (headless Chromium on macOS reports
- * a non-Mac platform).
- */
-async function modEnter(page: Page): Promise<void> {
-  const mac = await page.evaluate(() => {
-    const nav = navigator as Navigator & {
-      userAgentData?: { platform?: string };
-    };
-    return /mac|iphone|ipad|ipod/i.test(
-      nav.userAgentData?.platform || nav.platform || "",
-    );
-  });
-  await page.keyboard.press(mac ? "Meta+Enter" : "Control+Enter");
 }
 
 test("Do renames the item and Undo restores the title", async ({
