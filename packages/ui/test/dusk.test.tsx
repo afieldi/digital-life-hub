@@ -4,12 +4,14 @@ import { Home, ListChecks } from "lucide-react";
 import { RouterProvider } from "react-aria-components";
 import { Breadcrumb } from "../src/dusk/Breadcrumb";
 import { Chip } from "../src/dusk/Chip";
+import { DayBars } from "../src/dusk/DayBars";
 import { Dock } from "../src/dusk/Dock";
 import { Flag } from "../src/dusk/Flag";
 import { Kbd } from "../src/dusk/Kbd";
 import { KeyHints } from "../src/dusk/KeyHints";
 import { ProgressBar } from "../src/dusk/ProgressBar";
 import { TypeTile } from "../src/dusk/TypeTile";
+import { ViewTabs } from "../src/dusk/ViewTabs";
 import { modKeyLabel } from "../src/platform";
 
 test("Kbd shows Ctrl on Windows and ⌘ on macOS", () => {
@@ -165,4 +167,51 @@ test("Flag and KeyHints show their labels", () => {
   const list = screen.getByRole("list", { name: "Keyboard shortcuts" });
   expect(list).toHaveTextContent("Nnew task");
   expect(list).toHaveTextContent("Xcomplete");
+});
+
+test("ViewTabs are links in a named nav; the current one is the page", () => {
+  render(
+    <ViewTabs
+      label="Task views"
+      tabs={[
+        { label: "Open · 2", href: "/tasks", current: true },
+        { label: "Done", href: "/tasks/done" },
+      ]}
+    />,
+  );
+  const nav = screen.getByRole("navigation", { name: "Task views" });
+  expect(nav).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open · 2" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(screen.getByRole("link", { name: "Done" })).not.toHaveAttribute(
+    "aria-current",
+  );
+});
+
+test("DayBars reads as one image listing every day", () => {
+  render(
+    <DayBars
+      label="Tasks done per day"
+      bars={[
+        { label: "Mon", value: 2 },
+        { label: "Tue", value: 0 },
+      ]}
+    />,
+  );
+  expect(
+    screen.getByRole("img", { name: "Tasks done per day: Mon 2, Tue 0" }),
+  ).toBeInTheDocument();
+});
+
+test("Chip with onRemove has a named × button", async () => {
+  const onRemove = vi.fn();
+  render(
+    <Chip kind="project" onRemove={onRemove} removeLabel="Remove from Q4">
+      Q4
+    </Chip>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Remove from Q4" }));
+  expect(onRemove).toHaveBeenCalledOnce();
 });

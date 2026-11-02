@@ -9,8 +9,11 @@ import { EmptyState } from "../src/patterns/EmptyState";
 import { ItemRow } from "../src/patterns/ItemRow";
 import { ListGroup } from "../src/patterns/ListGroup";
 import { PageHeader } from "../src/patterns/PageHeader";
+import { PeriodNav } from "../src/patterns/PeriodNav";
 import { SectionCard } from "../src/patterns/SectionCard";
+import { SortableList } from "../src/patterns/SortableList";
 import { Button } from "../src/primitives/Button";
+import { Checkbox } from "../src/primitives/Checkbox";
 
 const noop = () => {};
 
@@ -592,4 +595,70 @@ test("PageHeader is the page's h1", () => {
     screen.getByRole("heading", { level: 1, name: "Tasks" }),
   ).toBeInTheDocument();
   expect(screen.getByText("3 left today")).toBeInTheDocument();
+});
+
+test("Board takes an add label and card links", async () => {
+  const onAdd = vi.fn();
+  render(
+    <Board
+      columns={columns}
+      items={cards}
+      columnOf={(c) => c.col}
+      renderCard={(c) => c.title}
+      textValue={(c) => c.title}
+      hrefOf={(c) => `/cards/${c.id}`}
+      onMove={noop}
+      onAdd={onAdd}
+      addLabel="Add"
+    />,
+  );
+  const todo = screen.getByRole("region", { name: /To do/ });
+  await userEvent.click(within(todo).getByRole("button", { name: "Add" }));
+  expect(onAdd).toHaveBeenCalledWith("todo");
+  expect(
+    within(screen.getByRole("grid", { name: "To do" })).getAllByRole("row")[0],
+  ).toHaveAttribute("data-href", "/cards/a");
+});
+
+test("SortableList rows hold their own controls and drag handles", async () => {
+  const toggle = vi.fn();
+  render(
+    <SortableList
+      label="Subtasks"
+      items={cards}
+      textValue={(c) => c.title}
+      onMove={noop}
+      renderItem={(c) => (
+        <Checkbox aria-label={c.title} onChange={() => toggle(c.id)} />
+      )}
+    />,
+  );
+  const grid = screen.getByRole("grid", { name: "Subtasks" });
+  expect(within(grid).getAllByRole("row")).toHaveLength(3);
+  expect(
+    screen.getByRole("button", { name: "Drag Write copy" }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("checkbox", { name: "Pick fonts" }));
+  expect(toggle).toHaveBeenCalledWith("b");
+});
+
+test("PeriodNav names its period and steps both ways", async () => {
+  const prev = vi.fn();
+  const next = vi.fn();
+  render(
+    <PeriodNav
+      label="Nov 2 – 8"
+      onPrevious={prev}
+      onNext={next}
+      previousLabel="Previous week"
+      nextLabel="Next week"
+    />,
+  );
+  expect(
+    screen.getByRole("heading", { name: "Nov 2 – 8" }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Previous week" }));
+  await userEvent.click(screen.getByRole("button", { name: "Next week" }));
+  expect(prev).toHaveBeenCalledOnce();
+  expect(next).toHaveBeenCalledOnce();
 });

@@ -45,6 +45,9 @@ export function ItemSearchField({
       items={results}
       defaultFilter={() => true}
       menuTrigger="focus"
+      // Results arrive after the keystroke that asked for them; an open list
+      // shows them as they come instead of waiting for the next key.
+      allowsEmptyCollection
       placeholder={
         types?.length ? `Find ${types.join(" or ")}` : "Find an item"
       }

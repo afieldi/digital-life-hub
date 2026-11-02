@@ -2,12 +2,14 @@ import { CalendarDays, Home, ListChecks, Plus, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Breadcrumb } from "../../dusk/Breadcrumb";
 import { Chip } from "../../dusk/Chip";
+import { DayBars } from "../../dusk/DayBars";
 import { Dock } from "../../dusk/Dock";
 import { Flag } from "../../dusk/Flag";
 import { Kbd } from "../../dusk/Kbd";
 import { KeyHints } from "../../dusk/KeyHints";
 import { ProgressBar } from "../../dusk/ProgressBar";
 import { TypeTile } from "../../dusk/TypeTile";
+import { ViewTabs } from "../../dusk/ViewTabs";
 import { Button } from "../../primitives/Button";
 import type { ItemType } from "../../tokens";
 import { registerStories } from "../registry";
@@ -78,6 +80,63 @@ registerStories("dusk", [
         <Chip kind="type" color="#CDB6FF">
           AI
         </Chip>
+      </div>
+    ),
+  },
+  {
+    id: "dusk/chip-removable",
+    title: "Removable chips",
+    render: () => (
+      <div className="flex items-center gap-3 p-4">
+        <Chip
+          kind="project"
+          color="#9EC2FF"
+          href="/tasks/q4"
+          onRemove={() => {}}
+          removeLabel="Remove from Q4 planning"
+        >
+          Q4 planning
+        </Chip>
+        <Chip kind="project" onRemove={() => {}} removeLabel="Remove Home">
+          Home
+        </Chip>
+      </div>
+    ),
+  },
+  {
+    id: "dusk/view-tabs",
+    title: "View tabs",
+    render: () => (
+      <div className="p-4">
+        <ViewTabs
+          label="Task views"
+          tabs={[
+            { label: "Open · 9", href: "/tasks" },
+            { label: "Upcoming · 14", href: "/tasks/upcoming", current: true },
+            { label: "Done", href: "/tasks/done" },
+          ]}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "dusk/day-bars",
+    title: "Day bars",
+    render: () => (
+      <div className="w-[280px] p-4">
+        <DayBars
+          label="Tasks done per day"
+          highlight={2}
+          bars={[
+            { label: "Mon", value: 2 },
+            { label: "Tue", value: 3 },
+            { label: "Wed", value: 1 },
+            { label: "Thu", value: 0 },
+            { label: "Fri", value: 0 },
+            { label: "Sat", value: 0 },
+            { label: "Sun", value: 0 },
+          ]}
+        />
       </div>
     ),
   },

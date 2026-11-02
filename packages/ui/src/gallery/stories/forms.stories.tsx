@@ -1,9 +1,11 @@
 import type { FieldSpec, ItemSummary } from "@dlh/core";
+import { Ellipsis } from "lucide-react";
 import { useState } from "react";
 import { DueField } from "../../patterns/DueField";
 import { ItemSearchField } from "../../patterns/ItemSearchField";
 import { OperationForm } from "../../patterns/OperationForm";
 import { SidePanel } from "../../patterns/SidePanel";
+import { Button } from "../../primitives/Button";
 import { SegmentedChoice } from "../../primitives/SegmentedChoice";
 import { Select } from "../../primitives/Select";
 import { Skeleton } from "../../primitives/Skeleton";
@@ -199,6 +201,25 @@ registerStories("forms", [
         <SidePanel title="Write the spec" onClose={noop}>
           <Skeleton lines={3} />
           <SegmentedDemo />
+        </SidePanel>
+      </div>
+    ),
+  },
+  {
+    id: "forms/side-panel-actions",
+    title: "SidePanel with actions",
+    render: () => (
+      <div className="h-[260px] w-[420px] p-4">
+        <SidePanel
+          title="Write the spec"
+          onClose={noop}
+          actions={
+            <Button variant="icon" aria-label="More actions">
+              <Ellipsis aria-hidden="true" size={18} />
+            </Button>
+          }
+        >
+          <Skeleton lines={2} />
         </SidePanel>
       </div>
     ),

@@ -287,3 +287,19 @@ test("SegmentedChoice labels with spaces and duplicates are labelled correctly",
   const groups = screen.getAllByRole("radiogroup", { name: "Due soon" });
   expect(groups).toHaveLength(2);
 });
+
+test("SidePanel shows its actions beside Close", () => {
+  render(
+    <SidePanel
+      title="Task"
+      onClose={() => {}}
+      actions={<button type="button">More actions</button>}
+    >
+      body
+    </SidePanel>,
+  );
+  expect(
+    screen.getByRole("button", { name: "More actions" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+});

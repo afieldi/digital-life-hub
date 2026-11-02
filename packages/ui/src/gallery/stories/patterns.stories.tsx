@@ -10,7 +10,9 @@ import { EmptyState } from "../../patterns/EmptyState";
 import { ItemRow } from "../../patterns/ItemRow";
 import { ListGroup } from "../../patterns/ListGroup";
 import { PageHeader } from "../../patterns/PageHeader";
+import { PeriodNav } from "../../patterns/PeriodNav";
 import { SectionCard } from "../../patterns/SectionCard";
+import { SortableList } from "../../patterns/SortableList";
 import { Button } from "../../primitives/Button";
 import { Caption } from "../../primitives/Caption";
 import { Checkbox } from "../../primitives/Checkbox";
@@ -282,7 +284,47 @@ const interpretationRow = (
   </div>
 );
 
+const steps = [
+  { id: "s1", title: "Pull last year's contracts", done: true },
+  { id: "s2", title: "Mark renewal and SLA clauses", done: false },
+  { id: "s3", title: "List questions for legal", done: false },
+];
+
 registerStories("patterns", [
+  {
+    id: "patterns/period-nav",
+    title: "Period nav",
+    render: () => (
+      <div className="p-4">
+        <PeriodNav
+          label="Nov 2 – 8"
+          onPrevious={noop}
+          onNext={noop}
+          previousLabel="Previous week"
+          nextLabel="Next week"
+        />
+      </div>
+    ),
+  },
+  {
+    id: "patterns/sortable-list",
+    title: "Sortable list",
+    render: () => (
+      <div className="w-[380px] p-4">
+        <SortableList
+          label="Subtasks"
+          items={steps}
+          textValue={(s) => s.title}
+          onMove={noop}
+          renderItem={(s) => (
+            <Checkbox isSelected={s.done} aria-label={s.title}>
+              {s.title}
+            </Checkbox>
+          )}
+        />
+      </div>
+    ),
+  },
   {
     id: "patterns/board",
     title: "Board (Website relaunch)",

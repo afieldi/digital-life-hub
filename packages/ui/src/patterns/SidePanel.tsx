@@ -6,6 +6,8 @@ import { Button } from "../primitives/Button";
 export type SidePanelProps = {
   title: string;
   onClose: () => void;
+  /** Beside the close button, e.g. a ⋯ menu. */
+  actions?: ReactNode;
   children?: ReactNode;
   className?: string;
 };
@@ -17,6 +19,7 @@ export type SidePanelProps = {
 export function SidePanel({
   title,
   onClose,
+  actions,
   children,
   className,
 }: SidePanelProps) {
@@ -46,9 +49,12 @@ export function SidePanel({
         <Heading level={2} className="font-serif text-2xl text-ink-primary">
           {title}
         </Heading>
-        <Button variant="icon" aria-label="Close" onPress={onClose}>
-          <X aria-hidden="true" size={18} />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {actions}
+          <Button variant="icon" aria-label="Close" onPress={onClose}>
+            <X aria-hidden="true" size={18} />
+          </Button>
+        </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5 pt-2">
         {children}
