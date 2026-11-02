@@ -14,7 +14,7 @@ import { z } from "zod";
 import { tasksAiActions } from "../ai";
 import { addDays, formatWhen, todayIn } from "../dates";
 import { hasTaskParent } from "./links";
-import { dueBetweenRows } from "./reads";
+import { dueBetweenRows, rowsByIds } from "./reads";
 import { create, update } from "./writes";
 
 /** Hand-written runners write through Core's tools, which `runApply` and `undo` always pass. */
@@ -191,30 +191,42 @@ const planOutput = z
 const planToday = defineAiRunner(tasksAiActions.planToday, {
   async context(deps, _itemId, opts) {
     const timeZone = opts?.timeZone ?? "UTC";
-    const { lines } = await planRows(deps, timeZone);
+    const { rows, lines } = await planRows(deps, timeZone);
     const text = lines.length
       ? `${PLAN_HEADER}\n${lines.join("\n")}`
       : "No open tasks are overdue or due in the next few days.";
-    return { item: null, text, version: null, timeZone };
+    const listed = rows.map((r) => r.row.id);
+    return { item: null, text, version: null, timeZone, listed };
   },
   system: `${PREAMBLE}
 The <item> section lists the person's open tasks that are overdue or due today or in the next two days, each with when it is due, its priority, its subtask progress and its id. Put the ones worth doing today in a sensible order, each with a one-sentence reason, and give one line of advice. Use only ids from the list.`,
   output: { ask: planOutput },
   async list(deps, out, ctx) {
     const { order, advice } = planOutput.parse(out);
-    const { rows } = await planRows(deps, ctx.timeZone ?? "UTC");
-    const byId = new Map(rows.map((r) => [r.row.id, r]));
-    const seen = new Set<string>();
-    const items = [];
-    for (const { taskId, reason } of order) {
-      const found = byId.get(taskId);
-      if (!found) {
+    const timeZone = ctx.timeZone ?? "UTC";
+    // Checked against the tasks the model saw; read again for what changed
+    // since (a CLI run can take a while): ticked ones show done, deleted ones
+    // are dropped.
+    const shown = new Set(ctx.listed ?? []);
+    for (const { taskId } of order) {
+      if (!shown.has(taskId)) {
         throw new AiError(
           "bad_output",
           "The plan named a task that isn't due soon, so nothing was shown.",
         );
       }
-      if (seen.has(taskId)) continue;
+    }
+    const now = await rowsByIds(
+      deps.db,
+      order.map((o) => o.taskId),
+      timeZone,
+    );
+    const byId = new Map(now.map((r) => [r.row.id, r]));
+    const seen = new Set<string>();
+    const items = [];
+    for (const { taskId, reason } of order) {
+      const found = byId.get(taskId);
+      if (!found || seen.has(taskId)) continue;
       seen.add(taskId);
       items.push({
         id: found.row.id,
@@ -222,6 +234,7 @@ The <item> section lists the person's open tasks that are overdue or due today o
         title: found.row.title,
         archivedAt: found.archivedAt,
         ...(reason.trim() ? { note: reason.trim() } : {}),
+        ...(found.row.completedAt ? { done: true } : {}),
       });
     }
     return { heading: advice.trim() || "Plan for today", items };

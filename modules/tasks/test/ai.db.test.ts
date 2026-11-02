@@ -44,7 +44,7 @@ async function setup() {
     };
   /** Moves the frozen clock on, so a later write gets a later version. */
   const tick = () => deps.setNow(new Date(deps.now().getTime() + 1000));
-  return { ...t, deps, create, mk, tick };
+  return { ...t, deps, collected, create, mk, tick };
 }
 
 type Db = Awaited<ReturnType<typeof setup>>["db"];
@@ -387,6 +387,60 @@ test("planToday rejects unknown ids", async () => {
       timeZone: ZONE,
     }),
   ).rejects.toMatchObject({ cause: { code: "bad_output" } });
+  await s.close();
+});
+
+test("planToday checks the answer against what the model saw: a task ticked since shows done, a deleted one is dropped", async () => {
+  const s = await setup();
+  const ticked = await s.mk({ title: "Ticked", due: { date: "2026-10-30" } });
+  const gone = await s.mk({ title: "Gone", due: { date: "2026-10-30" } });
+  const open = await s.mk({ title: "Open", due: { date: "2026-10-30" } });
+  const run = await prepare(s.deps, {
+    text: "plan my day",
+    actionId: "tasks.planToday",
+    kind: "ask",
+    provider: "claude-cli",
+    timeZone: ZONE,
+  });
+  if (run.status !== "run") throw new Error("expected a CLI run");
+
+  // While the CLI runs: one task is ticked, one deleted.
+  s.tick();
+  const complete_ = s.collected.operations.get("tasks.complete");
+  if (complete_?.kind !== "mutation") throw new Error("no tasks.complete");
+  await runMutation(s.deps, complete_, {
+    id: ticked.id,
+    expectedUpdatedAt: ticked.updatedAt,
+  });
+  await s.db.execute(
+    sql`update items set deleted_at = now() where id = ${gone.id}`,
+  );
+
+  const res = await complete(s.deps, {
+    requestId: run.requestId,
+    raw: JSON.stringify({
+      type: "result",
+      is_error: false,
+      result: JSON.stringify({
+        order: [
+          { taskId: ticked.id, reason: "Quick" },
+          { taskId: gone.id, reason: "Was due" },
+          { taskId: open.id, reason: "Then this" },
+        ],
+        advice: "Go.",
+      }),
+    }),
+  });
+  expect(res).toMatchObject({
+    status: "listed",
+    items: [
+      { id: ticked.id, done: true },
+      { id: open.id, title: "Open" },
+    ],
+  });
+  if (res.status !== "listed") throw new Error();
+  expect(res.items).toHaveLength(2);
+  expect(res.items[1]?.done).toBeUndefined();
   await s.close();
 });
 

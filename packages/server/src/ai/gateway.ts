@@ -105,8 +105,27 @@ function checkTimeZone(timeZone: string | undefined): void {
   }
 }
 
-/** The zone a pending request that lists rows keeps for `complete`. */
-const pendingOutput = z.object({ timeZone: z.string() });
+/**
+ * What a pending request keeps for when it finishes: the zone (`complete`
+ * lists rows and sets local times in it), and for a list runner the ids its
+ * context showed the model.
+ */
+const pendingOutput = z.object({
+  timeZone: z.string().optional(),
+  listed: z.array(z.string()).optional(),
+});
+
+/** The pending row's `output` (see `pendingOutput`), or null when there is nothing to keep. */
+function pendingFor(
+  timeZone: string | undefined,
+  listed: string[] | undefined,
+): z.infer<typeof pendingOutput> | null {
+  if (timeZone === undefined && listed === undefined) return null;
+  return {
+    ...(timeZone !== undefined ? { timeZone } : {}),
+    ...(listed !== undefined ? { listed } : {}),
+  };
+}
 
 /** The item, or the `not_found` AI error if it is missing or deleted. */
 async function itemOrNotFound(
@@ -170,9 +189,7 @@ export async function prepare(
       itemId,
       itemVersion: version ? new Date(version) : null,
       status: "pending",
-      // A CLI run finishes in `complete`, which lists rows and sets local
-      // times in this zone.
-      output: input.timeZone ? { timeZone: input.timeZone } : null,
+      output: pendingFor(input.timeZone, runner.list ? ctx.listed : undefined),
     })
     .returning();
   if (!row) throw new Error("ai_requests insert returned no row");
@@ -308,7 +325,13 @@ async function finish(
     if (kind === "ask") {
       if (runner.list) {
         const ctx = await runner.context(deps, row.itemId, { timeZone });
-        const list = await runner.list(deps, out, { ...ctx, timeZone });
+        // What the model saw at prepare, not what the context reads now.
+        const { listed } = pendingOutput.safeParse(row.output).data ?? {};
+        const list = await runner.list(deps, out, {
+          ...ctx,
+          timeZone,
+          ...(listed ? { listed } : {}),
+        });
         await claim(deps.db, row.id, "pending", { status: "listed", ...done });
         return { requestId: row.id, status: "listed", ...list };
       }

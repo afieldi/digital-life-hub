@@ -4,6 +4,7 @@ import { iconFor } from "../shell/icons";
 /**
  * A read's `{ heading, items }` in the command bar's result slot: one row per
  * item, opening the item type's `href`, with the item's `note` under its title.
+ * One finished since it was listed (`done`) is struck through.
  */
 export function ListResult({
   list,
@@ -41,9 +42,17 @@ export function ListResult({
               />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[15px]">{item.title}</span>
-              {typeof item.note === "string" ? (
-                <span className="text-xs text-ink-tertiary">{item.note}</span>
+              <span
+                className={`truncate text-[15px] ${item.done ? "text-ink-tertiary line-through" : ""}`}
+              >
+                {item.title}
+              </span>
+              {typeof item.note === "string" || item.done ? (
+                <span className="text-xs text-ink-tertiary">
+                  {[item.done ? "Done" : null, item.note]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
               ) : null}
             </span>
           </button>

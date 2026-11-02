@@ -8,6 +8,11 @@ export type AiContext = {
   version: string | null;
   /** The device's IANA zone, when the app sent one. */
   timeZone?: string;
+  /**
+   * Ids of the items `text` showed the model. A list request keeps them, so
+   * `list` checks the answer against what the model saw, not a later read.
+   */
+  listed?: string[];
 };
 
 /** Upper bound on the characters of item context handed to a model. */

@@ -24,6 +24,13 @@ test("listed renders rows", async () => {
               archivedAt: null,
               note: "It's due today",
             },
+            {
+              id: "01a19dab-01b0-7a77-8e92-851a6b8a4297",
+              type: "task",
+              title: "Water plants",
+              archivedAt: null,
+              done: true,
+            },
           ],
         },
       }}
@@ -43,6 +50,10 @@ test("listed renders rows", async () => {
   // A row's note (Plan today's reason) shows under its title.
   const row = screen.getByRole("button", { name: /^Pay rent/ });
   expect(row).toHaveTextContent("It's due today");
+  // Finished since the plan was made: struck through, and said so.
+  const done = screen.getByRole("button", { name: /^Water plants/ });
+  expect(done).toHaveTextContent("Done");
+  expect(screen.getByText("Water plants")).toHaveClass("line-through");
   await userEvent.click(row);
   expect(onOpen).toHaveBeenCalledWith(registry.itemTypes.get("task")?.href(id));
 });

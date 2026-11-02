@@ -187,6 +187,21 @@ export async function dueBetween(db: Db, range: Range): Promise<TaskRow[]> {
   return (await dueBetweenRows(db, range)).map((r) => r.row);
 }
 
+/** The live tasks among `ids`, done or not, each with its item's `archivedAt`. */
+export async function rowsByIds(db: Db, ids: string[], tz: string) {
+  if (ids.length === 0) return [];
+  return readRows(
+    db,
+    rowsQuery(
+      sql`t.item_id in (${sql.join(
+        ids.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})`,
+    ),
+    tz,
+  );
+}
+
 /** Open tasks, and those done since today started in `tz`. */
 async function openRows(db: Db, now: Date, tz: string): Promise<TaskRow[]> {
   const today = todayIn(now, tz);

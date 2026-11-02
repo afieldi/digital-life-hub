@@ -40,6 +40,8 @@ export type AiApplyInput = z.infer<typeof aiApplyInput>;
 /** A row an AI answer lists, with an optional line about it (Plan today's reason). */
 export const aiListedItem = itemSummary.extend({
   note: z.string().optional(),
+  /** Finished since the model saw it: shown struck through. */
+  done: z.boolean().optional(),
 });
 export type AiListedItem = z.infer<typeof aiListedItem>;
 
