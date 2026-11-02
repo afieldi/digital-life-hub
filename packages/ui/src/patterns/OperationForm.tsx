@@ -13,10 +13,10 @@ import { ItemSearchField } from "./ItemSearchField";
 export type OperationFormProps = {
   title: string;
   fields: FieldSpec[];
-  /** Starting values by field name; an item field is the item's id. */
+  /** Starting values by field name; an item field is an ItemSummary (or just its id, shown empty). */
   initial: Record<string, unknown>;
   timeZone: string;
-  search: (query: string) => Promise<ItemSummary[]>;
+  search: (query: string, types: string[]) => Promise<ItemSummary[]>;
   onSubmit: (values: Record<string, unknown>) => void;
   onCancel: () => void;
   /** @internal gallery only: backdrop covers its portal container. */
@@ -36,13 +36,13 @@ function seed(fields: FieldSpec[], initial: Values): Values {
   for (const f of fields) {
     const v = initial[f.name];
     if (v === undefined || v === null) continue;
-    // Only the id is known up front; the field shows it until another item is picked.
+    // A bare id has no title to show: the field stays empty until another item is picked.
     out[f.name] =
       f.kind === "item" && typeof v === "string"
         ? ({
             id: v,
             type: "",
-            title: v,
+            title: "",
             archivedAt: null,
           } satisfies ItemSummary)
         : v;
@@ -50,14 +50,22 @@ function seed(fields: FieldSpec[], initial: Values): Values {
   return out;
 }
 
-function output(fields: FieldSpec[], values: Values): Values {
+/**
+ * `null` only for a nullable field that had a value (initially or set here) and
+ * was cleared; a field never given a value is left out.
+ */
+function output(
+  fields: FieldSpec[],
+  values: Values,
+  hadValue: Set<string>,
+): Values {
   const out: Values = {};
   for (const f of fields) {
     const v = values[f.name];
     if (f.kind === "switch") {
       if (v !== undefined || !f.optional) out[f.name] = v === true;
     } else if (isEmpty(f, v)) {
-      if (f.nullable) out[f.name] = null;
+      if (f.nullable && hadValue.has(f.name)) out[f.name] = null;
     } else {
       out[f.name] = f.kind === "item" ? (v as ItemSummary).id : v;
     }
@@ -76,8 +84,12 @@ export function OperationForm({
   contained,
 }: OperationFormProps) {
   const [values, setValues] = useState<Values>(() => seed(fields, initial));
-  const set = (name: string, v: unknown) =>
+  const [hadValue] = useState(() => new Set(Object.keys(values)));
+  const set = (name: string, v: unknown) => {
+    const f = fields.find((x) => x.name === name);
+    if (f && !isEmpty(f, v)) hadValue.add(name);
     setValues((prev) => ({ ...prev, [name]: v }));
+  };
   const ready = fields.every((f) => f.optional || !isEmpty(f, values[f.name]));
   return (
     <Modal
@@ -90,7 +102,7 @@ export function OperationForm({
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (ready) onSubmit(output(fields, values));
+            if (ready) onSubmit(output(fields, values, hadValue));
           }}
         >
           <FocusFirstMissing fields={fields} initial={values}>

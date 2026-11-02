@@ -6,7 +6,7 @@ export type ItemSearchFieldProps = {
   label: string;
   /** Item types that may be picked (shown as a hint); `search` does the filtering. */
   types?: string[];
-  search: (query: string) => Promise<ItemSummary[]>;
+  search: (query: string, types: string[]) => Promise<ItemSummary[]>;
   value: ItemSummary | null;
   onChange: (value: ItemSummary | null) => void;
   className?: string;
@@ -26,7 +26,7 @@ export function ItemSearchField({
   const latest = useRef(0);
   const run = (q: string) => {
     const mine = ++latest.current;
-    search(q).then(
+    search(q, types ?? []).then(
       (rows) => {
         if (mine === latest.current) setResults(rows);
       },

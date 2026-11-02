@@ -63,7 +63,7 @@ const rows: ItemSummary[] = [
     archivedAt: null,
   },
 ];
-const search = vi.fn(async () => rows);
+const search = vi.fn(async (_q: string, _types: string[]) => rows);
 const zone = "America/Los_Angeles";
 
 function form(over: Partial<Parameters<typeof OperationForm>[0]> = {}) {
@@ -115,25 +115,49 @@ test("submit is disabled until required fields are filled, then submits values",
   await userEvent.type(screen.getByRole("textbox", { name: "Title" }), "Hello");
   expect(run).toBeEnabled();
   await userEvent.click(run);
-  // Untouched optional fields are omitted; nullable ones that were never set are null.
-  expect(onSubmit).toHaveBeenCalledWith({
-    title: "Hello",
-    notes: null,
-    due: null,
-    parent: null,
-  });
+  // Fields never given a value are left out, not nulled.
+  expect(onSubmit).toHaveBeenCalledWith({ title: "Hello" });
 });
 
 test("a seeded form is ready to submit and a cleared nullable field submits null", async () => {
   const { onSubmit } = form({ initial: { title: "T", notes: "x" } });
   await userEvent.clear(screen.getByRole("textbox", { name: "Notes" }));
   await userEvent.click(screen.getByRole("button", { name: "Run" }));
-  expect(onSubmit).toHaveBeenCalledWith({
-    title: "T",
-    notes: null,
-    due: null,
-    parent: null,
-  });
+  // Only the field that had a value and was cleared is nulled.
+  expect(onSubmit).toHaveBeenCalledWith({ title: "T", notes: null });
+});
+
+test("a cleared optional non-nullable field omits its key", async () => {
+  const { onSubmit } = form({ initial: { title: "T", priority: "low" } });
+  await userEvent.click(screen.getByRole("radio", { name: "low" }));
+  await userEvent.click(screen.getByRole("button", { name: "Run" }));
+  expect(onSubmit).toHaveBeenCalledWith({ title: "T" });
+});
+
+test("item search is limited to the field's types", async () => {
+  search.mockClear();
+  form();
+  await waitFor(() => expect(search).toHaveBeenCalledWith("", ["task"]));
+});
+
+test("an item field takes an ItemSummary, or an id that stays empty and never searches the id", async () => {
+  const [row] = rows as [ItemSummary];
+  const a = form({ initial: { title: "T", parent: row } });
+  expect(screen.getByRole("combobox", { name: "Parent" })).toHaveValue(
+    "Write spec",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Run" }));
+  expect(a.onSubmit).toHaveBeenCalledWith({ title: "T", parent: row.id });
+});
+
+test("a bare item id shows an empty input, searches with an empty query and submits the id", async () => {
+  search.mockClear();
+  const { onSubmit } = form({ initial: { title: "T", parent: "abc-id" } });
+  expect(screen.getByRole("combobox", { name: "Parent" })).toHaveValue("");
+  await waitFor(() => expect(search).toHaveBeenCalled());
+  expect(search.mock.calls.every(([q]) => q === "")).toBe(true);
+  await userEvent.click(screen.getByRole("button", { name: "Run" }));
+  expect(onSubmit).toHaveBeenCalledWith({ title: "T", parent: "abc-id" });
 });
 
 test("picks an item by searching", async () => {
@@ -219,6 +243,47 @@ test("SidePanel closes on Esc", async () => {
   screen.getByRole("button", { name: "Inside" }).focus();
   await userEvent.keyboard("{Escape}");
   expect(onClose).toHaveBeenCalledTimes(1);
-  await userEvent.click(screen.getByRole("button", { name: "Close" }));
+  // With focus outside the panel too.
+  (document.activeElement as HTMLElement).blur();
+  await userEvent.keyboard("{Escape}");
   expect(onClose).toHaveBeenCalledTimes(2);
+  await userEvent.click(screen.getByRole("button", { name: "Close" }));
+  expect(onClose).toHaveBeenCalledTimes(3);
+});
+
+test("SidePanel takes focus on open and gives it back on close", () => {
+  const trigger = document.createElement("button");
+  document.body.append(trigger);
+  trigger.focus();
+  const { unmount } = render(
+    <SidePanel title="Task" onClose={() => {}}>
+      <p>x</p>
+    </SidePanel>,
+  );
+  expect(screen.getByRole("complementary", { name: "Task" })).toHaveFocus();
+  unmount();
+  expect(trigger).toHaveFocus();
+  trigger.remove();
+});
+
+test("SegmentedChoice labels with spaces and duplicates are labelled correctly", () => {
+  const opts = [{ id: "a", label: "A" }];
+  render(
+    <>
+      <SegmentedChoice
+        label="Due soon"
+        options={opts}
+        value="a"
+        onChange={() => {}}
+      />
+      <SegmentedChoice
+        label="Due soon"
+        options={opts}
+        value="a"
+        onChange={() => {}}
+      />
+    </>,
+  );
+  const groups = screen.getAllByRole("radiogroup", { name: "Due soon" });
+  expect(groups).toHaveLength(2);
 });

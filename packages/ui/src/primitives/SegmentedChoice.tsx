@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Label, ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { focusRing } from "./focus";
 
@@ -19,13 +20,14 @@ export function SegmentedChoice<T extends string>({
   allowEmpty = false,
   className,
 }: SegmentedChoiceProps<T>) {
+  const labelId = useId();
   return (
     <div className={`flex flex-col gap-1.5 ${className ?? ""}`}>
-      <Label className="font-ui text-sm text-ink-secondary" id={`seg-${label}`}>
+      <Label className="font-ui text-sm text-ink-secondary" id={labelId}>
         {label}
       </Label>
       <ToggleButtonGroup
-        aria-labelledby={`seg-${label}`}
+        aria-labelledby={labelId}
         selectionMode="single"
         disallowEmptySelection={!allowEmpty}
         selectedKeys={value === null ? [] : [value]}
