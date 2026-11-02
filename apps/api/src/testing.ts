@@ -86,6 +86,7 @@ export function createTestApi(
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
     itemTypes: new Set([...collected.itemTypes, ...(opts.itemTypes ?? [])]),
+    deleteWith: collected.deleteWith,
     devErrors: devAuth,
     config: {
       port: 0,

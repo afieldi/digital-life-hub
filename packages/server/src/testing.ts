@@ -15,7 +15,7 @@ import type {
 import { createChangeBus } from "./changes";
 import { migrationsRoot, moduleMigrations } from "./migrations";
 import type { ServerModule } from "./modules";
-import type { CoreDeps } from "./trpc";
+import type { CoreDeps, DeleteWith } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
 
@@ -66,7 +66,12 @@ export function testAiDeps(
  */
 export function testDeps(
   db: Db,
-  opts: { itemTypes?: string[]; now?: () => Date; ai?: Partial<AiDeps> } = {},
+  opts: {
+    itemTypes?: string[];
+    now?: () => Date;
+    ai?: Partial<AiDeps>;
+    deleteWith?: Record<string, DeleteWith>;
+  } = {},
 ): TestDeps {
   let clock = opts.now?.() ?? new Date("2026-10-30T12:00:00.000Z");
   const fakeProvider = new FakeProvider();
@@ -77,6 +82,7 @@ export function testDeps(
     now: () => clock,
     devErrors: true,
     ai: testAiDeps(opts.ai, fakeProvider),
+    deleteWith: new Map(Object.entries(opts.deleteWith ?? {})),
     fakeProvider,
     setNow(date) {
       clock = date;
@@ -120,6 +126,18 @@ export async function expectTracked(
   } finally {
     unsubscribe();
   }
+}
+
+/**
+ * Contract for a module write: runs `run(itemId)` and asserts the item's `updated_at`
+ * moved and its id was published to `/changes`.
+ */
+export function expectModuleWrites(
+  deps: CoreDeps,
+  run: (itemId: string) => Promise<unknown>,
+  itemId: string,
+): Promise<void> {
+  return expectTracked(deps, { itemId }, () => run(itemId));
 }
 
 type FakeOutput =

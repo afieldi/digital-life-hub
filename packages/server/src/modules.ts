@@ -2,6 +2,7 @@ import type { AiActionDescription } from "@dlh/core";
 import type { AnyRouter } from "@trpc/server";
 import { type AiRunner, collectAiRunners } from "./ai/runners";
 import type { ItemWriter } from "./items/writer";
+import type { DeleteWith } from "./trpc";
 
 export const CORE_ROUTER_IDS = [
   "auth",
@@ -25,6 +26,8 @@ export type ServerModule<
   seed?: (w: ItemWriter) => Promise<void>;
   aiActions?: AiActionDescription[];
   aiRunners?: AiRunner[];
+  /** Items to delete or restore together with an item of this module's types. */
+  deleteWith?: DeleteWith;
 };
 
 export class ServerModuleError extends Error {
@@ -46,12 +49,14 @@ export function collectServerModules(
   modules: ServerModule[];
   itemTypes: Set<string>;
   aiRunners: Map<string, AiRunner>;
+  deleteWith: Map<string, DeleteWith>;
 } {
   const ids = new Set<string>();
   const owners = new Map<string, string>();
   const moduleOf = new Map<string, string>();
   const descriptions = [...core.actions];
   const runners = [...core.runners];
+  const deleteWith = new Map<string, DeleteWith>();
   for (const m of mods) {
     if (reservedIds.includes(m.id)) {
       throw new ServerModuleError(
@@ -75,8 +80,14 @@ export function collectServerModules(
         );
       }
       owners.set(type, m.id);
+      if (m.deleteWith) deleteWith.set(type, m.deleteWith);
     }
   }
   const aiRunners = collectAiRunners(descriptions, runners, moduleOf, owners);
-  return { modules: mods, itemTypes: new Set(owners.keys()), aiRunners };
+  return {
+    modules: mods,
+    itemTypes: new Set(owners.keys()),
+    aiRunners,
+    deleteWith,
+  };
 }

@@ -44,3 +44,25 @@ describe("collectServerModules", () => {
     expect([...itemTypes].sort()).toEqual(["memo", "note", "task"]);
   });
 });
+
+describe("collectServerModules deleteWith", () => {
+  it("maps deleteWith to every item type of its module", () => {
+    const hook = async () => [];
+    const { deleteWith } = collectServerModules(
+      [
+        defineServerModule({
+          id: "a",
+          itemTypes: ["task", "subtask"],
+          router,
+          deleteWith: hook,
+        }),
+        mod("b", ["note"]),
+      ],
+      reserved,
+      core,
+    );
+    expect([...deleteWith.keys()].sort()).toEqual(["subtask", "task"]);
+    expect(deleteWith.get("task")).toBe(hook);
+    expect(deleteWith.get("subtask")).toBe(hook);
+  });
+});

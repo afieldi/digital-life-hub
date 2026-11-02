@@ -46,6 +46,7 @@ export {
   type ApiDeps,
   type Context,
   type CoreDeps,
+  type DeleteWith,
   protectedProcedure,
   publicProcedure,
   router,

@@ -6,6 +6,17 @@ import type { ChangeBus } from "./changes";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
+/**
+ * A module's hook: the ids to delete (or, when `restoring`, restore) together with
+ * item `id`. Core applies them in the same transaction, so the module needs no
+ * `expectedUpdatedAt` for them.
+ */
+export type DeleteWith = (
+  tx: Tx,
+  id: string,
+  opts: { restoring: boolean },
+) => Promise<string[]>;
+
 export type CoreDeps = {
   db: Db;
   changes: ChangeBus;
@@ -13,6 +24,8 @@ export type CoreDeps = {
   now: () => Date;
   devErrors: boolean;
   ai: AiDeps;
+  /** Item type -> hook of the module that owns it. */
+  deleteWith: ReadonlyMap<string, DeleteWith>;
 };
 
 /** Augmented by apps/api (`declare module "@dlh/server"`) with its own deps. */

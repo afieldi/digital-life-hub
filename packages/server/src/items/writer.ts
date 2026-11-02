@@ -1,7 +1,15 @@
 import { type Item, itemTitle, type Link, type LinkKind } from "@dlh/core";
 import { items } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
-import { and, eq, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { CoreDeps, Tx } from "../trpc";
 import { deleteLink, insertLink } from "./links";
 
@@ -156,14 +164,46 @@ export async function writeItems<T>(
           false,
         );
       },
-      setDeleted(i) {
+      async setDeleted(i) {
         // Restoring targets a deleted row, deleting targets a live one.
-        return mutate(
+        const [before] = await tx
+          .select({ deletedAt: items.deletedAt })
+          .from(items)
+          .where(eq(items.id, i.id));
+        const at = deps.now();
+        const item = await mutate(
           i.id,
           i.expectedUpdatedAt,
-          { deletedAt: i.deleted ? deps.now() : null },
+          { deletedAt: i.deleted ? at : null },
           !i.deleted,
         );
+        const hook = deps.deleteWith.get(item.type);
+        if (!hook) return item;
+        const parentDeletedAt = i.deleted ? at : before?.deletedAt;
+        if (!parentDeletedAt) return item;
+        const ids = [
+          ...new Set(await hook(tx, i.id, { restoring: !i.deleted })),
+        ].filter((id) => id !== i.id);
+        if (ids.length === 0) return item;
+        // Only children in the matching state: live ones when deleting, those deleted
+        // in this same action (equal deleted_at) when restoring.
+        const rows = await tx
+          .update(items)
+          .set({
+            deletedAt: i.deleted ? parentDeletedAt : null,
+            updatedAt: sql`greatest(${deps.now().toISOString()}::timestamptz, ${items.updatedAt} + interval '1 millisecond')`,
+          })
+          .where(
+            and(
+              inArray(items.id, ids),
+              i.deleted
+                ? isNull(items.deletedAt)
+                : eq(items.deletedAt, parentDeletedAt),
+            ),
+          )
+          .returning({ id: items.id });
+        for (const r of rows) changed.add(r.id);
+        return item;
       },
       addLink: (i) => insertLink(tx, i, (id) => changed.add(id)),
       removeLink: (id) => deleteLink(tx, id, (itemId) => changed.add(itemId)),
