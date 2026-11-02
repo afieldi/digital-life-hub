@@ -2,7 +2,13 @@ import { resolve } from "node:path";
 import { createTestApi, freshModuleDb, serverModules } from "@dlh/api/testing";
 import type { Db } from "@dlh/db";
 import { createMemoryHistory } from "@tanstack/react-router";
-import { type RenderResult, render } from "@testing-library/react";
+import {
+  fireEvent,
+  type RenderResult,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
 import { App } from "../src/App";
 import { createApi } from "../src/api/client";
@@ -64,4 +70,17 @@ export async function signedInApp(
       }),
     );
   return { api, token, tokenStore, renderApp, router };
+}
+
+/**
+ * Dismisses every toast and waits until none are left. Toasts live in a
+ * module-level queue that outlives each render, and a request still in flight
+ * can add one after the first dismissal, so dismiss again on every retry.
+ */
+export async function dismissToasts(): Promise<void> {
+  await waitFor(() => {
+    const open = screen.queryAllByRole("button", { name: "Dismiss" });
+    for (const b of open) fireEvent.click(b);
+    if (open.length > 0) throw new Error(`${open.length} toast(s) still open`);
+  });
 }

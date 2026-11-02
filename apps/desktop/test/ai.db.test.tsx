@@ -14,20 +14,12 @@ import {
   type CliRunner,
   setCliRunnerForTests,
 } from "../src/ai/cli";
-import { freshApiDb, signedInApp } from "./apiHarness";
+import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
-  // Toasts live in a module-level queue that outlives each render: dismiss
-  // them while the region is still mounted, then unmount.
-  for (const b of screen.queryAllByRole("button", { name: "Dismiss" })) {
-    fireEvent.click(b);
-  }
-  await waitFor(() =>
-    expect(screen.queryAllByRole("button", { name: "Dismiss" })).toHaveLength(
-      0,
-    ),
-  );
+  // Dismiss toasts while the region is still mounted, then unmount.
+  await dismissToasts();
   cleanup();
   setCliRunnerForTests(null);
   await Promise.all(closers.splice(0).map((close) => close()));

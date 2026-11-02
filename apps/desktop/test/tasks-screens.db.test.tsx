@@ -7,18 +7,12 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach } from "vitest";
-import { freshApiDb, signedInApp } from "./apiHarness";
+import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
-  for (const b of screen.queryAllByRole("button", { name: "Dismiss" })) {
-    fireEvent.click(b);
-  }
-  await waitFor(() =>
-    expect(screen.queryAllByRole("button", { name: "Dismiss" })).toHaveLength(
-      0,
-    ),
-  );
+  // Dismiss toasts while the region is still mounted, then unmount.
+  await dismissToasts();
   cleanup();
   await Promise.all(closers.splice(0).map((close) => close()));
 });

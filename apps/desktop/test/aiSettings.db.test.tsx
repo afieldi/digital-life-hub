@@ -1,10 +1,4 @@
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach } from "vitest";
 import {
@@ -13,20 +7,13 @@ import {
   type CliStatus,
   setCliRunnerForTests,
 } from "../src/ai/cli";
-import { freshApiDb, signedInApp } from "./apiHarness";
+import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 beforeEach(() => localStorage.clear());
 afterEach(async () => {
-  // Toasts live in a module-level queue that outlives each render.
-  for (const b of screen.queryAllByRole("button", { name: "Dismiss" })) {
-    fireEvent.click(b);
-  }
-  await waitFor(() =>
-    expect(screen.queryAllByRole("button", { name: "Dismiss" })).toHaveLength(
-      0,
-    ),
-  );
+  // Dismiss toasts while the region is still mounted, then unmount.
+  await dismissToasts();
   cleanup();
   setCliRunnerForTests(null);
   localStorage.clear();
