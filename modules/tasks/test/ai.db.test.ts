@@ -1,8 +1,10 @@
 import { coreAiActions } from "@dlh/core";
 import {
+  apply,
   CORE_ROUTER_IDS,
   collectServerModules,
   coreAiRunners,
+  devFakeAi,
   prepare,
   runMutation,
   undo,
@@ -26,15 +28,45 @@ async function setup() {
   });
   const create = collected.operations.get("tasks.create");
   if (create?.kind !== "mutation") throw new Error("no tasks.create");
-  return { ...t, deps, create };
+  const mk = async (input: {
+    title: string;
+    notes?: string;
+    parentId?: string;
+    due?: { date: string };
+    priority?: "medium" | "high";
+  }) =>
+    (await runMutation(deps, create, input)).result as {
+      id: string;
+      updatedAt: string;
+    };
+  /** Moves the frozen clock on, so a later write gets a later version. */
+  const tick = () => deps.setNow(new Date(deps.now().getTime() + 1000));
+  return { ...t, deps, create, mk, tick };
+}
+
+type Db = Awaited<ReturnType<typeof setup>>["db"];
+
+/** Live subtasks of `parentId`, by title. */
+async function liveSubtasks(db: Db, parentId: string): Promise<string[]> {
+  const rows = await db.execute<{ title: string }>(sql`
+    select i.title from links l
+    join items i on i.id = l.to_id and i.deleted_at is null
+    where l.from_id = ${parentId} and l.kind = 'contains'
+    order by i.title`);
+  return rows.map((r) => r.title);
+}
+
+async function notesOf(db: Db, id: string): Promise<string | null> {
+  const [row] = await db.execute<{ notes: string | null }>(
+    sql`select notes from tasks where item_id = ${id}`,
+  );
+  return row?.notes ?? null;
 }
 
 test("addParent via AI links the parent it names to the task on screen, with Undo", async () => {
   const s = await setup();
-  const mk = async (title: string) =>
-    (await runMutation(s.deps, s.create, { title })).result as { id: string };
-  const a = await mk("Buy milk");
-  const g = await mk("Groceries");
+  const a = await s.mk({ title: "Buy milk" });
+  const g = await s.mk({ title: "Groceries" });
   const containsLink = () =>
     s.db.execute(
       sql`select id from links where from_id = ${g.id} and to_id = ${a.id} and kind = 'contains'`,
@@ -50,8 +82,262 @@ test("addParent via AI links the parent it names to the task on screen, with Und
   expect(res).toMatchObject({ status: "applied" });
   expect(await containsLink()).toHaveLength(1);
 
-  s.deps.setNow(new Date(s.deps.now().getTime() + 1000));
+  s.tick();
   await undo(s.deps, { requestId: res.requestId });
   expect(await containsLink()).toHaveLength(0);
+  await s.close();
+});
+
+test("breakDown do creates subtasks and Undo removes them", async () => {
+  const s = await setup();
+  const trip = await s.mk({ title: "Plan the trip", notes: "Lisbon in May" });
+  await s.mk({ title: "Book flights", parentId: trip.id });
+
+  s.deps.fakeProvider.queue(
+    JSON.stringify({ subtasks: ["Book hotel", "Pack bags", "Get euros"] }),
+  );
+  const res = await prepare(s.deps, {
+    text: "break this into subtasks",
+    itemId: trip.id,
+    actionId: "tasks.breakDown",
+    kind: "do",
+  });
+  expect(res).toMatchObject({ status: "applied", summary: "Added 3 subtasks" });
+  // The model saw the notes and the subtask already there.
+  const prompt = s.deps.fakeProvider.calls[0]?.prompt ?? "";
+  expect(prompt).toContain("Lisbon in May");
+  expect(prompt).toContain("Book flights");
+  expect(await liveSubtasks(s.db, trip.id)).toEqual([
+    "Book flights",
+    "Book hotel",
+    "Get euros",
+    "Pack bags",
+  ]);
+
+  s.tick();
+  await undo(s.deps, { requestId: res.requestId });
+  expect(await liveSubtasks(s.db, trip.id)).toEqual(["Book flights"]);
+  const [created] = await s.db.execute<{ n: number }>(sql`
+    select count(*)::int as n from items
+    where title in ('Book hotel', 'Pack bags', 'Get euros') and deleted_at is not null`);
+  expect(created?.n).toBe(3);
+  await s.close();
+});
+
+test("breakDown suggest creates the ticked ones", async () => {
+  const s = await setup();
+  const trip = await s.mk({ title: "Plan the trip" });
+  s.deps.fakeProvider.queue(
+    JSON.stringify({
+      options: [
+        { label: "Book hotel" },
+        { label: "Pack bags" },
+        { label: "Get euros" },
+        { label: "Renew passport" },
+      ],
+    }),
+  );
+  const res = await prepare(s.deps, {
+    text: "suggest some subtasks",
+    itemId: trip.id,
+    actionId: "tasks.breakDown",
+    kind: "suggest",
+  });
+  // All of them are offered: a checklist, not the usual three.
+  expect(res).toMatchObject({
+    status: "suggested",
+    options: [
+      { label: "Book hotel" },
+      { label: "Pack bags" },
+      { label: "Get euros" },
+      { label: "Renew passport" },
+    ],
+  });
+  await apply(s.deps, { requestId: res.requestId, option: 3 });
+  expect(await liveSubtasks(s.db, trip.id)).toEqual(["Renew passport"]);
+  await s.close();
+});
+
+test("breakDown on a subtask refuses", async () => {
+  const s = await setup();
+  const trip = await s.mk({ title: "Plan the trip" });
+  const flights = await s.mk({ title: "Book flights", parentId: trip.id });
+  await expect(
+    prepare(s.deps, {
+      text: "break this down",
+      itemId: flights.id,
+      actionId: "tasks.breakDown",
+      kind: "do",
+    }),
+  ).rejects.toMatchObject({
+    code: "BAD_REQUEST",
+    message: "Subtasks can't have subtasks",
+  });
+  expect(s.deps.fakeProvider.calls).toHaveLength(0);
+  await s.close();
+});
+
+test("rewriteNotes do and undo", async () => {
+  const s = await setup();
+  const task = await s.mk({
+    title: "Call the bank",
+    notes: "ask abt the fee thing, acct ending 42",
+  });
+  s.deps.fakeProvider.queue(
+    JSON.stringify({ notes: "Ask about the fee on the account ending 42." }),
+  );
+  const res = await prepare(s.deps, {
+    text: "rewrite the notes",
+    itemId: task.id,
+    actionId: "tasks.rewriteNotes",
+    kind: "do",
+  });
+  expect(res).toMatchObject({ status: "applied" });
+  expect(await notesOf(s.db, task.id)).toBe(
+    "Ask about the fee on the account ending 42.",
+  );
+
+  s.tick();
+  await undo(s.deps, { requestId: res.requestId });
+  expect(await notesOf(s.db, task.id)).toBe(
+    "ask abt the fee thing, acct ending 42",
+  );
+
+  // Suggest offers exactly two versions; applying one replaces the notes.
+  s.tick();
+  s.deps.fakeProvider.queue(
+    JSON.stringify({
+      options: [
+        { label: "Shorter", notes: "Ask about the fee (acct 42)." },
+        { label: "Clearer", notes: "Ask the bank about the fee." },
+      ],
+    }),
+  );
+  const sug = await prepare(s.deps, {
+    text: "suggest clearer notes",
+    itemId: task.id,
+    actionId: "tasks.rewriteNotes",
+    kind: "suggest",
+  });
+  expect(sug).toMatchObject({
+    status: "suggested",
+    options: [{ label: "Shorter" }, { label: "Clearer" }],
+  });
+  await apply(s.deps, { requestId: sug.requestId, option: 1 });
+  expect(await notesOf(s.db, task.id)).toBe("Ask the bank about the fee.");
+  await s.close();
+});
+
+const ZONE = "America/Los_Angeles";
+
+test("planToday caps context at 60", async () => {
+  const s = await setup();
+  // The test clock is 2026-10-30 12:00 UTC: Oct 30 in Los Angeles.
+  for (let n = 0; n < 65; n++) {
+    await s.mk({ title: `Today ${n}`, due: { date: "2026-10-30" } });
+  }
+  await s.mk({ title: "Way later", due: { date: "2026-11-20" } });
+  await s.mk({ title: "No date" });
+  const first = await s.mk({
+    title: "Overdue one",
+    due: { date: "2026-10-01" },
+    priority: "high",
+  });
+  await s.mk({ title: "Step one", parentId: first.id });
+  // Evening of Oct 30 in Los Angeles, already Oct 31 in UTC: days are read in the device's zone.
+  s.deps.setNow(new Date("2026-10-31T03:00:00.000Z"));
+
+  s.deps.fakeProvider.queue(
+    JSON.stringify({
+      order: [{ taskId: first.id, reason: "It's late" }],
+      advice: "Start with the late one.",
+    }),
+  );
+  const res = await prepare(s.deps, {
+    text: "plan my day",
+    actionId: "tasks.planToday",
+    kind: "ask",
+    timeZone: ZONE,
+  });
+  expect(res).toMatchObject({
+    status: "listed",
+    heading: "Start with the late one.",
+    items: [{ id: first.id, title: "Overdue one", type: "task" }],
+  });
+  const prompt = s.deps.fakeProvider.calls[0]?.prompt ?? "";
+  const lines = prompt.split("\n").filter((l) => l.startsWith("- "));
+  expect(lines).toHaveLength(60);
+  expect(lines[0]).toBe(
+    `- Overdue one · Oct 1 · high · 0/1 subtasks (id ${first.id})`,
+  );
+  expect(lines[1]).toMatch(/^- Today \d+ · Today · medium · no subtasks \(id /);
+  expect(prompt).not.toContain("Way later");
+  expect(prompt).not.toContain("No date");
+  await s.close();
+});
+
+test("planToday rejects unknown ids", async () => {
+  const s = await setup();
+  const known = await s.mk({ title: "Known", due: { date: "2026-10-30" } });
+  const later = await s.mk({ title: "Later", due: { date: "2026-11-20" } });
+  s.deps.fakeProvider.queue(
+    JSON.stringify({
+      order: [
+        { taskId: known.id, reason: "Due today" },
+        { taskId: later.id, reason: "Not in the context" },
+      ],
+      advice: "",
+    }),
+  );
+  await expect(
+    prepare(s.deps, {
+      text: "what should I do first today?",
+      actionId: "tasks.planToday",
+      kind: "ask",
+      timeZone: ZONE,
+    }),
+  ).rejects.toMatchObject({ cause: { code: "bad_output" } });
+  await s.close();
+});
+
+test("the dev fake answers each hand-written Tasks action", async () => {
+  const s = await setup();
+  const fake = devFakeAi({ AI_FAKE_PROVIDER: "1", NODE_ENV: "development" });
+  if (!fake) throw new Error("no dev fake");
+  s.deps.ai.providers = fake.providers;
+  const trip = await s.mk({
+    title: "Plan the trip",
+    notes: "lisbon, may",
+    due: { date: "2026-10-30" },
+  });
+  const run = (actionId: string, kind: "ask" | "suggest" | "do") =>
+    prepare(s.deps, {
+      text: "x",
+      itemId: actionId === "tasks.planToday" ? undefined : trip.id,
+      actionId,
+      kind,
+      timeZone: ZONE,
+    });
+
+  expect(await run("tasks.breakDown", "suggest")).toMatchObject({
+    status: "suggested",
+    options: [{}, {}, {}],
+  });
+  expect(await run("tasks.rewriteNotes", "suggest")).toMatchObject({
+    status: "suggested",
+    options: [{}, {}],
+  });
+  expect(await run("tasks.planToday", "ask")).toMatchObject({
+    status: "listed",
+    items: [{ id: trip.id }],
+  });
+  expect(await run("tasks.breakDown", "do")).toMatchObject({
+    status: "applied",
+  });
+  expect(await liveSubtasks(s.db, trip.id)).toHaveLength(3);
+  expect(await run("tasks.rewriteNotes", "do")).toMatchObject({
+    status: "applied",
+  });
+  expect(await notesOf(s.db, trip.id)).toBe("Fake rewritten notes.");
   await s.close();
 });

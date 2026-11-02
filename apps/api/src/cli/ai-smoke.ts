@@ -15,6 +15,7 @@ import {
   createOpenRouter,
   listLog,
   prepare,
+  runMutation,
   undo,
   writeItems,
 } from "@dlh/server";
@@ -27,6 +28,7 @@ type AiProviderId = NonNullable<PrepareInput["provider"]>;
 
 const TIMEOUT_MS = 120_000;
 const ITEM_TITLE = "AI smoke test item";
+const TASK_TITLE = "AI smoke test: plan a weekend trip to Lisbon";
 const ITEM_TEXT =
   "The quarterly report covers revenue, hiring and the new office. " +
   "Revenue grew eight percent. Two engineers joined in March. " +
@@ -178,7 +180,12 @@ async function printLog(deps: CoreDeps, requestId: string): Promise<void> {
   console.log("  log:", row ? JSON.stringify(row) : "(row not found)");
 }
 
-async function smoke(deps: CoreDeps, t: Target, itemId: string) {
+async function smoke(
+  deps: CoreDeps,
+  t: Target,
+  itemId: string,
+  taskId: string,
+) {
   console.log(`\n${t.label}`);
   const answer = await call(deps, t.id, {
     text: "summarise this item",
@@ -201,9 +208,30 @@ async function smoke(deps: CoreDeps, t: Target, itemId: string) {
     console.log("  undo:", JSON.stringify(await undo(deps, retitle)));
     await printLog(deps, retitle.requestId);
   }
+
+  const breakDown = await call(deps, t.id, {
+    text: "break this into subtasks",
+    itemId: taskId,
+    actionId: "tasks.breakDown",
+    kind: "do",
+  });
+  console.log("  tasks.breakDown:", JSON.stringify(breakDown));
+  await printLog(deps, breakDown.requestId);
+  if (breakDown.status === "applied") {
+    console.log("  undo:", JSON.stringify(await undo(deps, breakDown)));
+    await printLog(deps, breakDown.requestId);
+  }
 }
 
-/** Soft-deletes the smoke item at its current version (retitle moved it). */
+/** A task to break down, made by the Tasks `create` operation. */
+async function createTask(deps: CoreDeps): Promise<string> {
+  const create = deps.operations.get("tasks.create");
+  if (create?.kind !== "mutation") throw new Error("tasks.create is missing");
+  const { result } = await runMutation(deps, create, { title: TASK_TITLE });
+  return (result as { id: string }).id;
+}
+
+/** Soft-deletes a smoke item at its current version (retitle moved it). */
 async function softDelete(deps: CoreDeps, id: string): Promise<void> {
   const [row] = await deps.db.select().from(items).where(eq(items.id, id));
   if (!row) return;
@@ -214,7 +242,7 @@ async function softDelete(deps: CoreDeps, id: string): Promise<void> {
       deleted: true,
     }),
   );
-  console.log("\nSmoke item soft-deleted.");
+  console.log(`\nSmoke item ${id} soft-deleted.`);
 }
 
 async function main(): Promise<void> {
@@ -246,7 +274,7 @@ async function main(): Promise<void> {
       defaultModel: process.env.OPENROUTER_DEFAULT_MODEL ?? null,
     },
   };
-  let itemId: string | null = null;
+  const cleanup: string[] = [];
   try {
     const all = targets();
     for (const t of all) {
@@ -261,24 +289,27 @@ async function main(): Promise<void> {
         searchText: ITEM_TEXT,
       }),
     );
-    itemId = item.id;
+    cleanup.push(item.id);
+    const taskId = await createTask(deps);
+    cleanup.push(taskId);
     for (const t of active) {
       try {
-        await smoke(deps, t, item.id);
+        await smoke(deps, t, item.id, taskId);
       } catch (e) {
         console.log(`  failed: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
   } finally {
-    try {
-      if (itemId) await softDelete(deps, itemId);
-    } catch (e) {
-      console.log(
-        `Could not soft-delete smoke item ${itemId} — clean it up manually: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    } finally {
-      await close();
+    for (const id of cleanup) {
+      try {
+        await softDelete(deps, id);
+      } catch (e) {
+        console.log(
+          `Could not soft-delete smoke item ${id} — clean it up manually: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
+    await close();
   }
 }
 

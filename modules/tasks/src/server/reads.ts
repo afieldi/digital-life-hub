@@ -177,7 +177,8 @@ export function dueBetweenQuery({ from, to, timeZone, include }: Range): SQL {
        and t.due_at < ${bounds.to.toISOString()}::timestamptz)`);
 }
 
-async function dueBetweenRows(db: Db, range: Range) {
+/** `dueBetween`, with each row's `archivedAt` for item summaries. */
+export async function dueBetweenRows(db: Db, range: Range) {
   const rows = await readRows(db, dueBetweenQuery(range), range.timeZone);
   return rows.sort((a, b) => compareRows(a.row, b.row));
 }

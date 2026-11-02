@@ -1,5 +1,5 @@
 import type { ItemSummary } from "@dlh/core";
-import type { Tx } from "@dlh/server";
+import type { CoreDeps, Tx } from "@dlh/server";
 import { sql } from "drizzle-orm";
 
 // Read-only queries on Core's `items` and `links`, by table name: modules can't
@@ -34,7 +34,10 @@ export async function liveType(tx: Tx, id: string): Promise<string | null> {
 }
 
 /** Whether a live task contains `id`. */
-export async function hasTaskParent(tx: Tx, id: string): Promise<boolean> {
+export async function hasTaskParent(
+  tx: Tx | CoreDeps["db"],
+  id: string,
+): Promise<boolean> {
   const rows = await tx.execute<{ found: boolean }>(sql`
     select exists (
       select 1 from links l

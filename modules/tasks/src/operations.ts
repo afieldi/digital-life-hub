@@ -44,7 +44,7 @@ const create = describeOperation({
   description:
     "Creates a task with a title, and optionally a due date, priority, notes and a parent task. Use when the person wants to add a to-do.",
   appliesTo: ["*", "none"],
-  words: ["add", "todo", "to-do", "remind"],
+  words: ["add", "todo", "to-do", "remind", "new task"],
   group: "create",
   input: z.object({
     title,
@@ -86,7 +86,16 @@ const update = describeOperation({
   description:
     "Changes the task's title, due date, priority or notes. Use when the person wants to edit several details at once. Not for only moving the due date.",
   appliesTo: ["task"],
-  words: ["edit", "change", "set priority", "notes"],
+  // Not "change" or "notes": those would pull in Rename and Rewrite notes.
+  words: [
+    "edit",
+    "update",
+    "details",
+    "priority",
+    "high priority",
+    "medium priority",
+    "notes to",
+  ],
   input: z.object({
     id,
     expectedUpdatedAt,
@@ -107,7 +116,16 @@ const complete = describeOperation({
   description:
     "Marks the task done. Use when the person has finished it. Completing a parent leaves its subtasks as they are.",
   appliesTo: ["task"],
-  words: ["done", "finish", "tick", "check off"],
+  words: [
+    "done",
+    "finish",
+    "complete",
+    "tick",
+    "check",
+    "check off",
+    "mark as done",
+    "mark done",
+  ],
   input: z.object({ id, expectedUpdatedAt }),
   subject: (input) => input.id,
   effects: ["updateItem"],
@@ -121,7 +139,15 @@ const reopen = describeOperation({
   description:
     "Marks a done task as not done. Use when the person wants to undo finishing it.",
   appliesTo: ["task"],
-  words: ["undone", "uncheck", "not done"],
+  words: [
+    "reopen",
+    "open",
+    "undone",
+    "uncheck",
+    "untick",
+    "not done",
+    "mark undone",
+  ],
   input: z.object({ id, expectedUpdatedAt }),
   subject: (input) => input.id,
   effects: ["updateItem"],
@@ -135,7 +161,7 @@ const reschedule = describeOperation({
   description:
     "Changes only the due date of the task on screen. Not for other edits.",
   appliesTo: ["task"],
-  words: ["move", "postpone", "push", "due"],
+  words: ["reschedule", "move", "postpone", "push", "due", "date"],
   input: z.object({ id, expectedUpdatedAt, due: due.nullable() }),
   subject: (input) => input.id,
   effects: ["updateItem"],
@@ -176,7 +202,15 @@ const reorder = describeOperation({
   description:
     "Moves the task to the top or bottom of its list. Not for changing its due date.",
   appliesTo: ["task"],
-  words: ["top", "bottom", "reorder"],
+  words: [
+    "reorder",
+    "top",
+    "bottom",
+    "to the top",
+    "to the bottom",
+    "first",
+    "bring",
+  ],
   input: z.object({
     id,
     expectedUpdatedAt,
@@ -207,7 +241,7 @@ const addParent = describeOperation({
   description:
     "Makes the task a subtask of another task. One level only: a subtask can't have subtasks.",
   appliesTo: ["task"],
-  words: ["subtask", "parent", "nest", "under"],
+  words: ["subtask", "subtask of", "parent", "nest", "under", "child of"],
   input: z.object({ id, parentId }),
   subject: (input) => input.parentId,
   effects: ["addLinks"],
@@ -221,7 +255,16 @@ const removeParent = describeOperation({
   description:
     "Stops the task being a subtask of the given parent task. Not for deleting it.",
   appliesTo: ["task"],
-  words: ["unnest", "detach", "remove parent"],
+  words: [
+    "unnest",
+    "detach",
+    "remove parent",
+    "remove the parent",
+    "from its parent",
+    "take out",
+    "out of",
+    "top level",
+  ],
   input: z.object({ id, parentId }),
   subject: (input) => input.parentId,
   effects: ["removeLinks"],

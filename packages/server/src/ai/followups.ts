@@ -1,5 +1,6 @@
 import type { AiCancelInput, AiProviderId, AiResult } from "@dlh/core";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 import { type ItemWriter, writeItems } from "../items/writer";
 import { runMutationIn } from "../operations/implement";
 import { deleteCreated, revertMutation } from "../operations/undo";
@@ -26,22 +27,63 @@ import {
 import type { AiRunner, RunnerTools } from "./runners";
 import { scopedWriter } from "./scoped";
 
-function toolsFor(w: ItemWriter, deps: CoreDeps): RunnerTools {
+/** Core's tools for a runner; items its mutations create are pushed to `created`. */
+function toolsFor(
+  w: ItemWriter,
+  deps: CoreDeps,
+  created?: string[],
+): RunnerTools {
   return {
-    mutate: (op, input) => runMutationIn(w, deps, op, input),
+    async mutate(op, input) {
+      const done = await runMutationIn(w, deps, op, input);
+      created?.push(...done.undo.created);
+      return done;
+    },
     revert: (op, record) => revertMutation(w, deps, op, record),
   };
 }
 
 /**
- * The items an operation runner's tagged undo record says it created. Any
- * other runner's record is opaque: nothing is deleted for it.
+ * A hand-written runner's undo record as Core stores it: `created` is what Core
+ * saw it create, so it is safe to delete on undo.
  */
-function createdBy(runner: AiRunner, record: unknown): string[] {
-  if (!runner.operation) return [];
-  const parsed = operationUndo.safeParse(record);
-  if (!parsed.success || parsed.data.operation !== runner.action.id) return [];
-  return parsed.data.token.created;
+const createdUndo = z.object({
+  kind: z.literal("created"),
+  created: z.array(z.uuid()),
+  record: z.unknown(),
+});
+
+/**
+ * The undo record to store, or null for none. A hand-written runner's record
+ * (`created` is set) is always wrapped, so a record shaped like the wrapper is
+ * never read as one.
+ */
+function storedUndo(created: string[] | undefined, record: unknown): unknown {
+  const none = record === undefined || record === null;
+  if (!created) return none ? null : record;
+  if (none && created.length === 0) return null;
+  return { kind: "created", created, record: record ?? null };
+}
+
+/**
+ * What to delete and what to hand the runner's `undo` for a stored record. An
+ * operation runner's tagged record lists what it created; a hand-written
+ * runner's is wrapped in `createdUndo`. Anything else is passed on as is and
+ * deletes nothing.
+ */
+function unwrapUndo(
+  runner: AiRunner,
+  stored: unknown,
+): { created: string[]; record: unknown } {
+  if (runner.operation) {
+    const parsed = operationUndo.safeParse(stored);
+    const ok = parsed.success && parsed.data.operation === runner.action.id;
+    return { created: ok ? parsed.data.token.created : [], record: stored };
+  }
+  const wrapped = createdUndo.safeParse(stored);
+  return wrapped.success
+    ? { created: wrapped.data.created, record: wrapped.data.record }
+    : { created: [], record: stored };
 }
 
 /** An unpicked suggestion may be applied for this long after prepare. */
@@ -81,19 +123,23 @@ export async function runApply(
     const ctx = await contextAt(deps, runner, row);
     await writeItems(deps, async (w) => {
       await claim(w.tx, row.id, from, { ...endPatch, status: "applied" });
+      // An operation runner's own record already lists what it created.
+      const created: string[] | undefined = runner.operation ? undefined : [];
       const scoped = scopedWriter(w, {
         effects: runner.action.effects,
         itemId: row.itemId,
+        created,
       });
       const record = await apply.call(
         runner,
         scoped,
         out,
         ctx,
-        toolsFor(w, deps),
+        toolsFor(w, deps, created),
       );
-      if (record !== undefined && record !== null) {
-        await claim(w.tx, row.id, "applied", { undo: record });
+      const stored = storedUndo(created, record);
+      if (stored !== null) {
+        await claim(w.tx, row.id, "applied", { undo: stored });
       }
     });
     return runner.summary?.(out, ctx) ?? runner.action.label;
@@ -190,11 +236,12 @@ export async function undo(
     await writeItems(deps, async (w) => {
       await claim(w.tx, row.id, "applied", { status: "undone", undo: null });
       // Core removes what the action created; the runner's writer can't delete.
-      await deleteCreated(w, createdBy(runner, row.undo));
+      const { created, record } = unwrapUndo(runner, row.undo);
+      await deleteCreated(w, created);
       await revert.call(
         runner,
         scopedWriter(w, { effects: runner.action.effects, itemId: row.itemId }),
-        row.undo,
+        record,
         toolsFor(w, deps),
       );
     });

@@ -1,4 +1,6 @@
 import { defineServerModule, type OperationsRouter } from "@dlh/server";
+import { tasksAiActions } from "./ai";
+import { tasksAiRunners } from "./server/ai";
 import { deleteWith } from "./server/deleteWith";
 import { due, get, list, stats } from "./server/reads";
 import { seed } from "./server/seed";
@@ -35,6 +37,8 @@ const tasksServer = defineServerModule({
     get,
     stats,
   },
+  aiActions: Object.values(tasksAiActions),
+  aiRunners: tasksAiRunners,
 });
 
 /** The `tasks` router as the screens call it (type only: no server code in the bundle). */

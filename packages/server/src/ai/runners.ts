@@ -27,10 +27,18 @@ export type Resolved =
 
 export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   action: D;
-  context(deps: CoreDeps, itemId: string | null): Promise<AiContext>;
+  /** `timeZone` is the device's IANA zone, when the app sent one. */
+  context(
+    deps: CoreDeps,
+    itemId: string | null,
+    opts?: { timeZone?: string },
+  ): Promise<AiContext>;
   system: string;
   output: Partial<Record<AiKind, z.ZodType>>;
-  /** The undo record it returns is stored for `undo`. */
+  /**
+   * The undo record it returns is stored for `undo`. Items it creates, through
+   * `w` or `tools.mutate`, are soft-deleted by Core before `undo` runs.
+   */
   apply?(
     w: ScopedWriter,
     out: unknown,
@@ -45,10 +53,7 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
     out: unknown,
     ctx: AiContext,
   ): Promise<{ heading: string; items: ItemSummary[] }>;
-  /**
-   * Set by `operationAiRunner` for a mutation: its tagged undo record's
-   * `created` items are soft-deleted by Core before `undo`.
-   */
+  /** Set by `operationAiRunner` for a mutation, whose tagged undo record lists what it created. */
   operation?: ImplementedMutation;
   /** Before suggesting or applying: turns what the model named into ids. */
   resolve?(deps: CoreDeps, out: unknown): Promise<Resolved>;

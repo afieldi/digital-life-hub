@@ -10,7 +10,7 @@ export const BAD_MARKER = "[bad]";
 export const DEV_FAKE_MODEL = "fake-model";
 
 type Shape = { properties?: Record<string, unknown>; required?: string[] };
-type OptionsShape = { items?: Shape };
+type OptionsShape = { items?: Shape; minItems?: number };
 type Property = { enum?: unknown[] };
 
 const day = (offset: number) =>
@@ -43,6 +43,49 @@ function fillOperation(shape: Shape): Record<string, unknown> | null {
   return Object.keys(out).length > 0 ? out : null;
 }
 
+const sameKeys = (o: Record<string, unknown> | undefined, keys: string[]) =>
+  o !== undefined && Object.keys(o).sort().join() === [...keys].sort().join();
+
+const FAKE_STEPS = ["One", "Two", "Three"].map((n) => `Fake subtask ${n}`);
+const CONTEXT_ID = /\(id ([0-9a-f-]{36})\)/g;
+
+/**
+ * Tasks' hand-written actions, by their output's property names: subtasks
+ * (Break down), notes (Rewrite notes) and order/advice (Plan today, which picks
+ * the first three task ids listed in the prompt).
+ */
+function fakeTasksAnswer(
+  props: Record<string, unknown>,
+  options: OptionsShape | undefined,
+  prompt: string,
+): unknown {
+  const optionProps = options?.items?.properties;
+  if (sameKeys(props, ["subtasks"])) return { subtasks: FAKE_STEPS };
+  // A checklist of titles; an operation with no fields offers labels too, but at least one.
+  if (sameKeys(optionProps, ["label"]) && (options?.minItems ?? 0) >= 3) {
+    return { options: FAKE_STEPS.map((label) => ({ label })) };
+  }
+  if (sameKeys(props, ["notes"])) return { notes: "Fake rewritten notes." };
+  if (sameKeys(optionProps, ["label", "notes"])) {
+    return {
+      options: ["Shorter", "Clearer"].map((label) => ({
+        label,
+        notes: `Fake ${label.toLowerCase()} notes.`,
+      })),
+    };
+  }
+  if (sameKeys(props, ["order", "advice"])) {
+    const ids = [...prompt.matchAll(CONTEXT_ID)].map((m) => m[1]);
+    return {
+      order: ids
+        .slice(0, 3)
+        .map((taskId) => ({ taskId, reason: "Fake reason." })),
+      advice: "Fake advice.",
+    };
+  }
+  return null;
+}
+
 /**
  * A scripted OpenRouter stand-in for end-to-end tests: it answers by the shape
  * of the requested JSON schema, so it needs no queue. A prompt containing
@@ -58,6 +101,12 @@ export const scriptedFakeProvider: AiProvider = {
     }
     const optionShape = (props.options as OptionsShape | undefined)?.items;
     const optionProps = optionShape?.properties;
+    const tasks = fakeTasksAnswer(
+      props,
+      props.options as OptionsShape | undefined,
+      req.prompt,
+    );
+    if (tasks) return { raw: JSON.stringify(tasks) };
     // An operation's suggestion: options are its input plus a label.
     if (optionShape && optionProps && "label" in optionProps) {
       const option = fillOperation(optionShape) ?? {};

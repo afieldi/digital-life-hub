@@ -1,5 +1,6 @@
 import { defineModule } from "@dlh/core";
 import { createRoute } from "@tanstack/react-router";
+import { tasksAiActions } from "./ai";
 import { taskOps } from "./operations";
 import { DetailRoute } from "./screens/DetailRoute";
 import { DonePage } from "./screens/DonePage";
@@ -49,4 +50,5 @@ export default defineModule({
     }),
   ],
   operations: Object.values(taskOps),
+  aiActions: Object.values(tasksAiActions),
 });

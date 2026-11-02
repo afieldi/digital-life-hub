@@ -183,7 +183,10 @@ const brokenModule = defineServerModule({
   },
 });
 
-/** A hand-written runner whose own undo record happens to list `created`. */
+/**
+ * A hand-written runner that creates an item, and whose own undo record lists
+ * the item on screen in the shapes Core reads `created` from.
+ */
 const handmade = defineAiRunner(
   describeAiAction({
     id: "handmade",
@@ -197,17 +200,19 @@ const handmade = defineAiRunner(
     context: itemContext,
     system: "",
     output: { do: z.object({ title: z.string() }) },
-    async apply(w, out) {
+    async apply(w, out, ctx) {
       const item = await w.createItem?.({
         type: "test",
         title: (out as { title: string }).title,
       });
       if (!item) throw new Error("no createItem");
+      const listed = ctx.item?.id ?? item.id;
       return {
-        created: [item.id],
-        kind: "operation",
+        created: [listed],
+        kind: "created",
+        record: null,
         operation: "handmade",
-        token: { created: [item.id] },
+        token: { created: [listed] },
       };
     },
     async undo() {},
@@ -518,21 +523,25 @@ test("actions derived from operations pass collectAiRunners", async () => {
   expect(aiRunners.get("test.find")?.output.ask).toBeDefined();
 });
 
-test("a hand-written runner's undo record never deletes what it lists", async () => {
+test("a hand-written runner's undo deletes what Core saw it create, never what its record lists", async () => {
   const s = await setup();
-  s.fake.queue(JSON.stringify({ title: "Kept" }));
+  const onScreen = await s.mk("On screen");
+  s.fake.queue(JSON.stringify({ title: "Made" }));
   const res = await prepare(s.deps, {
     text: "make one",
+    itemId: onScreen.id,
     actionId: "handmade",
     kind: "do",
   });
   expect(res.status).toBe("applied");
-  const [made] = await s.db.select().from(items);
+  const [made] = await s.db.select().from(items).where(eq(items.title, "Made"));
   if (!made) throw new Error("nothing created");
   s.tick();
   await undo(s.deps, { requestId: res.requestId });
-  const [after] = await s.db.select().from(items).where(eq(items.id, made.id));
-  expect(after?.deletedAt).toBeNull();
+  const deletedAt = async (id: string) =>
+    (await s.db.select().from(items).where(eq(items.id, id)))[0]?.deletedAt;
+  expect(await deletedAt(made.id)).not.toBeNull();
+  expect(await deletedAt(onScreen.id)).toBeNull();
   expect((await rowOf(s.db, res.requestId)).status).toBe("undone");
   await s.close();
 });

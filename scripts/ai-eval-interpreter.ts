@@ -31,9 +31,10 @@ export function formatMiss({ phrasing, got }: Miss): string {
 
 /** Core phrasings plus every export named `*Phrasings` from each module file. */
 async function loadPhrasings(files: string[]): Promise<Phrasing[]> {
-  // Test hook: simulates a broken phrasings import.
+  // Test hook: simulates broken phrasings imports, Core's and the modules'.
   // biome-ignore lint/suspicious/noUndeclaredEnvVars: script-only, not a turbo input
-  const all = process.env.AI_EVAL_EMPTY ? [] : [...corePhrasings];
+  if (process.env.AI_EVAL_EMPTY) return [];
+  const all = [...corePhrasings];
   for (const file of files) {
     const mod = (await import(pathToFileURL(file).href)) as Record<
       string,

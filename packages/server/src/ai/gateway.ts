@@ -143,7 +143,9 @@ export async function prepare(
     provider === "openrouter"
       ? (settings.openrouterModel ?? deps.ai.defaultModel)
       : null;
-  const ctx = await runner.context(deps, itemId);
+  const ctx = await runner.context(deps, itemId, {
+    timeZone: input.timeZone,
+  });
   const version = ctx.version ?? item?.updatedAt ?? null;
 
   const [row] = await deps.db
@@ -292,7 +294,7 @@ async function finish(
   try {
     if (kind === "ask") {
       if (runner.list) {
-        const ctx = await runner.context(deps, row.itemId);
+        const ctx = await runner.context(deps, row.itemId, { timeZone });
         const list = await runner.list(deps, out, { ...ctx, timeZone });
         await claim(deps.db, row.id, "pending", { status: "listed", ...done });
         return { requestId: row.id, status: "listed", ...list };

@@ -129,6 +129,7 @@ describe("scriptedFakeProvider for operations", () => {
     ["move", "do"],
     ["move", "suggest"],
     ["done", "do"],
+    ["done", "suggest"],
     ["due", "ask"],
   ] as const)(
     "answers %s/%s with output its schema accepts",
@@ -153,6 +154,10 @@ describe("scriptedFakeProvider for operations", () => {
       });
       const parsed = schema.safeParse(JSON.parse(raw));
       expect(parsed.success).toBe(true);
+      // One plain option, not Break down's checklist of titles.
+      if (key === "done" && kind === "suggest") {
+        expect(parsed.data).toEqual({ options: [{ label: "Fake option" }] });
+      }
       if (key === "create" && kind === "do") {
         expect(Object.keys(parsed.data as object).sort()).toEqual([
           "due",

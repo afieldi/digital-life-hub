@@ -158,7 +158,11 @@ test("suggest stores three options and apply renames once", async () => {
   const row = await rowOf(s, res.requestId);
   expect(row.status).toBe("applied");
   expect(row.output).toBeNull();
-  expect(row.undo).toMatchObject({ id: s.item.id, title: "Old" });
+  expect(row.undo).toMatchObject({
+    kind: "created",
+    created: [],
+    record: { id: s.item.id, title: "Old" },
+  });
 
   const again = await caught(
     apply(s.deps, { requestId: res.requestId, option: 0 }),
