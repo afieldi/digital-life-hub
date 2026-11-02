@@ -717,3 +717,32 @@ test("↵ on a Break down checklist adds every ticked subtask", async () => {
   const { subtasks } = await client.tasks.get.query({ id: trip.id });
   expect(subtasks.map((s) => s.title).sort()).toEqual(["Three", "Two"]);
 });
+
+test("Plan today lists the tasks in order, each with its reason", async () => {
+  const t = await freshApiDb();
+  closers.push(t.close);
+  const app = await signedInApp("/", { db: t.db });
+  const client = app.api.client(app.token);
+  // Overdue whatever the server's clock says today is.
+  const { result: bank } = await client.tasks.create.mutate({
+    title: "Call the bank",
+    due: { date: "2026-01-05" },
+  });
+  app.renderApp();
+  app.api.ai.queue(
+    JSON.stringify({
+      order: [{ taskId: bank.id, reason: "It closes at five" }],
+      advice: "One call and you're done.",
+    }),
+  );
+  await ask("plan my day");
+  expect(await screen.findByText("Plan today")).toBeInTheDocument();
+  await searched();
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByText("One call and you're done."),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /^Call the bank/ }),
+  ).toHaveTextContent("It closes at five");
+});

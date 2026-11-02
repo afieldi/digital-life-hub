@@ -5,6 +5,7 @@ import {
   type CoreDeps,
   defineAiRunner,
   itemContext,
+  MAX_CONTEXT_CHARS,
   PREAMBLE,
   type RunnerTools,
 } from "@dlh/server";
@@ -110,6 +111,9 @@ Rewrite the task's notes (the item's body) so they are clearer and easier to sca
   async undo(_w, record, tools) {
     await needTools(tools).revert(update, rewriteUndo.parse(record).record);
   },
+  // Each version's text, so the person reads both before picking.
+  preview: (option) =>
+    typeof option.notes === "string" ? option.notes : undefined,
   summary: () => "Rewrote the notes",
 });
 
@@ -118,17 +122,59 @@ const PLAN_LIMIT = 60;
 /** Today and the next two days, after anything overdue. */
 const PLAN_DAYS = 3;
 const SINCE_EVER = "1970-01-01";
+/** Longer titles are cut, so one long title can't crowd out the others. */
+const PLAN_TITLE_CHARS = 100;
+const PLAN_HEADER = "Open tasks, overdue first:";
+const ELLIPSIS = "…";
 
-/** Open tasks overdue or due in the next `PLAN_DAYS` days, earliest first. */
+type PlanRow = Awaited<ReturnType<typeof dueBetweenRows>>[number];
+
+function planLine({ row }: PlanRow, timeZone: string, today: string): string {
+  const title =
+    row.title.length > PLAN_TITLE_CHARS
+      ? row.title.slice(0, PLAN_TITLE_CHARS - ELLIPSIS.length) + ELLIPSIS
+      : row.title;
+  const when = row.due ? formatWhen(row.due, timeZone, today).text : "";
+  const { total, done } = row.subtasks;
+  const subtasks = total ? `${done}/${total} subtasks` : "no subtasks";
+  return `- ${title} · ${when} · ${row.priority} · ${subtasks} (id ${row.id})`;
+}
+
+/**
+ * Open tasks overdue or due in the next `PLAN_DAYS` days, as the model sees
+ * them: at most `PLAN_LIMIT` lines within `MAX_CONTEXT_CHARS`. Today's are
+ * picked first, then overdue ones (the most recent first), then the next
+ * days'; the lines keep day order.
+ */
 async function planRows(deps: CoreDeps, timeZone: string) {
   const today = todayIn(deps.now(), timeZone);
-  const rows = await dueBetweenRows(deps.db, {
+  const all = await dueBetweenRows(deps.db, {
     from: SINCE_EVER,
     to: addDays(today, PLAN_DAYS),
     timeZone,
     include: "open",
   });
-  return { today, rows: rows.slice(0, PLAN_LIMIT) };
+  const order = all.map((r, i) => ({ r, i }));
+  const day = (x: { r: PlanRow }) => x.r.row.day ?? "";
+  const picking = [
+    ...order.filter((x) => day(x) === today),
+    ...order.filter((x) => day(x) < today).reverse(),
+    ...order.filter((x) => day(x) > today),
+  ];
+  const picked: { r: PlanRow; i: number; line: string }[] = [];
+  let size = PLAN_HEADER.length;
+  for (const x of picking) {
+    if (picked.length === PLAN_LIMIT) break;
+    const line = planLine(x.r, timeZone, today);
+    if (size + 1 + line.length > MAX_CONTEXT_CHARS) continue;
+    size += 1 + line.length;
+    picked.push({ ...x, line });
+  }
+  picked.sort((a, b) => a.i - b.i);
+  return {
+    rows: picked.map((p) => p.r),
+    lines: picked.map((p) => p.line),
+  };
 }
 
 const planOutput = z
@@ -145,15 +191,9 @@ const planOutput = z
 const planToday = defineAiRunner(tasksAiActions.planToday, {
   async context(deps, _itemId, opts) {
     const timeZone = opts?.timeZone ?? "UTC";
-    const { today, rows } = await planRows(deps, timeZone);
-    const lines = rows.map(({ row }) => {
-      const when = row.due ? formatWhen(row.due, timeZone, today).text : "";
-      const { total, done } = row.subtasks;
-      const subtasks = total ? `${done}/${total} subtasks` : "no subtasks";
-      return `- ${row.title} · ${when} · ${row.priority} · ${subtasks} (id ${row.id})`;
-    });
+    const { lines } = await planRows(deps, timeZone);
     const text = lines.length
-      ? `Open tasks, overdue first:\n${lines.join("\n")}`
+      ? `${PLAN_HEADER}\n${lines.join("\n")}`
       : "No open tasks are overdue or due in the next few days.";
     return { item: null, text, version: null, timeZone };
   },
@@ -166,7 +206,7 @@ The <item> section lists the person's open tasks that are overdue or due today o
     const byId = new Map(rows.map((r) => [r.row.id, r]));
     const seen = new Set<string>();
     const items = [];
-    for (const { taskId } of order) {
+    for (const { taskId, reason } of order) {
       const found = byId.get(taskId);
       if (!found) {
         throw new AiError(
@@ -181,6 +221,7 @@ The <item> section lists the person's open tasks that are overdue or due today o
         type: "task",
         title: found.row.title,
         archivedAt: found.archivedAt,
+        ...(reason.trim() ? { note: reason.trim() } : {}),
       });
     }
     return { heading: advice.trim() || "Plan for today", items };

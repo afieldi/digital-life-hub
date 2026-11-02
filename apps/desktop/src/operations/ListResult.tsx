@@ -1,16 +1,16 @@
-import type { ModuleRegistry, OperationList } from "@dlh/core";
+import type { AiListedItem, ModuleRegistry } from "@dlh/core";
 import { iconFor } from "../shell/icons";
 
 /**
  * A read's `{ heading, items }` in the command bar's result slot: one row per
- * item, opening the item type's `href`.
+ * item, opening the item type's `href`, with the item's `note` under its title.
  */
 export function ListResult({
   list,
   itemTypes,
   onOpen,
 }: {
-  list: OperationList;
+  list: { heading: string; items: readonly AiListedItem[] };
   itemTypes: ModuleRegistry["itemTypes"];
   onOpen: (href: string) => void;
 }) {
@@ -40,7 +40,12 @@ export function ListResult({
                 style={{ color: itemType?.color }}
               />
             </span>
-            <span className="flex-1 truncate text-[15px]">{item.title}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[15px]">{item.title}</span>
+              {typeof item.note === "string" ? (
+                <span className="text-xs text-ink-tertiary">{item.note}</span>
+              ) : null}
+            </span>
           </button>
         );
       })}

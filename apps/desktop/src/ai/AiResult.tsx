@@ -184,7 +184,9 @@ export function AiResult({
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="font-semibold">{o.label}</span>
                 {o.reason ? (
-                  <span className="text-xs text-ink-tertiary">{o.reason}</span>
+                  <span className="whitespace-pre-wrap text-xs text-ink-tertiary">
+                    {o.reason}
+                  </span>
                 ) : null}
               </div>
               <Button

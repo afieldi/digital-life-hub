@@ -37,6 +37,12 @@ export const aiApplyInput = z
   });
 export type AiApplyInput = z.infer<typeof aiApplyInput>;
 
+/** A row an AI answer lists, with an optional line about it (Plan today's reason). */
+export const aiListedItem = itemSummary.extend({
+  note: z.string().optional(),
+});
+export type AiListedItem = z.infer<typeof aiListedItem>;
+
 export const aiResult = z.discriminatedUnion("status", [
   z.object({
     requestId: z.string(),
@@ -57,7 +63,7 @@ export const aiResult = z.discriminatedUnion("status", [
     requestId: z.string(),
     status: z.literal("listed"),
     heading: z.string(),
-    items: z.array(itemSummary),
+    items: z.array(aiListedItem),
   }),
   z.object({
     requestId: z.string(),

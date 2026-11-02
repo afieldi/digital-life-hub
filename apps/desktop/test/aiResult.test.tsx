@@ -16,7 +16,15 @@ test("listed renders rows", async () => {
           requestId: "r",
           status: "listed",
           heading: "Due today",
-          items: [{ id, type: "task", title: "Pay rent", archivedAt: null }],
+          items: [
+            {
+              id,
+              type: "task",
+              title: "Pay rent",
+              archivedAt: null,
+              note: "It's due today",
+            },
+          ],
         },
       }}
       providerName="OpenRouter"
@@ -32,7 +40,10 @@ test("listed renders rows", async () => {
     />,
   );
   expect(screen.getByText("Due today")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Pay rent" }));
+  // A row's note (Plan today's reason) shows under its title.
+  const row = screen.getByRole("button", { name: /^Pay rent/ });
+  expect(row).toHaveTextContent("It's due today");
+  await userEvent.click(row);
   expect(onOpen).toHaveBeenCalledWith(registry.itemTypes.get("task")?.href(id));
 });
 
@@ -72,4 +83,38 @@ test("a multiSelect suggestion is a checklist; Add selected needs a tick", async
   expect(onAddTicked).toHaveBeenCalledTimes(1);
   rerender(<AiResult {...props} ticked={[]} />);
   expect(screen.getByRole("button", { name: "Add selected" })).toBeDisabled();
+});
+
+test("a suggested option shows its preview text under the label", () => {
+  render(
+    <AiResult
+      state={{
+        phase: "suggested",
+        provider: "openrouter",
+        result: {
+          requestId: "r",
+          status: "suggested",
+          options: [
+            { label: "Shorter", reason: "Ask about the fee." },
+            { label: "Clearer", reason: "Ask the bank\nabout the fee." },
+          ],
+        },
+      }}
+      providerName="OpenRouter"
+      errorActions={[]}
+      onUse={() => {}}
+      ticked={[]}
+      onToggle={() => {}}
+      onAddTicked={() => {}}
+      onNone={() => {}}
+      onCancel={() => {}}
+      onClose={() => {}}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.getByText("Ask about the fee.")).toBeInTheDocument();
+  expect(
+    screen.getByText(/Ask the bank\s+about the fee\./),
+  ).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: /^Use / })).toHaveLength(2);
 });

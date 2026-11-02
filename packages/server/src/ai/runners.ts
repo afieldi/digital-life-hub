@@ -1,4 +1,4 @@
-import type { AiActionDescription, AiKind, ItemSummary } from "@dlh/core";
+import type { AiActionDescription, AiKind, AiListedItem } from "@dlh/core";
 import type { z } from "zod";
 import { ServerModuleError } from "../modules";
 import type { ImplementedMutation, UndoToken } from "../operations/implement";
@@ -52,7 +52,12 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
     deps: CoreDeps,
     out: unknown,
     ctx: AiContext,
-  ): Promise<{ heading: string; items: ItemSummary[] }>;
+  ): Promise<{ heading: string; items: AiListedItem[] }>;
+  /**
+   * Text shown under a suggested option's label, such as the rewritten text
+   * it would apply. Defaults to the option's `reason`.
+   */
+  preview?(option: Record<string, unknown>): string | undefined;
   /** Set by `operationAiRunner` for a mutation, whose tagged undo record lists what it created. */
   operation?: ImplementedMutation;
   /** Before suggesting or applying: turns what the model named into ids. */

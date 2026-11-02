@@ -5,6 +5,7 @@ import {
   collectServerModules,
   coreAiRunners,
   devFakeAi,
+  MAX_CONTEXT_CHARS,
   prepare,
   runMutation,
   undo,
@@ -12,6 +13,7 @@ import {
 import { freshModuleDb, testDeps } from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
+import { addDays } from "../src/dates";
 import tasksServer from "../src/server";
 
 async function setup() {
@@ -259,9 +261,13 @@ test("rewriteNotes do and undo", async () => {
     actionId: "tasks.rewriteNotes",
     kind: "suggest",
   });
+  // Each version's text shows under its label, to read before picking.
   expect(sug).toMatchObject({
     status: "suggested",
-    options: [{ label: "Shorter" }, { label: "Clearer" }],
+    options: [
+      { label: "Shorter", reason: "Ask about the fee (acct 42)." },
+      { label: "Clearer", reason: "Ask the bank about the fee." },
+    ],
   });
   expect(sug).not.toHaveProperty("multiSelect");
   // Two versions of the notes can't both apply: one option at a time.
@@ -275,20 +281,24 @@ test("rewriteNotes do and undo", async () => {
 
 const ZONE = "America/Los_Angeles";
 
-test("planToday caps context at 60", async () => {
+test("planToday caps context at 60, keeping all of today's", async () => {
   const s = await setup();
   // The test clock is 2026-10-30 12:00 UTC: Oct 30 in Los Angeles.
-  for (let n = 0; n < 65; n++) {
-    await s.mk({ title: `Today ${n}`, due: { date: "2026-10-30" } });
+  for (let n = 0; n < 69; n++) {
+    await s.mk({ title: `Late ${n}`, due: { date: addDays("2026-08-01", n) } });
   }
-  await s.mk({ title: "Way later", due: { date: "2026-11-20" } });
-  await s.mk({ title: "No date" });
   const first = await s.mk({
     title: "Overdue one",
-    due: { date: "2026-10-01" },
+    due: { date: "2026-10-29" },
     priority: "high",
   });
   await s.mk({ title: "Step one", parentId: first.id });
+  for (let n = 0; n < 5; n++) {
+    await s.mk({ title: `Today ${n}`, due: { date: "2026-10-30" } });
+  }
+  await s.mk({ title: "Tomorrow one", due: { date: "2026-10-31" } });
+  await s.mk({ title: "Way later", due: { date: "2026-11-20" } });
+  await s.mk({ title: "No date" });
   // Evening of Oct 30 in Los Angeles, already Oct 31 in UTC: days are read in the device's zone.
   s.deps.setNow(new Date("2026-10-31T03:00:00.000Z"));
 
@@ -307,17 +317,51 @@ test("planToday caps context at 60", async () => {
   expect(res).toMatchObject({
     status: "listed",
     heading: "Start with the late one.",
-    items: [{ id: first.id, title: "Overdue one", type: "task" }],
+    items: [
+      { id: first.id, title: "Overdue one", type: "task", note: "It's late" },
+    ],
   });
   const prompt = s.deps.fakeProvider.calls[0]?.prompt ?? "";
   const lines = prompt.split("\n").filter((l) => l.startsWith("- "));
   expect(lines).toHaveLength(60);
-  expect(lines[0]).toBe(
-    `- Overdue one · Oct 1 · high · 0/1 subtasks (id ${first.id})`,
+  // Today's five, then the 55 most recent overdue, shown in day order.
+  expect(lines.filter((l) => / · Today · /.test(l))).toHaveLength(5);
+  expect(lines[0]).toMatch(/^- Late 15 · /);
+  expect(lines[54]).toBe(
+    `- Overdue one · Yesterday · high · 0/1 subtasks (id ${first.id})`,
   );
-  expect(lines[1]).toMatch(/^- Today \d+ · Today · medium · no subtasks \(id /);
+  expect(lines[55]).toMatch(/^- Today 0 · Today · medium · no subtasks \(id /);
+  expect(prompt).not.toContain("Late 14 ");
+  expect(prompt).not.toContain("Tomorrow one");
   expect(prompt).not.toContain("Way later");
   expect(prompt).not.toContain("No date");
+  await s.close();
+});
+
+test("planToday cuts long titles and stays within the context budget", async () => {
+  const s = await setup();
+  const long = "x".repeat(490);
+  for (let n = 0; n < 60; n++) {
+    await s.mk({ title: `${n} ${long}`, due: { date: "2026-10-30" } });
+  }
+  s.deps.fakeProvider.queue(JSON.stringify({ order: [], advice: "" }));
+  const res = await prepare(s.deps, {
+    text: "plan my day",
+    actionId: "tasks.planToday",
+    kind: "ask",
+    timeZone: ZONE,
+  });
+  expect(res).toMatchObject({ heading: "Plan for today", items: [] });
+  const prompt = s.deps.fakeProvider.calls[0]?.prompt ?? "";
+  const context = prompt.slice(
+    prompt.indexOf("<item>\n") + "<item>\n".length,
+    prompt.indexOf("\n</item>"),
+  );
+  expect(context.length).toBeLessThanOrEqual(MAX_CONTEXT_CHARS);
+  const lines = context.split("\n").filter((l) => l.startsWith("- "));
+  expect(lines.length).toBeGreaterThan(0);
+  expect(lines[0]).toMatch(/^- \d+ x+… · Today · /);
+  expect(lines[0]).not.toContain(long);
   await s.close();
 });
 

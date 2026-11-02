@@ -307,10 +307,10 @@ async function finish(
       const { options } = suggestShape.parse(out);
       return suggest(
         deps,
+        runner,
         row,
         await resolveAll(deps, runner, options),
         done,
-        runner.action.multiSelect,
       );
     }
     const resolved = runner.resolve ? await runner.resolve(deps, out) : { out };
@@ -319,7 +319,7 @@ async function finish(
         ...(o.out as object),
         label: o.label,
       }));
-      return suggest(deps, row, options, done);
+      return suggest(deps, runner, row, options, done);
     }
     out = resolved.out;
   } catch (e) {
@@ -360,10 +360,10 @@ async function resolveAll(
 /** Stores the options for `apply` and shows their labels. */
 async function suggest(
   deps: CoreDeps,
+  runner: AiRunner,
   row: RequestRow,
   options: Record<string, unknown>[],
   done: Partial<RequestRow>,
-  multiSelect?: boolean,
 ): Promise<AiResult> {
   await claim(deps.db, row.id, "pending", {
     ...done,
@@ -373,10 +373,14 @@ async function suggest(
   return {
     requestId: row.id,
     status: "suggested",
-    options: options.map((o) => ({
-      label: optionLabel(o),
-      ...(typeof o.reason === "string" ? { reason: o.reason } : {}),
-    })),
-    ...(multiSelect ? { multiSelect: true } : {}),
+    options: options.map((o) => {
+      const reason = runner.preview
+        ? runner.preview(o)
+        : typeof o.reason === "string"
+          ? o.reason
+          : undefined;
+      return { label: optionLabel(o), ...(reason ? { reason } : {}) };
+    }),
+    ...(runner.action.multiSelect ? { multiSelect: true } : {}),
   };
 }
