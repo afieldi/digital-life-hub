@@ -10,6 +10,7 @@ export const aiEffect = z.enum([
   "updateItem",
   "createItems",
   "addLinks",
+  "removeLinks",
   "deleteItems",
   "setArchived",
   "writeOtherItems",
@@ -24,6 +25,7 @@ const DIRECT_EFFECTS: ReadonlySet<AiEffect> = new Set([
   "updateItem",
   "createItems",
   "addLinks",
+  "removeLinks",
 ]);
 
 /** The most autonomous kind an action with these effects may ever run as. */

@@ -52,5 +52,18 @@ export type {
   PaletteAction,
 } from "./module";
 export { defineModule } from "./module";
+export type { OperationList } from "./operations/ai";
+export { operationList, toAiAction } from "./operations/ai";
+export type {
+  OperationDescription,
+  PaletteContext,
+  PaletteForm,
+  PaletteSpec,
+} from "./operations/describe";
+export { describeOperation, ITEM_KEYS } from "./operations/describe";
+export type { Due } from "./operations/due";
+export { dueValue } from "./operations/due";
+export type { FieldSpec } from "./operations/fields";
+export { fields, formFields, OperationError } from "./operations/fields";
 export type { ModuleRegistry, ReservedShell } from "./registry";
 export { collectModules, ModuleRegistryError } from "./registry";
