@@ -18,7 +18,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, Ellipsis } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { todayIn } from "../dates";
+import { formatWhen, todayIn } from "../dates";
 import { taskOps } from "../operations";
 import type { Priority, TaskRow } from "../schema";
 import { deviceTimeZone, TASKS_KEY, UNDO_TOAST_MS, useTasksApi } from "./api";
@@ -103,6 +103,8 @@ export function TaskDetail({
   const { task, subtasks, parents } = data;
   const done = task.completedAt !== null;
   const due = draft.due !== undefined ? draft.due : task.due;
+  // Set in another zone: what it was there, as rows show it ("9:00 PT").
+  const origin = due ? formatWhen(due, timeZone, today).origin : undefined;
   const priority = draft.priority ?? task.priority;
   const notes = draft.notes !== undefined ? draft.notes : task.notes;
 
@@ -127,14 +129,15 @@ export function TaskDetail({
         </>
       }
     >
-      <DueField
-        label="Due"
-        value={due}
-        timeZone={
-          due && "timeZone" in due && due.timeZone ? due.timeZone : timeZone
-        }
-        onChange={(value) => edit({ due: value })}
-      />
+      <div className="flex flex-col gap-1">
+        <DueField
+          label="Due"
+          value={due}
+          timeZone={timeZone}
+          onChange={(value) => edit({ due: value })}
+        />
+        {origin ? <Caption>· {origin}</Caption> : null}
+      </div>
       <SegmentedChoice
         label="Priority"
         options={PRIORITIES}

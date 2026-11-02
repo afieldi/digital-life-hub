@@ -176,12 +176,20 @@ test("Cancel calls onCancel", async () => {
   expect(onCancel).toHaveBeenCalled();
 });
 
-function DueHarness({ onValue }: { onValue: (v: unknown) => void }) {
-  const [v, setV] = useState<import("@dlh/core").Due | null>(null);
+function DueHarness({
+  onValue,
+  initial = null,
+  timeZone = zone,
+}: {
+  onValue: (v: unknown) => void;
+  initial?: import("@dlh/core").Due | null;
+  timeZone?: string;
+}) {
+  const [v, setV] = useState(initial);
   return (
     <DueField
       label="Due"
-      timeZone={zone}
+      timeZone={timeZone}
       value={v}
       onChange={(n) => {
         setV(n);
@@ -212,6 +220,36 @@ test("DueField: date then time gives dateTime with the zone; clearing time gives
   await userEvent.click(screen.getByRole("button", { name: "Clear Due time" }));
   expect(seen).toHaveBeenLastCalledWith({ date: "2026-11-06" });
   expect(screen.queryByRole("button", { name: "Clear Due time" })).toBeNull();
+});
+
+test("DueField shows a time set in another zone in its own, and a date change keeps that zone", async () => {
+  const seen = vi.fn();
+  render(
+    <DueHarness
+      onValue={seen}
+      initial={{ dateTime: "2026-11-06T09:00:00-08:00", timeZone: zone }}
+      timeZone="America/New_York"
+    />,
+  );
+  const time = screen.getByRole("group", { name: "Due time" });
+  expect(time.querySelector('[data-type="hour"]')).toHaveTextContent("12");
+  const date = screen.getByRole("group", { name: "Due" });
+  await userEvent.click(date.querySelector('[data-type="day"]') as HTMLElement);
+  await userEvent.keyboard("07");
+  // 9:00 where it was set, still: the zone stays.
+  expect(seen).toHaveBeenLastCalledWith({
+    dateTime: "2026-11-07T09:00:00-08:00",
+    timeZone: zone,
+  });
+  await userEvent.click(
+    time.querySelector('[data-type="hour"]') as HTMLElement,
+  );
+  await userEvent.keyboard("14");
+  // A new time is set here.
+  expect(seen).toHaveBeenLastCalledWith({
+    dateTime: "2026-11-07T14:00:00-05:00",
+    timeZone: "America/New_York",
+  });
 });
 
 test("SegmentedChoice keyboard selection", async () => {
