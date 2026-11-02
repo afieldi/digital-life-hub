@@ -83,7 +83,7 @@ We build one module at a time. Each one goes through the same steps, and nothing
 
 This doc stays the map. Each deep dive links back here, and the Modules table gets updated when scope changes.
 
-**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
+**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (draft) · [Agent Hub](specs/agent-hub.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
 
 ## Suggested build order
 

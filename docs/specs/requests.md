@@ -51,7 +51,7 @@ Make task has to create a task, and the Tasks table belongs to Tasks. So one ope
 - A description lists what it may call: `calls: [tasksOps.create]`. Its implementation runs `await w.call(tasksOps.create, input)`, which returns that operation's result.
 - The call runs in the caller's transaction, through the callee's own `run`, input schema and rules. The callee's effects are checked against the callee's description; the caller needs no extra effects for them.
 - Undo is one record. Items the call created are recorded by the writer like the caller's own, so Core's created-item undo soft-deletes them; the caller's `undo` then reverses its own part.
-- Registration fails if a called operation isn't a mutation of a registered module, or the caller calls itself. Calls one level deep only: a called operation may not make calls.
+- A called operation may be a mutation or a query of a registered module. Registration fails otherwise, or if the caller calls itself. Calls one level deep only: a called operation may not make calls.
 - The Agent hub uses the same mechanism later, through the API.
 
 ## Data model
@@ -73,11 +73,12 @@ A request is a Core `items` row (`type = "request"`) plus one row in `requests`,
 | `item_id` | uuid, primary key | FK `items(id) on delete cascade` |
 | `body` | text, null | The quoted message or details. Plain text |
 | `from_name` | text, null | Who it is from, as shown. Null when you filed it yourself |
-| `source` | text, not null | Check: `manual`, `ai`, `slack`. A new source is a migration on the check constraint |
+| `source` | text, not null | Check: `manual`, `ai`, `slack`, `agent`. A new source is a migration on the check constraint |
 | `source_handle` | text, null | The sender's id at the source (a Slack user id) |
 | `source_url` | text, null | A link back to the original message |
 | `external_id` | text, null | The message's id at the source |
 | `received_at` | timestamptz, not null | When it was sent at the source; defaults to filing time |
+| `actions` | jsonb, null | At most 3 `{ label, operation, input }`, shown in place of the outcomes (below) |
 | `resolved_at` | timestamptz, null | Null means open |
 | `outcome` | text, null | Check: `task`, `handled`, `not_for_me`. Set exactly when `resolved_at` is |
 
@@ -93,7 +94,7 @@ Indexes: unique `(source, external_id)` where `external_id is not null`; `(recei
 
 | Operation | Kind | Input | Effects, subject | ⌘K | AI |
 | --- | --- | --- | --- | --- | --- |
-| `file` | mutation | `{ title, body?, fromName?, source?, sourceHandle?, sourceUrl?, externalId?, receivedAt? }` | `createItems` | "File a request", form: title, details, from | ✓ |
+| `file` | mutation | `{ title, body?, fromName?, source?, sourceHandle?, sourceUrl?, externalId?, receivedAt?, actions? }` | `createItems` | "File a request", form: title, details, from | ✓ |
 | `resolve` | mutation | `{ id, expectedUpdatedAt, outcome, taskId? }` | `updateItem`, `addLinks`; `id` | "Handled", "Not for me" on the request on screen | ✓ |
 | `makeTask` | mutation | `{ id, expectedUpdatedAt, title?, due?, priority?, notes? }` | `updateItem`, `addLinks`, calls `tasks.create`; `id` | "Make task", form prefilled from the request | ✓ |
 | `reopen` | mutation | `{ id, expectedUpdatedAt }` | `updateItem`, `removeLinks`; `id` | Runs on ↵ | ✗ |
@@ -101,7 +102,8 @@ Indexes: unique `(source, external_id)` where `external_id is not null`; `(recei
 | `resolved` | query | `{ outcome?, cursor? }` | none | ✗ | ✗ |
 | `get` | query | `{ id }` | none | ✗ | ✗ |
 
-- `source` defaults to `manual` in ⌘K and `ai` when filed through AI. Later sources call `file` from the server.
+- `source` defaults to `manual` in ⌘K and `ai` when filed through AI. Later sources call `file` from the server. The [Agent hub](agent-hub.md) files with `agent` and `externalId` `<runId>:<seq>`.
+- **Actions.** A request with `actions` shows them as buttons in place of the three outcomes. Each names an operation of a registered module, checked at `file`, whose job includes resolving this request through an operation call; the screen runs it like any operation, with its Undo. Agent approvals use them (Approve, Decline), and Slack can later (Reply).
 - `file` with a `(source, externalId)` pair that exists returns that request with `existing: true` and writes nothing. Two concurrent calls with the same pair give one row (the unique index decides; the loser reads the winner).
 - `makeTask` creates the task through `tasks.create` (title defaults to the request's, notes to its body, due and priority as given), adds the `relates` link and resolves the request as `task`, all in one transaction. Its Undo soft-deletes the task and reopens the request.
 - `resolve` with `outcome: "task"` links a task that already exists: `taskId` must be a live item of type `task`, and the `relates` link is added in the same transaction. Other outcomes refuse a `taskId`.
@@ -124,7 +126,7 @@ Every Queue operation marked ✓ is an AI action through the operation adapter. 
 
 - View tabs: Open and Resolved, the tab in the URL.
 - Open: oldest first. Each row shows the source glyph, `from_name` (or "You"), the title, a one-line body preview and its age ("2h", "3d").
-- Row actions on hover or focus: Make task (`t`), Handled (`h`), Not for me (`n`). Resolving removes the row with an Undo toast, which runs `reopen`.
+- Row actions on hover or focus: Make task (`t`), Handled (`h`), Not for me (`n`), or the request's own actions when it has them. Resolving removes the row with an Undo toast, which runs `reopen`.
 - Resolved: outcome chip on each row; a task outcome links to the task. Filter by outcome with removable chips.
 
 **Detail (side panel)**
