@@ -88,3 +88,38 @@ export function useRecordView(id: string | undefined): void {
     return () => setOpenItem((current) => (current === id ? null : current));
   }, [setOpenItem, id]);
 }
+
+/** What the desktop shell offers module screens. */
+export type ShellApi = {
+  /** Opens the command bar (⌘K), with `query` already typed when given. */
+  openCommandBar: (query?: string) => void;
+  /** An item's page, from its module's item type; undefined for unknown types. */
+  itemHref: (item: { id: string; type: string }) => string | undefined;
+};
+
+const ShellContext = createContext<ShellApi>({
+  openCommandBar: () => {},
+  itemHref: () => undefined,
+});
+
+/** Given by the shell around every module screen. */
+export function ShellProvider({
+  value,
+  children,
+}: {
+  value: ShellApi;
+  children?: ReactNode;
+}) {
+  return <ShellContext value={value}>{children}</ShellContext>;
+}
+
+/** Opens ⌘K from a screen, e.g. a ⋯ menu's "Ask AI…". */
+export function useCommandBar(): { open: (query?: string) => void } {
+  const { openCommandBar } = useContext(ShellContext);
+  return { open: openCommandBar };
+}
+
+/** Finds the page of an item of any module's type. */
+export function useItemHref(): ShellApi["itemHref"] {
+  return useContext(ShellContext).itemHref;
+}

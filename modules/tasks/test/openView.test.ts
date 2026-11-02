@@ -1,8 +1,11 @@
 import { expect, test } from "vitest";
 import type { TaskRow } from "../src/schema";
 import {
+  comingUpCount,
   groupOpenRows,
   nextUp,
+  openCount,
+  openStatus,
   rowMeta,
   todayProgress,
 } from "../src/screens/openView";
@@ -162,4 +165,45 @@ test("a dated subtask names its parent", () => {
     "UTC",
   );
   expect(meta).toEqual(["Today", "in P"]);
+});
+
+test("status line: things left today and overdue", () => {
+  expect(
+    openStatus(
+      [
+        on(today, { title: "a" }),
+        on(today, { title: "b" }),
+        on(today, { title: "done", completedAt: "2026-11-04T08:00:00.000Z" }),
+        on("2026-11-01", { title: "late" }),
+        row({ title: "undated" }),
+      ],
+      today,
+    ),
+  ).toBe("2 things left today · 1 overdue");
+  expect(openStatus([on(today, { title: "a" })], today)).toBe(
+    "1 thing left today",
+  );
+  expect(openStatus([on("2026-11-02", { title: "late" })], today)).toBe(
+    "Today is clear · 1 overdue",
+  );
+  expect(openStatus([], today)).toBe("Today is clear");
+});
+
+test("tab counts: open rows, and what's coming up from today", () => {
+  const rows = [
+    on(today, { title: "a" }),
+    on(today, { title: "done", completedAt: "2026-11-04T08:00:00.000Z" }),
+    row({ title: "undated" }),
+  ];
+  expect(openCount(rows)).toBe(2);
+  expect(
+    comingUpCount(
+      [
+        on("2026-11-02", { title: "earlier this week" }),
+        on(today, { title: "today" }),
+        on("2026-11-20", { title: "later" }),
+      ],
+      today,
+    ),
+  ).toBe(2);
 });

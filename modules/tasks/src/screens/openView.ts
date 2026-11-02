@@ -105,3 +105,31 @@ export function rowMeta(row: TaskRow, today: Day, tz: string): string[] {
   }
   return parts;
 }
+
+const open = (row: TaskRow) => row.completedAt === null;
+
+/**
+ * The line under "Tasks" on Open: "2 things left today · 1 overdue". With
+ * nothing left today it says "Today is clear"; no overdue part when none are.
+ */
+export function openStatus(rows: TaskRow[], today: Day): string {
+  const left = rows.filter((r) => open(r) && r.day === today).length;
+  const overdue = rows.filter(
+    (r) => open(r) && groupFor(r.day, today) === "overdue",
+  ).length;
+  const head =
+    left === 0
+      ? "Today is clear"
+      : `${left} ${left === 1 ? "thing" : "things"} left today`;
+  return overdue > 0 ? `${head} · ${overdue} overdue` : head;
+}
+
+/** The Open tab's count: tasks not done. */
+export function openCount(rows: TaskRow[]): number {
+  return rows.filter(open).length;
+}
+
+/** The Upcoming tab's count: open tasks due today or later. */
+export function comingUpCount(rows: TaskRow[], today: Day): number {
+  return rows.filter((r) => open(r) && r.day !== null && r.day >= today).length;
+}

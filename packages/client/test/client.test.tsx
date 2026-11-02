@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import {
   ApiClientProvider,
   OpenItemProvider,
+  ShellProvider,
+  useCommandBar,
+  useItemHref,
   useModuleApi,
   useOpenItem,
   useRecordView,
@@ -109,4 +112,30 @@ test("an item page unmounting leaves a newer page's open item in place", () => {
 test("useOpenItem is null without a provider", () => {
   const { result } = renderHook(() => useOpenItem());
   expect(result.current).toBeNull();
+});
+
+test("useCommandBar and useItemHref use the shell's, and do nothing without one", () => {
+  const openCommandBar = vi.fn();
+  const itemHref = (item: { id: string; type: string }) =>
+    item.type === "task" ? `/tasks/${item.id}` : undefined;
+  const { result } = renderHook(
+    () => ({ bar: useCommandBar(), href: useItemHref() }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <ShellProvider value={{ openCommandBar, itemHref }}>
+          {children}
+        </ShellProvider>
+      ),
+    },
+  );
+  result.current.bar.open("Reschedule ");
+  expect(openCommandBar).toHaveBeenCalledWith("Reschedule ");
+  expect(result.current.href({ id: "1", type: "task" })).toBe("/tasks/1");
+
+  const bare = renderHook(() => ({
+    bar: useCommandBar(),
+    href: useItemHref(),
+  }));
+  expect(() => bare.result.current.bar.open()).not.toThrow();
+  expect(bare.result.current.href({ id: "1", type: "task" })).toBeUndefined();
 });

@@ -20,6 +20,9 @@ export const TASKS_KEY = ["tasks"] as const;
 /** How long a write's toast keeps its Undo. */
 export const UNDO_TOAST_MS = 10_000;
 
+/** A task's page: the Detail panel. */
+export const taskHref = (id: string) => `/tasks/${id}`;
+
 export const deviceTimeZone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -40,6 +43,8 @@ export type TaskWrite<T> = {
   /** What to call it in an error ("Couldn't complete"). */
   verb: string;
   call: () => Promise<{ result: T; undo: UndoToken }>;
+  /** No success toast, e.g. for notes saved as you type. Failures still toast. */
+  quiet?: boolean;
 };
 
 /**
@@ -64,7 +69,13 @@ export function useTaskWrite() {
   );
 
   return useCallback(
-    async <T>({ op, summary, verb, call }: TaskWrite<T>): Promise<T | null> => {
+    async <T>({
+      op,
+      summary,
+      verb,
+      call,
+      quiet,
+    }: TaskWrite<T>): Promise<T | null> => {
       let res: { result: T; undo: UndoToken };
       try {
         res = await call();
@@ -73,6 +84,7 @@ export function useTaskWrite() {
         return null;
       }
       void refresh();
+      if (quiet) return res.result;
       toast(summary, {
         tone: "success",
         timeout: UNDO_TOAST_MS,

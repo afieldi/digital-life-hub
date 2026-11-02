@@ -30,9 +30,8 @@ afterEach(async () => {
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /**
- * The app signed in, with a task "Pay rent". With `taskOpen`, the task is the
- * open item: there is no Tasks screen yet, so the sample item page, which
- * marks whatever id it shows as open, stands in for it.
+ * The app signed in, with a task "Pay rent". With `taskOpen`, its Detail
+ * panel is showing, which makes it the open item.
  */
 async function setup(opts: { taskOpen?: boolean } = {}) {
   const t = await freshApiDb();
@@ -42,10 +41,10 @@ async function setup(opts: { taskOpen?: boolean } = {}) {
   const { result: task } = await client.tasks.create.mutate({
     title: "Pay rent",
   });
-  if (opts.taskOpen) app.router.history.push(`/sample/${task.id}`);
+  if (opts.taskOpen) app.router.history.push(`/tasks/${task.id}`);
   app.renderApp();
   if (opts.taskOpen) {
-    await screen.findByRole("heading", { name: "Pay rent", level: 1 });
+    await screen.findByRole("complementary", { name: "Pay rent" });
   }
   const read = async () =>
     (await client.tasks.get.query({ id: task.id, timeZone })).task;
@@ -87,7 +86,9 @@ test("complete runs on enter with a task open and toasts Undo", async () => {
   expect(
     await screen.findByRole("button", { name: "Undo" }),
   ).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByRole("combobox")).toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Command bar" })).toBeNull(),
+  );
   expect(screen.getByText("Complete")).toBeInTheDocument();
   await waitFor(async () => expect((await read()).completedAt).not.toBeNull());
 });

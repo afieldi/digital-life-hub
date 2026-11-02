@@ -87,6 +87,17 @@ test("moveToDay keeps the wall-clock time and re-reads the offset", () => {
   ).toEqual({ dateTime: "2027-03-15T09:00:00-07:00", timeZone: LA });
 });
 
+test("moveToDay keeps the local time", () => {
+  const due = { dateTime: "2026-11-02T09:00:00-08:00", timeZone: LA };
+  const moved = moveToDay(due, "2026-11-05", LA);
+  expect(moved).toEqual({
+    dateTime: "2026-11-05T09:00:00-08:00",
+    timeZone: LA,
+  });
+  expect(dayOfDue(moved, LA)).toBe("2026-11-05");
+  expect(formatWhen(moved, LA, "2026-11-05").text).toBe("Today 9:00");
+});
+
 test("moveToDay without a stored zone uses the given zone", () => {
   expect(
     moveToDay({ dateTime: "2026-11-02T09:00:00-08:00" }, "2026-11-03", LA),

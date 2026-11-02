@@ -1,3 +1,4 @@
+import { type ShellApi, ShellProvider } from "@dlh/client";
 import type { CommandContext, PaletteAction } from "@dlh/core";
 import {
   Button,
@@ -95,10 +96,17 @@ export function Shell() {
 
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const openCommandBar = useCallback(() => {
-    setQuery("");
+  const openCommandBar = useCallback((text = "") => {
+    setQuery(text);
     setCommandOpen(true);
   }, []);
+  const shellApi = useMemo<ShellApi>(
+    () => ({
+      openCommandBar,
+      itemHref: (item) => registry.itemTypes.get(item.type)?.href(item.id),
+    }),
+    [openCommandBar],
+  );
 
   const navigate = useCallback(
     (to: string) => {
@@ -110,7 +118,7 @@ export function Shell() {
   useEffect(() => {
     const onKeyDown = createHotkeys({
       platform: platform(),
-      onCommandBar: openCommandBar,
+      onCommandBar: () => openCommandBar(),
       onGo: (key) => {
         const to = goTargets.get(key);
         if (to) navigate(to);
@@ -240,7 +248,9 @@ export function Shell() {
       <SceneOverrideContext value={sceneState}>
         <Scene variant={override ?? undefined} />
         <main className="min-h-screen pb-32">
-          <Outlet />
+          <ShellProvider value={shellApi}>
+            <Outlet />
+          </ShellProvider>
         </main>
         <Dock
           items={dockItems}
@@ -251,7 +261,7 @@ export function Shell() {
               variant="icon"
               aria-label="Command bar"
               className="w-auto px-2"
-              onPress={openCommandBar}
+              onPress={() => openCommandBar()}
             >
               <Kbd keys={["mod", "K"]} />
             </Button>

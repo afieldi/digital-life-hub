@@ -1,39 +1,26 @@
 import {
-  Breadcrumb,
   Button,
   Caption,
   EmptyState,
   GlassPanel,
   KeyHints,
   ListGroup,
-  PageHeader,
   ProgressBar,
   Skeleton,
   Switch,
-  toast,
 } from "@dlh/ui";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlert, ListChecks } from "lucide-react";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { groupFor, todayIn } from "../dates";
 import { taskOps } from "../operations";
-import type { TaskRow } from "../schema";
-import { deviceTimeZone, TASKS_KEY, useTasksApi, useTaskWrite } from "./api";
+import { deviceTimeZone, taskHref, useTasksApi, useTaskWrite } from "./api";
 import { groupOpenRows, nextUp, todayProgress } from "./openView";
 import { QuickAdd } from "./QuickAdd";
+import { taskKeys, useOpenList } from "./queries";
+import { useRowCache, useTaskToggle } from "./rowWrites";
 import { TaskRowView } from "./TaskRowView";
-
-const taskHref = (id: string) => `/tasks/${id}`;
-
-const openListKey = (timeZone: string) =>
-  [...TASKS_KEY, "list", "open", timeZone] as const;
+import { TasksHeader } from "./TasksHeader";
 
 /** Text inputs swallow keys; checkboxes, links and buttons don't. */
 function isTyping(target: EventTarget | null): boolean {
@@ -51,135 +38,17 @@ function isTyping(target: EventTarget | null): boolean {
 export function OpenPage() {
   const tasks = useTasksApi();
   const write = useTaskWrite();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const timeZone = deviceTimeZone();
   const today = todayIn(new Date(), timeZone);
   const [highOnly, setHighOnly] = useState(false);
   const quickAdd = useRef<HTMLInputElement>(null);
 
-  const list = useQuery({
-    queryKey: openListKey(timeZone),
-    queryFn: () => tasks.list.query({ view: "open", timeZone }),
-  });
+  const list = useOpenList();
   const rows = list.data?.rows ?? [];
-
-  const cachedRow = useCallback(
-    (id: string) =>
-      queryClient
-        .getQueryData<{ rows: TaskRow[] }>(openListKey(timeZone))
-        ?.rows.find((r) => r.id === id),
-    [queryClient, timeZone],
-  );
-
-  /**
-   * Changes a cached row now. A tick (`optimistic`) first cancels a refetch
-   * already on its way, which would put the old state back; a version from a
-   * write's result leaves that write's own refresh running.
-   */
-  const patchRow = useCallback(
-    (id: string, patch: Partial<TaskRow>, optimistic = false) => {
-      if (optimistic) {
-        void queryClient.cancelQueries({ queryKey: openListKey(timeZone) });
-      }
-      queryClient.setQueryData<{ rows: TaskRow[] }>(
-        openListKey(timeZone),
-        (old) =>
-          old
-            ? {
-                ...old,
-                rows: old.rows.map((r) =>
-                  r.id === id ? { ...r, ...patch } : r,
-                ),
-              }
-            : old,
-      );
-    },
-    [queryClient, timeZone],
-  );
-
-  const complete = useCallback(
-    async (id: string, expectedUpdatedAt: string) => {
-      const input = { id, expectedUpdatedAt };
-      return write({
-        op: taskOps.complete.id,
-        summary: taskOps.complete.summary(input),
-        verb: "complete the task",
-        call: () => tasks.complete.mutate(input),
-      });
-    },
-    [tasks, write],
-  );
-
-  const completeParent = useCallback(
-    async (id: string) => {
-      try {
-        const { task } = await tasks.get.query({ id, timeZone });
-        await complete(task.id, task.updatedAt);
-      } catch {
-        toast("Couldn't complete the task", { tone: "error" });
-      }
-    },
-    [tasks, complete, timeZone],
-  );
-
-  /** Sends one tick or untick, with the version the cache holds by then. */
-  const sendToggle = useCallback(
-    async (fallback: TaskRow, done: boolean) => {
-      const row = cachedRow(fallback.id) ?? fallback;
-      const input = { id: row.id, expectedUpdatedAt: row.updatedAt };
-      if (!done) {
-        const item = await write({
-          op: taskOps.reopen.id,
-          summary: taskOps.reopen.summary(input),
-          verb: "reopen the task",
-          call: () => tasks.reopen.mutate(input),
-        });
-        if (item) patchRow(row.id, { updatedAt: item.updatedAt });
-        return;
-      }
-      const res = await complete(row.id, row.updatedAt);
-      if (!res) return;
-      patchRow(row.id, { updatedAt: res.task.updatedAt });
-      for (const parent of res.parentsNowDone) {
-        toast("All subtasks done. Complete the task?", {
-          actions: [
-            {
-              label: "Complete",
-              onAction: () => void completeParent(parent.id),
-            },
-          ],
-        });
-      }
-    },
-    [tasks, write, complete, completeParent, cachedRow, patchRow],
-  );
-
-  /**
-   * Writes for one row run one after another, so a quick tick-then-untick
-   * sends the second with the version the first wrote, not a stale one.
-   */
-  const pending = useRef(new Map<string, Promise<void>>());
-  const toggle = useCallback(
-    (row: TaskRow) => {
-      const current = cachedRow(row.id) ?? row;
-      const done = current.completedAt === null;
-      patchRow(
-        row.id,
-        { completedAt: done ? new Date().toISOString() : null },
-        true,
-      );
-      const before = pending.current.get(row.id) ?? Promise.resolve();
-      const next = before.then(() => sendToggle(row, done));
-      pending.current.set(row.id, next);
-      void next.finally(() => {
-        if (pending.current.get(row.id) === next) {
-          pending.current.delete(row.id);
-        }
-      });
-    },
-    [cachedRow, patchRow, sendToggle],
-  );
+  const cache = useRowCache(taskKeys.open(timeZone));
+  const { patchRow } = cache;
+  const { toggle } = useTaskToggle(cache);
 
   const groups = groupOpenRows(rows, today, { highOnly });
   // Reschedule all takes every overdue task, not only the ones High only shows.
@@ -290,8 +159,7 @@ export function OpenPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-6 pt-8 pb-[150px]">
-      <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Tasks" }]} />
-      <PageHeader title="Tasks" />
+      <TasksHeader current="/tasks" />
       <div className="flex flex-wrap items-start gap-6">
         <section
           aria-label="Open tasks"
