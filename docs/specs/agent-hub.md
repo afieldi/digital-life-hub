@@ -26,7 +26,7 @@ The heavy kind of AI. You mark a task as an AI task and the agent picks it up, w
 
 **Done when**
 
-1. A real AI task on a real repo goes from Make AI task to a merged PR, with you approving the merge from the Queue.
+1. A real AI task on a real repo goes from Give to agent on a request to a merged PR, with you approving the merge from the Queue.
 2. A run that needs a connection it wasn't given asks for it, suspends, and resumes after you grant it.
 3. A message sent to a running run changes what it does next.
 4. Restarting the agent host mid-run resumes the run from its session.
@@ -96,6 +96,8 @@ packages/agent-runner NEW: inside the container. Agent SDK session, canUseTool h
 
 **Making an AI task.** `agent.assign({ taskId, connections? })` calls `tasks.setAssignee` with `agent`, stores the connections (the default set when left out) and queues a run, in one transaction. `agent.unassign` sets the assignee back to `me` and cancels any active run.
 
+**Give to agent.** From a request, `agent.assignRequest({ requestId, expectedUpdatedAt, title?, notes?, connections? })` makes the task through `tasks.create` (the request's title and body by default), calls `tasks.setAssignee`, resolves the request as `task` through `requests.resolve`, and queues a run, in one transaction. Each is a direct call, so calls stay one level deep. Its Undo soft-deletes the task, which cancels the queued run, and reopens the request.
+
 ```
 queued → running → done
             │  ↘ failed ("Needs you")
@@ -134,6 +136,7 @@ cancelled from queued, running or waiting
 | Operation | Kind | Input | ⌘K | AI |
 | --- | --- | --- | --- | --- |
 | `assign` | mutation | `{ taskId, expectedUpdatedAt, connections? }` | "Make AI task" | ✓ |
+| `assignRequest` | mutation | `{ requestId, expectedUpdatedAt, title?, notes?, connections? }` | "Give to agent" on a request | ✓ |
 | `unassign` | mutation | `{ taskId, expectedUpdatedAt }` | "Back to me" | ✓ |
 | `message` | mutation | `{ runId, body }` | "Tell the agent…" | ✗ |
 | `cancel` | mutation | `{ runId }` | "Cancel run" | ✓ |
@@ -219,7 +222,7 @@ Repos add their own `CLAUDE.md`. Your messages during the run arrive as user mes
 **Elsewhere**
 
 - Task rows: an "AI task" chip, with Queued, Running, Waiting or Failed. Open gets an "AI tasks" filter.
-- Queue: agent requests show their action buttons, with the action quoted.
+- Queue: Give to agent (`a`) beside Make task on open requests, opening the task form with the connections; agent requests show their action buttons, with the action quoted.
 - Settings → Agent: connections (name, type, scope, in the default set, disable), the parallel limit, caps, instructions, and the worker's status from its last claim.
 - ⌘K: Make AI task, Tell the agent…, Cancel run, Retry run, Back to me on the task on screen.
 

@@ -23,7 +23,7 @@ The queue is the landing place for work sources. Slack intake, notifications and
 - Snooze, attaching a request to an existing task, and urgency. Requests are ordered by arrival only
 - A People model. Senders are fields on the request
 - An AI runner that suggests an outcome. It comes with Slack intake, trained on `not_for_me` decisions
-- Give to agent: a fourth outcome that makes a task for the Agent hub to pick up. It comes with the Agent hub spec, as `makeTask` with the task marked for the agent
+- Give to agent: makes an AI task from a request. It is `agent.assignRequest` in the [Agent hub](agent-hub.md), resolving the request as `task`
 - The Home screen itself and the `HomeWidget` contract (Home spec)
 
 **Done when**
