@@ -1,5 +1,7 @@
+import { join } from "node:path";
 import type { AiProviderId } from "@dlh/core";
-import { type Db, items } from "@dlh/db";
+import { type Db, items, migrate } from "@dlh/db";
+import { freshTestDb } from "@dlh/db/testing";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
 import { coreAiRunners } from "./ai/core-runners";
@@ -11,9 +13,34 @@ import type {
   AiProvider,
 } from "./ai/providers";
 import { createChangeBus } from "./changes";
-import type { CoreDeps } from "./trpc";
+import { migrationsRoot, moduleMigrations } from "./migrations";
+import type { ServerModule } from "./modules";
+import type { ImplementedOperation } from "./operations/implement";
+import type { CoreDeps, DeleteWith } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
+
+/**
+ * `freshTestDb()`, then each module's migrations. `root` holds `packages/db/drizzle`
+ * and `modules/<id>/drizzle` (default `MIGRATIONS_ROOT`, else the repo root); jsdom
+ * tests pass it because `import.meta.url` is no file URL there.
+ */
+export async function freshModuleDb(
+  modules: readonly ServerModule[],
+  root?: string,
+): Promise<{ db: Db; url: string; close: () => Promise<void> }> {
+  const base = root ?? migrationsRoot();
+  const t = await freshTestDb(join(base, "packages", "db", "drizzle"));
+  try {
+    for (const m of moduleMigrations(modules, base)) {
+      await migrate(t.url, m.folder, { table: m.table });
+    }
+  } catch (e) {
+    await t.close();
+    throw e;
+  }
+  return t;
+}
 
 export type TestDeps = CoreDeps & {
   setNow(date: Date): void;
@@ -40,7 +67,13 @@ export function testAiDeps(
  */
 export function testDeps(
   db: Db,
-  opts: { itemTypes?: string[]; now?: () => Date; ai?: Partial<AiDeps> } = {},
+  opts: {
+    itemTypes?: string[];
+    now?: () => Date;
+    ai?: Partial<AiDeps>;
+    deleteWith?: Record<string, DeleteWith>;
+    operations?: ReadonlyMap<string, ImplementedOperation>;
+  } = {},
 ): TestDeps {
   let clock = opts.now?.() ?? new Date("2026-10-30T12:00:00.000Z");
   const fakeProvider = new FakeProvider();
@@ -51,6 +84,8 @@ export function testDeps(
     now: () => clock,
     devErrors: true,
     ai: testAiDeps(opts.ai, fakeProvider),
+    deleteWith: new Map(Object.entries(opts.deleteWith ?? {})),
+    operations: opts.operations ?? new Map(),
     fakeProvider,
     setNow(date) {
       clock = date;
@@ -94,6 +129,18 @@ export async function expectTracked(
   } finally {
     unsubscribe();
   }
+}
+
+/**
+ * Contract for a module write: runs `run(itemId)` and asserts the item's `updated_at`
+ * moved and its id was published to `/changes`.
+ */
+export function expectModuleWrites(
+  deps: CoreDeps,
+  run: (itemId: string) => Promise<unknown>,
+  itemId: string,
+): Promise<void> {
+  return expectTracked(deps, { itemId }, () => run(itemId));
 }
 
 type FakeOutput =

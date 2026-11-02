@@ -9,7 +9,6 @@
   },
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/cli/migrate.ts",
     "reset": "tsx src/cli/reset.ts",
     "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
     "test:db": "vitest run '.db.test.ts'",

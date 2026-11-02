@@ -26,6 +26,10 @@ export type BoardProps<T extends { id: string }> = {
    * in `toColumn` once it has been removed from where it was. */
   onMove: (itemId: string, toColumn: string, index: number) => void;
   onAdd?: (columnId: string) => void;
+  /** The add button's label. Defaults to "Add card". */
+  addLabel?: string;
+  /** Makes each card a link: pressing it (not dragging) opens this. */
+  hrefOf?: (item: T) => string;
   /** Accessible text for a card (typeahead, drag announcements). Defaults to its id. */
   textValue?: (item: T) => string;
 };
@@ -40,6 +44,8 @@ export function Board<T extends { id: string }>({
   renderCard,
   onMove,
   onAdd,
+  addLabel,
+  hrefOf,
   textValue,
 }: BoardProps<T>) {
   return (
@@ -52,6 +58,8 @@ export function Board<T extends { id: string }>({
           renderCard={renderCard}
           onMove={onMove}
           onAdd={onAdd}
+          addLabel={addLabel}
+          hrefOf={hrefOf}
           textValue={textValue}
         />
       ))}
@@ -71,6 +79,8 @@ function BoardColumn<T extends { id: string }>({
   renderCard,
   onMove,
   onAdd,
+  addLabel = "Add card",
+  hrefOf,
   textValue,
 }: {
   column: BoardColumnDef;
@@ -78,6 +88,8 @@ function BoardColumn<T extends { id: string }>({
   renderCard: (item: T) => ReactNode;
   onMove: BoardProps<T>["onMove"];
   onAdd?: (columnId: string) => void;
+  addLabel?: string;
+  hrefOf?: (item: T) => string;
   textValue?: (item: T) => string;
 }) {
   const headingId = useId();
@@ -119,6 +131,7 @@ function BoardColumn<T extends { id: string }>({
           className="size-2.5 shrink-0 rounded-full"
         />
         <span>{column.title}</span>
+        {/* Spaces the name ("Mon 2 3"); a flex container doesn't draw it. */}{" "}
         <span className="font-normal text-ink-tertiary">{items.length}</span>
       </h2>
       <GridList
@@ -133,6 +146,7 @@ function BoardColumn<T extends { id: string }>({
         {(item) => (
           <GridListItem
             id={item.id}
+            href={hrefOf?.(item)}
             textValue={textValue ? textValue(item) : item.id}
             className={`glass-raised relative cursor-grab p-3.5 pr-11 text-ink-primary dragging:opacity-50 ${focusRing}`}
           >
@@ -155,7 +169,7 @@ function BoardColumn<T extends { id: string }>({
           className="w-full"
         >
           <Plus aria-hidden="true" size={16} />
-          Add card
+          {addLabel}
         </Button>
       ) : null}
     </section>

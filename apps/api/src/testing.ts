@@ -7,6 +7,10 @@ import {
   createChangeBus,
 } from "@dlh/server";
 import { FakeProvider } from "@dlh/server/testing";
+
+export { freshModuleDb } from "@dlh/server/testing";
+export { serverModules };
+
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";
 import { createApp } from "./app";
 import type { GoogleOAuth } from "./auth/google";
@@ -82,6 +86,8 @@ export function createTestApi(
     db: opts.db ?? noDb(),
     changes: createChangeBus(),
     itemTypes: new Set([...collected.itemTypes, ...(opts.itemTypes ?? [])]),
+    deleteWith: collected.deleteWith,
+    operations: collected.operations,
     devErrors: devAuth,
     config: {
       port: 0,

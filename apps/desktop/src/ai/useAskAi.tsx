@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { useTRPC, useTRPCClient } from "../api/client";
-import { AiResult } from "./AiResult";
+import { AiResult, CHECKLIST_KEYS } from "./AiResult";
 import { ALL_ACTIONS } from "./actions";
 import { errorActions } from "./errorActions";
 import { PROVIDER_NAMES } from "./providers";
@@ -58,6 +58,7 @@ export function useAskAi({
   navigate,
   hasRows,
   rowsPending,
+  forcedActionId,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -68,6 +69,12 @@ export function useAskAi({
   hasRows: boolean;
   /** Whether the search for the current text has yet to settle. */
   rowsPending: boolean;
+  /**
+   * An action the person already chose (an operation's ⌘K step): it is the
+   * one understood, whatever the text, and alternatives are not offered. An id
+   * with no AI action offers no AI at all.
+   */
+  forcedActionId?: string;
 }): {
   interpretation?: ReactNode;
   result?: ReactNode;
@@ -110,11 +117,21 @@ export function useAskAi({
   const candidates = interp
     ? [{ actionId: interp.actionId, kind: interp.kind }, ...interp.alternatives]
     : [];
-  const candidate =
-    candidates.find((c) => c.actionId === pick?.actionId) ?? candidates[0];
-  const action = candidate
-    ? actions?.find((a) => a.id === candidate.actionId)
+  const forced = forcedActionId
+    ? ALL_ACTIONS.find((a) => a.id === forcedActionId)
     : undefined;
+  const candidate = forced
+    ? (candidates.find((c) => c.actionId === forced.id) ?? {
+        actionId: forced.id,
+        kind: interp?.kind ?? null,
+      })
+    : (candidates.find((c) => c.actionId === pick?.actionId) ?? candidates[0]);
+  // A forced id with no AI action (an operation with `ai: false`) offers no AI.
+  const action = forcedActionId
+    ? forced
+    : candidate
+      ? actions?.find((a) => a.id === candidate.actionId)
+      : undefined;
   const kinds = action ? allowedKinds(action) : [];
   const wanted = pick?.kind ?? candidate?.kind;
   const kind = wanted && kinds.includes(wanted) ? wanted : kinds[0];
@@ -125,7 +142,11 @@ export function useAskAi({
     !!interp && action?.id === interp.actionId && kind === firstKind;
   // The no-match fallback offers no AI: the bar keeps its own rows and keys.
   const showRow =
-    open && query.trim() !== "" && !!interp?.matched && !!action && !!kind;
+    open &&
+    query.trim() !== "" &&
+    (!!forced || !!interp?.matched) &&
+    !!action &&
+    !!kind;
 
   const client = useTRPCClient();
   const bar = useAiRequest(defaultProvider);
@@ -212,11 +233,26 @@ export function useAskAi({
       closeToast(key);
       if (done.result?.status === "applied") {
         showApplied(done.result.requestId, done.result.summary, req);
+      } else if (done.result?.status === "suggested") {
+        // An item it named matched several: the bar offers them to pick from.
+        setChoice({ text: req.text, actionId: req.actionId, kind: req.kind });
+        setQuery(req.text);
+        setOpen(true);
+        bar.show(done);
       } else if (done.phase === "error") {
         showError(done);
       }
     },
-    [closeBar, defaultProvider, client, showApplied, showError],
+    [
+      closeBar,
+      defaultProvider,
+      client,
+      showApplied,
+      showError,
+      bar,
+      setQuery,
+      setOpen,
+    ],
   );
 
   const runRequest = useCallback(
@@ -229,8 +265,8 @@ export function useAskAi({
   retryRef.current = runRequest;
 
   const pickOption = useCallback(
-    async (option: number) => {
-      const done = await bar.apply(option);
+    async (choice: number | number[]) => {
+      const done = await bar.apply(choice);
       if (done.result?.status === "applied") {
         closeBar();
         showApplied(done.result.requestId, done.result.summary, done.request);
@@ -239,6 +275,32 @@ export function useAskAi({
     [bar, closeBar, showApplied],
   );
 
+  // A checklist starts all ticked; this holds what was unticked, per request.
+  const [unticked, setUnticked] = useState<{
+    requestId: string;
+    off: ReadonlySet<number>;
+  } | null>(null);
+  const shown = bar.state.result;
+  const checklist =
+    shown?.status === "suggested" && shown.multiSelect ? shown : null;
+  const off =
+    checklist && unticked?.requestId === checklist.requestId
+      ? unticked.off
+      : null;
+  const ticked = checklist
+    ? checklist.options.map((_, i) => i).filter((i) => !off?.has(i))
+    : [];
+  const toggle = (i: number) => {
+    if (!checklist) return;
+    const next = new Set(off);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    setUnticked({ requestId: checklist.requestId, off: next });
+  };
+  const addTicked = () => {
+    if (ticked.length > 0) void pickOption(ticked);
+  };
+
   const { phase } = bar.state;
   // A result replaces the rows, and the bar then leaves ↵ and ↑↓ alone.
   const showsResult = open && phase !== "idle" && phase !== "applied";
@@ -246,7 +308,7 @@ export function useAskAi({
   const rowsWaiting = rowsPending && !showsResult;
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): boolean => {
-    if (!showRow || !action || !kind || !interp) {
+    if (!showRow || !action || !kind) {
       // mod+↵ asks AI: with no request understood yet, it does nothing rather
       // than open the highlighted row.
       if (isModEnter(e) && open && query.trim() !== "") {
@@ -257,6 +319,24 @@ export function useAskAi({
     }
     const { result } = bar.state;
     if (phase === "suggested" && result?.status === "suggested") {
+      if (result.multiSelect) {
+        const n = Number(e.key);
+        if (
+          Number.isInteger(n) &&
+          n >= 1 &&
+          n <= CHECKLIST_KEYS &&
+          n <= result.options.length
+        ) {
+          e.preventDefault();
+          toggle(n - 1);
+          return true;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addTicked();
+          return true;
+        }
+      }
       const n = Number(e.key);
       if (
         Number.isInteger(n) &&
@@ -286,6 +366,7 @@ export function useAskAi({
     if (
       (e.key === "ArrowDown" || e.key === "ArrowUp") &&
       !rowsListed &&
+      !forced &&
       candidates.length > 1 &&
       candidate
     ) {
@@ -303,13 +384,15 @@ export function useAskAi({
     if (e.key === "Enter" && (!rowsListed || isModEnter(e))) {
       e.preventDefault();
       // Wait for the guess about the text as it is now.
-      if (interpCurrent && phase !== "working" && phase !== "suggested") {
+      // A forced action needs no guess.
+      const ready = forced || interpCurrent;
+      if (ready && phase !== "working" && phase !== "suggested") {
         runRequest({
           text: query,
           itemId,
           actionId: action.id,
           kind,
-          ...(interpreted ? { interpretedBy: interp.source } : {}),
+          ...(interpreted && interp ? { interpretedBy: interp.source } : {}),
         });
       }
       return true;
@@ -347,19 +430,27 @@ export function useAskAi({
           : []
       }
       onUse={(i) => void pickOption(i)}
+      ticked={ticked}
+      onToggle={toggle}
+      onAddTicked={addTicked}
       onNone={closeBar}
       onCancel={bar.cancel}
       onClose={closeBar}
+      onOpen={(href) => {
+        closeBar();
+        navigate(href);
+      }}
     />
   ) : undefined;
 
   return {
     interpretation:
-      showRow && action && kind && interp ? (
+      showRow && action && kind ? (
         <UnderstoodAs
           action={action}
           kind={kind}
-          confidence={interp.confidence}
+          // A forced action was chosen by the person, not guessed.
+          confidence={forced ? 1 : (interp?.confidence ?? 1)}
           providerName={providerName}
           onKindChange={(k) => {
             bar.discard();
@@ -372,7 +463,7 @@ export function useAskAi({
       <AiFooter
         rowsListed={rowsListed}
         modAsks={rowsListed || rowsWaiting}
-        alternatives={candidates.length > 1}
+        alternatives={!forced && candidates.length > 1}
       />
     ) : undefined,
     onKeyDown,

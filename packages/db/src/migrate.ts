@@ -9,10 +9,17 @@ const defaultMigrationsFolder = () =>
 export async function migrate(
   url: string,
   migrationsFolder: string = defaultMigrationsFolder(),
+  /** `table` names the journal table (in schema `drizzle`); modules each keep their own. */
+  opts: { table?: string } = {},
 ): Promise<void> {
   const { db, close } = createDb(url);
   try {
-    await drizzleMigrate(db, { migrationsFolder });
+    await drizzleMigrate(db, {
+      migrationsFolder,
+      ...(opts.table
+        ? { migrationsTable: opts.table, migrationsSchema: "drizzle" }
+        : {}),
+    });
   } finally {
     await close();
   }

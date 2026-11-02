@@ -3,11 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { Inbox } from "lucide-react";
 import { RouterProvider } from "react-aria-components";
 import { Board } from "../src/patterns/Board";
+import { CaptureField } from "../src/patterns/CaptureField";
 import { CommandBar, type CommandGroup } from "../src/patterns/CommandBar";
 import { EmptyState } from "../src/patterns/EmptyState";
 import { ItemRow } from "../src/patterns/ItemRow";
+import { ListGroup } from "../src/patterns/ListGroup";
+import { PageHeader } from "../src/patterns/PageHeader";
+import { PeriodNav } from "../src/patterns/PeriodNav";
 import { SectionCard } from "../src/patterns/SectionCard";
+import { SortableList } from "../src/patterns/SortableList";
 import { Button } from "../src/primitives/Button";
+import { Checkbox } from "../src/primitives/Checkbox";
 
 const noop = () => {};
 
@@ -511,4 +517,148 @@ test("CommandBar onKeyDown hook sees Tab and ArrowDown", async () => {
   await userEvent.keyboard("{Tab}");
   expect(keys).toContain("ArrowDown");
   expect(keys).toContain("Tab");
+});
+
+test("CommandBar: keepOpen rows don't close the bar", async () => {
+  const run = vi.fn();
+  const onOpenChange = vi.fn();
+  render(
+    bar(
+      [
+        {
+          id: "actions",
+          label: "Actions",
+          items: [
+            { id: "k", label: "Keep", keepOpen: true, onAction: run },
+            { id: "c", label: "Close", onAction: run },
+          ],
+        },
+      ],
+      onOpenChange,
+    ),
+  );
+  await userEvent.keyboard("{Enter}");
+  expect(run).toHaveBeenCalledOnce();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("option", { name: /Keep/ }));
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(onOpenChange).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("option", { name: /Close/ }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("CaptureField marks the highlighted ranges and submits on Enter", async () => {
+  const submit = vi.fn();
+  render(
+    <CaptureField
+      label="Add a task"
+      value="Pay rent tomorrow p1"
+      onChange={() => {}}
+      onSubmit={submit}
+      highlights={[
+        { start: 18, end: 20 },
+        { start: 9, end: 17 },
+      ]}
+    />,
+  );
+  expect(
+    screen.getAllByTestId("capture-highlight").map((m) => m.textContent),
+  ).toEqual(["tomorrow", "p1"]);
+  await userEvent.type(
+    screen.getByRole("textbox", { name: "Add a task" }),
+    "{Enter}",
+  );
+  expect(submit).toHaveBeenCalledOnce();
+});
+
+test("ListGroup is a region named by its heading, with count and action", () => {
+  render(
+    <ListGroup
+      label="Overdue"
+      count={2}
+      tone="danger"
+      action={<Button variant="ghost">Reschedule all</Button>}
+    >
+      <p>row</p>
+    </ListGroup>,
+  );
+  const region = screen.getByRole("region", { name: "Overdue 2" });
+  expect(within(region).getByText("row")).toBeInTheDocument();
+  expect(
+    within(region).getByRole("button", { name: "Reschedule all" }),
+  ).toBeInTheDocument();
+});
+
+test("PageHeader is the page's h1", () => {
+  render(<PageHeader title="Tasks" subtitle="3 left today" />);
+  expect(
+    screen.getByRole("heading", { level: 1, name: "Tasks" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("3 left today")).toBeInTheDocument();
+});
+
+test("Board takes an add label and card links", async () => {
+  const onAdd = vi.fn();
+  render(
+    <Board
+      columns={columns}
+      items={cards}
+      columnOf={(c) => c.col}
+      renderCard={(c) => c.title}
+      textValue={(c) => c.title}
+      hrefOf={(c) => `/cards/${c.id}`}
+      onMove={noop}
+      onAdd={onAdd}
+      addLabel="Add"
+    />,
+  );
+  const todo = screen.getByRole("region", { name: /To do/ });
+  await userEvent.click(within(todo).getByRole("button", { name: "Add" }));
+  expect(onAdd).toHaveBeenCalledWith("todo");
+  expect(
+    within(screen.getByRole("grid", { name: "To do" })).getAllByRole("row")[0],
+  ).toHaveAttribute("data-href", "/cards/a");
+});
+
+test("SortableList rows hold their own controls and drag handles", async () => {
+  const toggle = vi.fn();
+  render(
+    <SortableList
+      label="Subtasks"
+      items={cards}
+      textValue={(c) => c.title}
+      onMove={noop}
+      renderItem={(c) => (
+        <Checkbox aria-label={c.title} onChange={() => toggle(c.id)} />
+      )}
+    />,
+  );
+  const grid = screen.getByRole("grid", { name: "Subtasks" });
+  expect(within(grid).getAllByRole("row")).toHaveLength(3);
+  expect(
+    screen.getByRole("button", { name: "Drag Write copy" }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("checkbox", { name: "Pick fonts" }));
+  expect(toggle).toHaveBeenCalledWith("b");
+});
+
+test("PeriodNav names its period and steps both ways", async () => {
+  const prev = vi.fn();
+  const next = vi.fn();
+  render(
+    <PeriodNav
+      label="Nov 2 – 8"
+      onPrevious={prev}
+      onNext={next}
+      previousLabel="Previous week"
+      nextLabel="Next week"
+    />,
+  );
+  expect(
+    screen.getByRole("heading", { name: "Nov 2 – 8" }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Previous week" }));
+  await userEvent.click(screen.getByRole("button", { name: "Next week" }));
+  expect(prev).toHaveBeenCalledOnce();
+  expect(next).toHaveBeenCalledOnce();
 });

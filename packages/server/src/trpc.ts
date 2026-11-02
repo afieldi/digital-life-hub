@@ -3,8 +3,20 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { AiError } from "./ai/errors";
 import type { AiDeps } from "./ai/gateway";
 import type { ChangeBus } from "./changes";
+import type { ImplementedOperation } from "./operations/implement";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * A module's hook: the ids to delete (or, when `restoring`, restore) together with
+ * item `id`. Core applies them in the same transaction, so the module needs no
+ * `expectedUpdatedAt` for them.
+ */
+export type DeleteWith = (
+  tx: Tx,
+  id: string,
+  opts: { restoring: boolean },
+) => Promise<string[]>;
 
 export type CoreDeps = {
   db: Db;
@@ -13,6 +25,10 @@ export type CoreDeps = {
   now: () => Date;
   devErrors: boolean;
   ai: AiDeps;
+  /** Item type -> hook of the module that owns it. */
+  deleteWith: ReadonlyMap<string, DeleteWith>;
+  /** Operation id -> module operation, for `ops.undo`. */
+  operations: ReadonlyMap<string, ImplementedOperation>;
 };
 
 /** Augmented by apps/api (`declare module "@dlh/server"`) with its own deps. */

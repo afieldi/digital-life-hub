@@ -1,3 +1,4 @@
+import { type ShellApi, ShellProvider } from "@dlh/client";
 import type { CommandContext, PaletteAction } from "@dlh/core";
 import {
   Button,
@@ -18,6 +19,10 @@ import { RouterProvider } from "react-aria-components";
 import { useAskAi } from "../ai/useAskAi";
 import { useTRPC } from "../api/client";
 import { registry } from "../modules";
+import {
+  useOperationStep,
+  useRefreshItems,
+} from "../operations/useOperationStep";
 import { createHotkeys } from "./hotkeys";
 import { iconFor } from "./icons";
 import { goToRows, itemRows, jumpGroup, matchesQuery } from "./palette";
@@ -94,10 +99,19 @@ export function Shell() {
 
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const openCommandBar = useCallback(() => {
-    setQuery("");
+  const openCommandBar = useCallback((text = "") => {
+    setQuery(text);
     setCommandOpen(true);
   }, []);
+  const itemsChanged = useRefreshItems();
+  const shellApi = useMemo<ShellApi>(
+    () => ({
+      openCommandBar,
+      itemHref: (item) => registry.itemTypes.get(item.type)?.href(item.id),
+      itemsChanged,
+    }),
+    [openCommandBar, itemsChanged],
+  );
 
   const navigate = useCallback(
     (to: string) => {
@@ -109,7 +123,7 @@ export function Shell() {
   useEffect(() => {
     const onKeyDown = createHotkeys({
       platform: platform(),
-      onCommandBar: openCommandBar,
+      onCommandBar: () => openCommandBar(),
       onGo: (key) => {
         const to = goTargets.get(key);
         if (to) navigate(to);
@@ -140,6 +154,14 @@ export function Shell() {
     enabled: commandOpen && emptyQuery,
   });
 
+  const step = useOperationStep({
+    registry,
+    open: commandOpen,
+    setOpen: setCommandOpen,
+    query,
+    navigate,
+  });
+
   const groups = useMemo<CommandGroup[]>(() => {
     if (!commandOpen) return [];
     const ctx: CommandContext = { pathname, navigate };
@@ -155,19 +177,22 @@ export function Shell() {
     const actionGroups = (["create", "actions", "ai"] as const).map((id) => ({
       id,
       label: GROUP_LABELS[id],
-      items: available
-        .filter((a) => a.group === id)
-        .map((a) => {
-          const Icon = a.icon ? iconFor(a.icon) : null;
-          return {
-            id: a.id,
-            label: typeof a.label === "function" ? a.label(ctx) : a.label,
-            icon: Icon ? <Icon aria-hidden="true" size={18} /> : undefined,
-            onAction: () => {
-              void a.run(ctx);
-            },
-          };
-        }),
+      items: [
+        ...(id === "ai" ? [] : step.rows[id]),
+        ...available
+          .filter((a) => a.group === id)
+          .map((a) => {
+            const Icon = a.icon ? iconFor(a.icon) : null;
+            return {
+              id: a.id,
+              label: typeof a.label === "function" ? a.label(ctx) : a.label,
+              icon: Icon ? <Icon aria-hidden="true" size={18} /> : undefined,
+              onAction: () => {
+                void a.run(ctx);
+              },
+            };
+          }),
+      ],
     }));
     const result: CommandGroup[] = [...actionGroups];
     if (emptyQuery) {
@@ -204,7 +229,10 @@ export function Shell() {
     search.isSuccess,
     search.data,
     recents.data,
+    step.rows,
   ]);
+  // In an operation's step the bar lists only that operation.
+  const shownGroups = step.groups ?? groups;
 
   const ai = useAskAi({
     open: commandOpen,
@@ -212,8 +240,9 @@ export function Shell() {
     query,
     setQuery,
     navigate,
-    hasRows: groups.some((g) => g.items.some((i) => !i.disabled)),
-    rowsPending,
+    hasRows: shownGroups.some((g) => g.items.some((i) => !i.disabled)),
+    rowsPending: rowsPending && !step.active,
+    forcedActionId: step.active?.id,
   });
 
   return (
@@ -224,7 +253,9 @@ export function Shell() {
       <SceneOverrideContext value={sceneState}>
         <Scene variant={override ?? undefined} />
         <main className="min-h-screen pb-32">
-          <Outlet />
+          <ShellProvider value={shellApi}>
+            <Outlet />
+          </ShellProvider>
         </main>
         <Dock
           items={dockItems}
@@ -235,7 +266,7 @@ export function Shell() {
               variant="icon"
               aria-label="Command bar"
               className="w-auto px-2"
-              onPress={openCommandBar}
+              onPress={() => openCommandBar()}
             >
               <Kbd keys={["mod", "K"]} />
             </Button>
@@ -246,12 +277,16 @@ export function Shell() {
           onOpenChange={ai.onOpenChange}
           query={query}
           onQueryChange={ai.onQueryChange}
-          groups={groups}
-          interpretation={ai.interpretation}
-          result={ai.result}
+          groups={shownGroups}
+          // In a step, Understood as shows once AI is asked.
+          interpretation={
+            step.active && !ai.result ? undefined : ai.interpretation
+          }
+          result={ai.result ?? step.result}
           footer={ai.footer}
-          onKeyDown={ai.onKeyDown}
+          onKeyDown={(e) => step.onKeyDown(e) || ai.onKeyDown(e)}
         />
+        {step.form}
         <ToastRegion />
       </SceneOverrideContext>
     </RouterProvider>

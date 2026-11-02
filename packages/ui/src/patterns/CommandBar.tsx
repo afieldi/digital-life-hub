@@ -21,6 +21,8 @@ export type CommandItem = {
   hint?: string;
   /** Muted, skipped by ↑↓, and inert on Enter or click. */
   disabled?: boolean;
+  /** Running it leaves the bar open, e.g. to take the row's arguments next. */
+  keepOpen?: boolean;
   onAction: () => void;
 };
 
@@ -120,7 +122,7 @@ export function CommandBar({
   const run = (item: CommandItem) => {
     if (item.disabled) return;
     item.onAction();
-    onOpenChange(false);
+    if (!item.keepOpen) onOpenChange(false);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {

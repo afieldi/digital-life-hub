@@ -8,9 +8,11 @@ export type AiActionDescription = {
   kinds: AiKind[];
   effects: AiEffect[];
   words?: string[];
+  /** Suggest offers a checklist: several options can be applied together, once. */
+  multiSelect?: boolean;
 };
 
-const ACTION_ID = /^([a-z][a-z0-9]*\.)?[a-z][a-zA-Z0-9]*$/;
+export const ACTION_ID = /^([a-z][a-z0-9]*\.)?[a-z][a-zA-Z0-9]*$/;
 
 export function describeAiAction(d: AiActionDescription): AiActionDescription {
   if (!ACTION_ID.test(d.id)) {

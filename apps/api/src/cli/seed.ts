@@ -26,17 +26,16 @@ export async function seedIfEmpty(
 
 async function main(): Promise<void> {
   const { db, close } = createDb(databaseUrlFrom(process.env));
-  const { modules, itemTypes, aiRunners } = collectServerModules(
-    [...serverModules],
-    [...CORE_ROUTER_IDS],
-    coreAi,
-  );
+  const { modules, itemTypes, aiRunners, deleteWith, operations } =
+    collectServerModules([...serverModules], [...CORE_ROUTER_IDS], coreAi);
   try {
     const seeded = await seedIfEmpty(
       {
         db,
         changes: createChangeBus(),
         itemTypes,
+        deleteWith,
+        operations,
         now: () => new Date(),
         devErrors: false,
         ai: {

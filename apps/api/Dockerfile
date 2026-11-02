@@ -6,13 +6,17 @@ COPY . .
 RUN pnpm install --frozen-lockfile --filter @dlh/api... --filter "./modules/*"
 RUN pnpm --filter @dlh/api build
 RUN pnpm --filter @dlh/api deploy --prod /out
+# Core's and each module's migrations, keeping their repo-relative paths (modules may have none).
+RUN for d in packages/db/drizzle modules/*/drizzle; do \
+      [ -d "$d" ] && mkdir -p "/migrations/$(dirname "$d")" && cp -r "$d" "/migrations/$d"; \
+    done; mkdir -p /migrations
 
 FROM node:22-slim
 WORKDIR /app
-ENV NODE_ENV=production MIGRATE_ON_START=1 HOST=0.0.0.0
+ENV NODE_ENV=production MIGRATE_ON_START=1 MIGRATIONS_ROOT=/app HOST=0.0.0.0
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /repo/apps/api/dist ./dist
-COPY --from=build /repo/packages/db/drizzle ./drizzle
+COPY --from=build /migrations ./
 USER node
 EXPOSE 8787
 CMD ["node", "dist/main.js"]

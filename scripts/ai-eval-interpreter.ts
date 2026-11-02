@@ -8,6 +8,7 @@ import {
 } from "../packages/core/src/ai/suite";
 import { coreAiActions, keywordInterpreter } from "../packages/core/src/index";
 import { corePhrasings } from "../packages/core/test/ai-phrasings";
+import { moduleAiActions } from "../packages/server/src/modules";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const PASS_THRESHOLD = 0.9;
@@ -30,9 +31,10 @@ export function formatMiss({ phrasing, got }: Miss): string {
 
 /** Core phrasings plus every export named `*Phrasings` from each module file. */
 async function loadPhrasings(files: string[]): Promise<Phrasing[]> {
-  // Test hook: simulates a broken phrasings import.
+  // Test hook: simulates broken phrasings imports, Core's and the modules'.
   // biome-ignore lint/suspicious/noUndeclaredEnvVars: script-only, not a turbo input
-  const all = process.env.AI_EVAL_EMPTY ? [] : [...corePhrasings];
+  if (process.env.AI_EVAL_EMPTY) return [];
+  const all = [...corePhrasings];
   for (const file of files) {
     const mod = (await import(pathToFileURL(file).href)) as Record<
       string,
@@ -54,12 +56,10 @@ async function main(): Promise<void> {
     console.error(`Unknown interpreter "${which}". Supported: keywords`);
     process.exit(2);
   }
-  // Actions: Core's plus every server module's `aiActions`.
+  // Actions: Core's plus every server module's, operations included.
   const actions = [
     ...Object.values(coreAiActions),
-    ...serverModules.flatMap((m) =>
-      "aiActions" in m && m.aiActions ? m.aiActions : [],
-    ),
+    ...serverModules.flatMap((m) => moduleAiActions(m)),
   ];
   const phrasings = await loadPhrasings(collectPhrasingFiles());
 

@@ -1,4 +1,4 @@
-import { createDb, migrate } from "@dlh/db";
+import { createDb } from "@dlh/db";
 import {
   CORE_ROUTER_IDS,
   collectServerModules,
@@ -14,6 +14,7 @@ import { drizzleAuthStore } from "./auth/drizzleStore";
 import { createGoogleOAuth } from "./auth/google";
 import { startPurgeJob } from "./changes";
 import { ConfigError, loadConfig } from "./config";
+import { migrateAll } from "./migrate";
 import { serverModules } from "./modules.gen";
 
 function loadConfigOrExit() {
@@ -40,7 +41,7 @@ function hostPort(url: string): string {
 
 const config = loadConfigOrExit();
 // Throws on a duplicate module id or item type, or an id that clashes with a core router.
-const { itemTypes, aiRunners } = collectServerModules(
+const { itemTypes, aiRunners, deleteWith, operations } = collectServerModules(
   [...serverModules],
   [...CORE_ROUTER_IDS],
   coreAi,
@@ -58,13 +59,19 @@ try {
 }
 
 if (process.env.MIGRATE_ON_START === "1") {
-  await migrate(config.databaseUrl, "./drizzle");
+  await migrateAll(
+    config.databaseUrl,
+    serverModules,
+    process.env.MIGRATIONS_ROOT,
+  );
 }
 
 const deps = {
   db,
   changes: createChangeBus(),
   itemTypes,
+  deleteWith,
+  operations,
   devErrors: config.devAuth,
   config,
   store: drizzleAuthStore(db),

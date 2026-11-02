@@ -25,7 +25,14 @@ export type AiRunRequest = {
 export type AiFinishedResult = Exclude<AiResult, { status: "run" }>;
 
 export type AiUiState = {
-  phase: "idle" | "working" | "answered" | "suggested" | "applied" | "error";
+  phase:
+    | "idle"
+    | "working"
+    | "answered"
+    | "listed"
+    | "suggested"
+    | "applied"
+    | "error";
   /** Who runs (or ran) the request; null when idle. */
   provider: AiProviderId | null;
   request?: AiRunRequest;
@@ -102,6 +109,7 @@ export function startAiRequest(
         kind: req.kind,
         interpretedBy: req.interpretedBy,
         provider: req.provider,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       if (res.status === "run") {
         const { requestId } = res;
@@ -218,9 +226,12 @@ export function useAiRequest(defaultProvider: AiProviderId | null) {
     [client, defaultProvider, setState],
   );
 
-  /** Applies suggested option `option` (0-based). */
+  /**
+   * Applies suggested option `choice` (0-based), or for a multiSelect
+   * suggestion the ticked options together.
+   */
   const apply = useCallback(
-    async (option: number): Promise<AiUiState> => {
+    async (choice: number | number[]): Promise<AiUiState> => {
       const s = stateRef.current;
       if (s.result?.status !== "suggested") return s;
       const { requestId } = s.result;
@@ -229,10 +240,11 @@ export function useAiRequest(defaultProvider: AiProviderId | null) {
       setState({ ...s, phase: "working" });
       let next: AiUiState;
       try {
-        const { summary } = await client.ai.applyOption.mutate({
-          requestId,
-          option,
-        });
+        const { summary } = await client.ai.applyOption.mutate(
+          Array.isArray(choice)
+            ? { requestId, options: choice }
+            : { requestId, option: choice },
+        );
         next = {
           phase: "applied",
           provider: s.provider,
@@ -273,7 +285,7 @@ export function useAiRequest(defaultProvider: AiProviderId | null) {
   );
 
   return useMemo(
-    () => ({ state, run, apply, discard, undo, cancel }),
-    [state, run, apply, discard, undo, cancel],
+    () => ({ state, run, apply, discard, undo, cancel, show: setState }),
+    [state, run, apply, discard, undo, cancel, setState],
   );
 }

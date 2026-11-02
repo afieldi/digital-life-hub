@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { itemTitle } from "../items";
+import { itemSummary, itemTitle } from "../items";
 import { aiKind, aiProviderId } from "./kinds";
 
 export { aiKind, aiProviderId };
@@ -11,6 +11,8 @@ export const aiPrepareInput = z.object({
   kind: aiKind,
   interpretedBy: z.string().optional(),
   provider: aiProviderId.optional(),
+  /** The device's IANA zone: today's date in the prompt, and a query's `timeZone`. */
+  timeZone: z.string().max(100).optional(),
 });
 export type AiPrepareInput = z.infer<typeof aiPrepareInput>;
 
@@ -19,6 +21,29 @@ export const aiCompleteInput = z.object({
   raw: z.string().max(1_048_576),
 });
 export type AiCompleteInput = z.infer<typeof aiCompleteInput>;
+
+/**
+ * Applies a suggestion, once: one `option`, or for a `multiSelect` action the
+ * ticked `options` (indexes, at least one).
+ */
+export const aiApplyInput = z
+  .object({
+    requestId: z.uuid(),
+    option: z.number().int().min(0).optional(),
+    options: z.array(z.number().int().min(0)).min(1).optional(),
+  })
+  .refine((i) => (i.option === undefined) !== (i.options === undefined), {
+    message: "Give either option or options",
+  });
+export type AiApplyInput = z.infer<typeof aiApplyInput>;
+
+/** A row an AI answer lists, with an optional line about it (Plan today's reason). */
+export const aiListedItem = itemSummary.extend({
+  note: z.string().optional(),
+  /** Finished since the model saw it: shown struck through. */
+  done: z.boolean().optional(),
+});
+export type AiListedItem = z.infer<typeof aiListedItem>;
 
 export const aiResult = z.discriminatedUnion("status", [
   z.object({
@@ -33,6 +58,14 @@ export const aiResult = z.discriminatedUnion("status", [
     options: z.array(
       z.object({ label: z.string(), reason: z.string().optional() }),
     ),
+    /** A checklist: apply any of the options together with `options`. */
+    multiSelect: z.boolean().optional(),
+  }),
+  z.object({
+    requestId: z.string(),
+    status: z.literal("listed"),
+    heading: z.string(),
+    items: z.array(aiListedItem),
   }),
   z.object({
     requestId: z.string(),

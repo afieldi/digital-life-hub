@@ -1,12 +1,4 @@
-import { resolve } from "node:path";
-import { freshTestDb } from "@dlh/db/testing";
-import {
-  cleanup,
-  fireEvent,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach } from "vitest";
 import {
@@ -15,23 +7,13 @@ import {
   type CliStatus,
   setCliRunnerForTests,
 } from "../src/ai/cli";
-import { signedInApp } from "./apiHarness";
-
-// jsdom gives @dlh/db no file URL to find its migrations from; tests run from apps/desktop.
-const MIGRATIONS = resolve(process.cwd(), "../../packages/db/drizzle");
+import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 beforeEach(() => localStorage.clear());
 afterEach(async () => {
-  // Toasts live in a module-level queue that outlives each render.
-  for (const b of screen.queryAllByRole("button", { name: "Dismiss" })) {
-    fireEvent.click(b);
-  }
-  await waitFor(() =>
-    expect(screen.queryAllByRole("button", { name: "Dismiss" })).toHaveLength(
-      0,
-    ),
-  );
+  // Dismiss toasts while the region is still mounted, then unmount.
+  await dismissToasts();
   cleanup();
   setCliRunnerForTests(null);
   localStorage.clear();
@@ -63,7 +45,7 @@ function fakeStatus(
 type Seeded = Awaited<ReturnType<typeof seeded>>;
 
 async function seeded(opts: { noOpenRouter?: boolean }) {
-  const t = await freshTestDb(MIGRATIONS);
+  const t = await freshApiDb();
   closers.push(t.close);
   const app = await signedInApp("/settings", { db: t.db, ...opts });
   const client = app.api.client(app.token);

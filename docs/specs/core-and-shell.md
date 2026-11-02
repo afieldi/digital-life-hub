@@ -285,7 +285,7 @@ export interface AiProvider {
 
 ## Milestones
 
-Four milestones, each ending in something you can run. Core is done when all four pass and a throwaway test module plugs in with no changes to Core.
+Core is four milestones, each ending in something you can run. Core is done when all four pass and a throwaway test module plugs in with no changes to Core. Milestone 5 is the first module, Tasks, built on Core.
 
 1. **Skeleton.** Monorepo, Tauri app opening a Dusk window with the scene, glass nav and an empty Home.
    - Done when: `pnpm dev` opens the app on macOS and Windows, and the scene changes with the clock (testable with a time override in settings).
@@ -299,6 +299,9 @@ Four milestones, each ending in something you can run. Core is done when all fou
    - Done when: "summarise this item" and "give this a better title" (with Undo) work through all three providers, a malformed answer is rejected with a clear message, "delete this" is shown first, and all of it shows in the request log.
    - Deep dive: [AI Gateway](ai-gateway.md).
    - Status: implemented; pending the manual Done check (`pnpm ai:smoke` with each provider signed in).
+5. **Tasks**, the first module, built on Core once all four pass.
+   - Deep dive: [Tasks](tasks.md).
+   - Status: implemented (Nov 2, 2026); pending the manual Done check (`pnpm ai:smoke` with each provider signed in, a task seen on a second device within 2 seconds, and a few days of real use). The e2e checks pass in Chromium and WebKit.
 
 ## Open questions
 

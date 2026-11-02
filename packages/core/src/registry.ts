@@ -1,5 +1,7 @@
 import type { AiActionDescription } from "./ai/actions";
 import type { ModuleManifest, PaletteAction } from "./module";
+import { toAiAction } from "./operations/ai";
+import type { OperationDescription } from "./operations/describe";
 
 export class ModuleRegistryError extends Error {
   constructor(message: string) {
@@ -14,6 +16,7 @@ export interface ModuleRegistry {
   itemTypes: Map<string, NonNullable<ModuleManifest["itemType"]>>;
   actions: PaletteAction[];
   aiActions: AiActionDescription[];
+  operations: OperationDescription[];
 }
 
 export interface ReservedShell {
@@ -35,6 +38,8 @@ export function collectModules(
   const actionOwners = new Map<string, string>();
   const aiActions: AiActionDescription[] = [];
   const aiActionOwners = new Map<string, string>();
+  const operations: OperationDescription[] = [];
+  const operationOwners = new Map<string, string>();
 
   for (const m of manifests) {
     if (ids.has(m.id))
@@ -110,8 +115,35 @@ export function collectModules(
       aiActionOwners.set(a.id, m.id);
       aiActions.push(a);
     }
+
+    for (const o of m.operations ?? []) {
+      const owner = operationOwners.get(o.id);
+      if (owner) {
+        throw new ModuleRegistryError(
+          `Duplicate operation id "${o.id}" in modules "${owner}" and "${m.id}"`,
+        );
+      }
+      operationOwners.set(o.id, m.id);
+      operations.push(o);
+      if (o.ai === false) continue;
+      const aiOwner = aiActionOwners.get(o.id);
+      if (aiOwner) {
+        throw new ModuleRegistryError(
+          `Duplicate AI action id "${o.id}" in modules "${aiOwner}" and "${m.id}"`,
+        );
+      }
+      aiActionOwners.set(o.id, m.id);
+      aiActions.push(toAiAction(o));
+    }
   }
 
   nav.sort((a, b) => a.order - b.order);
-  return { modules: manifests, nav, itemTypes, actions, aiActions };
+  return {
+    modules: manifests,
+    nav,
+    itemTypes,
+    actions,
+    aiActions,
+    operations,
+  };
 }

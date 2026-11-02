@@ -22,6 +22,7 @@ import {
   fail,
   loadRow,
   type RequestRow,
+  RequestUsedError,
   runnerFor,
   suggestShape,
   timing,
@@ -38,6 +39,9 @@ export type AiDeps = {
   providers: Partial<Record<"openrouter", AiProvider>>;
   defaultModel: string | null;
 };
+
+/** At most this many options are shown, after titles are resolved. */
+const MAX_OPTIONS = 3;
 
 /** A pending CLI request may be completed for this long after prepare. */
 const PENDING_TTL_MS = 5 * 60_000;
@@ -70,6 +74,59 @@ function optionLabel(o: Record<string, unknown>): string {
   return typeof label === "string" ? label : "";
 }
 
+/**
+ * "Today is Mon, Nov 2, 2026, 10:30 (America/Los_Angeles)." for `now` in
+ * `timeZone`: the model gives times in this local time.
+ */
+export function todayLine(now: Date, timeZone: string): string {
+  const day = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(now);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  }).formatToParts(now);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `Today is ${day}, ${Number(part("hour"))}:${part("minute")} (${timeZone}).`;
+}
+
+function checkTimeZone(timeZone: string | undefined): void {
+  if (timeZone === undefined) return;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+  } catch {
+    throw badRequest(`unknown time zone "${timeZone}"`);
+  }
+}
+
+/**
+ * What a pending request keeps for when it finishes: the zone (`complete`
+ * lists rows and sets local times in it), and for a list runner the ids its
+ * context showed the model.
+ */
+const pendingOutput = z.object({
+  timeZone: z.string().optional(),
+  listed: z.array(z.string()).optional(),
+});
+
+/** The pending row's `output` (see `pendingOutput`), or null when there is nothing to keep. */
+function pendingFor(
+  timeZone: string | undefined,
+  listed: string[] | undefined,
+): z.infer<typeof pendingOutput> | null {
+  if (timeZone === undefined && listed === undefined) return null;
+  return {
+    ...(timeZone !== undefined ? { timeZone } : {}),
+    ...(listed !== undefined ? { listed } : {}),
+  };
+}
+
 /** The item, or the `not_found` AI error if it is missing or deleted. */
 async function itemOrNotFound(
   deps: CoreDeps,
@@ -94,6 +151,7 @@ export async function prepare(
   input: AiPrepareInput,
 ): Promise<AiResult> {
   const runner = runnerFor(deps, input.actionId);
+  checkTimeZone(input.timeZone);
   const settings = await getSettings(deps.db);
   const provider = input.provider ?? settings.defaultProvider;
   const itemId = input.itemId ?? null;
@@ -114,7 +172,9 @@ export async function prepare(
     provider === "openrouter"
       ? (settings.openrouterModel ?? deps.ai.defaultModel)
       : null;
-  const ctx = await runner.context(deps, itemId);
+  const ctx = await runner.context(deps, itemId, {
+    timeZone: input.timeZone,
+  });
   const version = ctx.version ?? item?.updatedAt ?? null;
 
   const [row] = await deps.db
@@ -129,20 +189,24 @@ export async function prepare(
       itemId,
       itemVersion: version ? new Date(version) : null,
       status: "pending",
+      output: pendingFor(input.timeZone, runner.list ? ctx.listed : undefined),
     })
     .returning();
   if (!row) throw new Error("ai_requests insert returned no row");
 
   const call = {
     system: `${runner.system}\n${DATA_LINE}`,
-    prompt: `<instruction>\n${input.text}\n</instruction>\n<item>\n${ctx.text}\n</item>`,
+    prompt: `${input.timeZone ? `${todayLine(deps.now(), input.timeZone)}\n` : ""}<instruction>\n${input.text}\n</instruction>\n<item>\n${ctx.text}\n</item>`,
     schema: z.toJSONSchema(schema) as object,
   };
   if (provider !== "openrouter") {
+    // The Claude CLI validates --json-schema against draft-07 and rejects
+    // zod's draft 2020-12 `$schema` URI; the schema itself is valid in both.
+    const { $schema: _, ...cliSchema } = call.schema as Record<string, unknown>;
     return {
       requestId: row.id,
       status: "run",
-      run: { provider, ...call },
+      run: { provider, ...call, schema: cliSchema },
     };
   }
 
@@ -180,7 +244,14 @@ export async function prepare(
           );
     return fail(deps, row.id, "pending", err, timing(deps, row));
   }
-  return finish(deps, runner, row, result.raw, usagePatch(result.usage));
+  return finish(
+    deps,
+    runner,
+    row,
+    result.raw,
+    usagePatch(result.usage),
+    input.timeZone,
+  );
 }
 
 /** Finishes a pending CLI request with the CLI's stdout (or Codex's last message). */
@@ -213,22 +284,30 @@ export async function complete(
     if (!(e instanceof AiError)) throw e;
     return fail(deps, row.id, "pending", e, timing(deps, row));
   }
-  return finish(deps, runner, row, raw, {});
+  const zone = pendingOutput.safeParse(row.output).data?.timeZone;
+  return finish(deps, runner, row, raw, {}, zone);
 }
 
-/** Shared end of a model call: check the output, then answer, suggest or do. */
+/** Shared end of a model call: check the output, then answer, list, suggest or do. */
 async function finish(
   deps: CoreDeps,
   runner: AiRunner,
   row: RequestRow,
   raw: string,
   usage: ReturnType<typeof usagePatch>,
+  timeZone: string | undefined,
 ): Promise<AiResult> {
   const provider = row.provider as AiProviderId;
   const kind = row.kind as AiKind;
-  const done = { ...timing(deps, row), ...usage };
+  const done = { ...timing(deps, row), ...usage, output: null };
   const shape =
-    kind === "ask" ? askShape : kind === "suggest" ? suggestShape : null;
+    kind === "ask"
+      ? runner.list
+        ? null
+        : askShape
+      : kind === "suggest"
+        ? suggestShape
+        : null;
   let out: unknown;
   try {
     out = outputSchema(runner, kind).parse(JSON.parse(raw));
@@ -242,27 +321,105 @@ async function finish(
       done,
     );
   }
-  if (kind === "ask") {
-    const { answer, used } = askShape.parse(out);
-    await claim(deps.db, row.id, "pending", { status: "answered", ...done });
-    return { requestId: row.id, status: "answered", answer, used };
-  }
-  if (kind === "suggest") {
-    const { options } = suggestShape.parse(out);
-    await claim(deps.db, row.id, "pending", {
-      status: "suggested",
-      output: out,
-      ...done,
-    });
-    return {
-      requestId: row.id,
-      status: "suggested",
-      options: options.map((o) => ({
-        label: optionLabel(o),
-        ...(typeof o.reason === "string" ? { reason: o.reason } : {}),
-      })),
-    };
+  try {
+    if (kind === "ask") {
+      if (runner.list) {
+        const ctx = await runner.context(deps, row.itemId, { timeZone });
+        // What the model saw at prepare, not what the context reads now.
+        const { listed } = pendingOutput.safeParse(row.output).data ?? {};
+        const list = await runner.list(deps, out, {
+          ...ctx,
+          timeZone,
+          ...(listed ? { listed } : {}),
+        });
+        await claim(deps.db, row.id, "pending", { status: "listed", ...done });
+        return { requestId: row.id, status: "listed", ...list };
+      }
+      const { answer, used } = askShape.parse(out);
+      await claim(deps.db, row.id, "pending", { status: "answered", ...done });
+      return { requestId: row.id, status: "answered", answer, used };
+    }
+    if (kind === "suggest") {
+      const { options } = suggestShape.parse(out);
+      return suggest(
+        deps,
+        runner,
+        row,
+        await resolveAll(deps, runner, options, timeZone),
+        done,
+      );
+    }
+    const resolved = runner.resolve
+      ? await runner.resolve(deps, out, { timeZone })
+      : { out };
+    if ("options" in resolved) {
+      const options = resolved.options.map((o) => ({
+        ...(o.out as object),
+        label: o.label,
+      }));
+      return suggest(deps, runner, row, options, done);
+    }
+    out = resolved.out;
+  } catch (e) {
+    if (e instanceof RequestUsedError) throw e;
+    // Listing or resolving failed: end the request rather than leave it pending.
+    const err =
+      writeFailure(e, provider) ??
+      new AiError("provider_error", "The action failed on the server.");
+    return fail(deps, row.id, "pending", err, done);
   }
   const summary = await runApply(deps, runner, row, "pending", out, done);
   return { requestId: row.id, status: "applied", summary };
+}
+
+/**
+ * Each option with the items it names resolved; an ambiguous one becomes its
+ * matches, and at most three are kept.
+ */
+async function resolveAll(
+  deps: CoreDeps,
+  runner: AiRunner,
+  options: Record<string, unknown>[],
+  timeZone: string | undefined,
+): Promise<Record<string, unknown>[]> {
+  const { resolve } = runner;
+  if (!resolve) return options;
+  const all: Record<string, unknown>[] = [];
+  for (const o of options) {
+    const r = await resolve.call(runner, deps, o, { timeZone });
+    if ("out" in r) all.push(r.out as Record<string, unknown>);
+    else
+      all.push(
+        ...r.options.map((m) => ({ ...(m.out as object), label: m.label })),
+      );
+  }
+  return all.slice(0, MAX_OPTIONS);
+}
+
+/** Stores the options for `apply` and shows their labels. */
+async function suggest(
+  deps: CoreDeps,
+  runner: AiRunner,
+  row: RequestRow,
+  options: Record<string, unknown>[],
+  done: Partial<RequestRow>,
+): Promise<AiResult> {
+  await claim(deps.db, row.id, "pending", {
+    ...done,
+    status: "suggested",
+    output: { options },
+  });
+  return {
+    requestId: row.id,
+    status: "suggested",
+    options: options.map((o) => {
+      const reason = runner.preview
+        ? runner.preview(o)
+        : typeof o.reason === "string"
+          ? o.reason
+          : undefined;
+      return { label: optionLabel(o), ...(reason ? { reason } : {}) };
+    }),
+    ...(runner.action.multiSelect ? { multiSelect: true } : {}),
+  };
 }

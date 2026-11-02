@@ -1,19 +1,23 @@
 export type { AiActionDescription } from "./ai/actions";
 export { coreAiActions, describeAiAction, kindAllowed } from "./ai/actions";
 export type {
+  AiApplyInput,
   AiCancelInput,
   AiCompleteInput,
   AiErrorData,
+  AiListedItem,
   AiLogEntry,
   AiPrepareInput,
   AiResult,
   AiSettings,
 } from "./ai/api";
 export {
+  aiApplyInput,
   aiCancelInput,
   aiCompleteInput,
   aiErrorCode,
   aiErrorData,
+  aiListedItem,
   aiLogEntry,
   aiPrepareInput,
   aiResult,
@@ -52,5 +56,19 @@ export type {
   PaletteAction,
 } from "./module";
 export { defineModule } from "./module";
+export type { OperationList } from "./operations/ai";
+export { operationList, toAiAction } from "./operations/ai";
+export type {
+  OperationDescription,
+  PaletteContext,
+  PaletteForm,
+  PaletteRead,
+  PaletteSpec,
+} from "./operations/describe";
+export { describeOperation, ITEM_KEYS } from "./operations/describe";
+export type { Due, LocalDue } from "./operations/due";
+export { dueFromLocal, dueValue, localDueValue } from "./operations/due";
+export type { FieldSpec } from "./operations/fields";
+export { fields, formFields, OperationError } from "./operations/fields";
 export type { ModuleRegistry, ReservedShell } from "./registry";
 export { collectModules, ModuleRegistryError } from "./registry";

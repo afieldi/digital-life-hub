@@ -65,6 +65,9 @@ function runCommand(command: string, args: string[]): Promise<StepResult> {
   });
 }
 
+/** Core's migrations, then each module's (see apps/api/src/migrate.ts). */
+export const MIGRATE_COMMAND = ["pnpm", "--filter", "@dlh/api", "migrate"];
+
 // Ctrl+C stops the last step only: Postgres keeps running (pnpm dev:down stops it).
 export const steps: DevStep[] = [
   {
@@ -73,16 +76,7 @@ export const steps: DevStep[] = [
   },
   {
     name: "migrate",
-    run: () =>
-      runCommand("pnpm", [
-        "--filter",
-        "@dlh/db",
-        "exec",
-        "tsx",
-        // Same DATABASE_URL source as the API (apps/api/.env, else the default).
-        "--env-file-if-exists=../../apps/api/.env",
-        "src/cli/migrate.ts",
-      ]),
+    run: () => runCommand(MIGRATE_COMMAND[0], MIGRATE_COMMAND.slice(1)),
   },
   {
     name: "seed",
