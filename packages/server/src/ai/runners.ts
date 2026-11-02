@@ -30,10 +30,7 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   context(deps: CoreDeps, itemId: string | null): Promise<AiContext>;
   system: string;
   output: Partial<Record<AiKind, z.ZodType>>;
-  /**
-   * The undo record it returns is stored; one with `created` (an `UndoToken`)
-   * has those items soft-deleted by Core before `undo` runs.
-   */
+  /** The undo record it returns is stored for `undo`. */
   apply?(
     w: ScopedWriter,
     out: unknown,
@@ -48,6 +45,11 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
     out: unknown,
     ctx: AiContext,
   ): Promise<{ heading: string; items: ItemSummary[] }>;
+  /**
+   * Set by `operationAiRunner` for a mutation: its tagged undo record's
+   * `created` items are soft-deleted by Core before `undo`.
+   */
+  operation?: ImplementedMutation;
   /** Before suggesting or applying: turns what the model named into ids. */
   resolve?(deps: CoreDeps, out: unknown): Promise<Resolved>;
 };

@@ -6,6 +6,7 @@ import { deleteCreated, revertMutation } from "../operations/undo";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
 import { AiError, aiErrorMessage, firstLine } from "./errors";
+import { operationUndo } from "./operation-runner";
 import {
   aiFailure,
   badRequest,
@@ -32,13 +33,15 @@ function toolsFor(w: ItemWriter, deps: CoreDeps): RunnerTools {
   };
 }
 
-/** The ids an undo record says were created (an `UndoToken`'s `created`). */
-function createdIn(record: unknown): string[] {
-  if (typeof record !== "object" || record === null) return [];
-  const { created } = record as { created?: unknown };
-  return Array.isArray(created)
-    ? created.filter((id): id is string => typeof id === "string")
-    : [];
+/**
+ * The items an operation runner's tagged undo record says it created. Any
+ * other runner's record is opaque: nothing is deleted for it.
+ */
+function createdBy(runner: AiRunner, record: unknown): string[] {
+  if (!runner.operation) return [];
+  const parsed = operationUndo.safeParse(record);
+  if (!parsed.success || parsed.data.operation !== runner.action.id) return [];
+  return parsed.data.token.created;
 }
 
 /** An unpicked suggestion may be applied for this long after prepare. */
@@ -187,7 +190,7 @@ export async function undo(
     await writeItems(deps, async (w) => {
       await claim(w.tx, row.id, "applied", { status: "undone", undo: null });
       // Core removes what the action created; the runner's writer can't delete.
-      await deleteCreated(w, createdIn(row.undo));
+      await deleteCreated(w, createdBy(runner, row.undo));
       await revert.call(
         runner,
         scopedWriter(w, { effects: runner.action.effects, itemId: row.itemId }),

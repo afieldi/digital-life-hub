@@ -1,4 +1,9 @@
-import { coreAiActions, describeOperation, fields } from "@dlh/core";
+import {
+  coreAiActions,
+  describeAiAction,
+  describeOperation,
+  fields,
+} from "@dlh/core";
 import { aiRequests, items, links } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { and, eq, ilike, isNull } from "drizzle-orm";
@@ -10,8 +15,10 @@ import {
   collectServerModules,
   complete,
   coreAiRunners,
+  defineAiRunner,
   defineServerModule,
   implementOperation,
+  itemContext,
   moduleAiActions,
   prepare,
   undo,
@@ -148,17 +155,79 @@ const testModule = defineServerModule({
   },
 });
 
+const brokenDesc = describeOperation({
+  id: "broken.list",
+  kind: "query",
+  label: "Broken list",
+  description: "A query that fails.",
+  appliesTo: ["*", "none"],
+  input: z.object({ text: z.string() }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Broken",
+});
+
+/** "missing" throws NOT_FOUND; anything else returns something that is no list. */
+const brokenModule = defineServerModule({
+  id: "broken",
+  itemTypes: [],
+  operations: {
+    list: implementOperation(brokenDesc, {
+      async run(_deps, input) {
+        if (input.text === "missing") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "gone" });
+        }
+        return { nope: true };
+      },
+    }),
+  },
+});
+
+/** A hand-written runner whose own undo record happens to list `created`. */
+const handmade = defineAiRunner(
+  describeAiAction({
+    id: "handmade",
+    label: "Handmade",
+    description: "Creates an item by hand.",
+    appliesTo: ["*", "none"],
+    kinds: ["do"],
+    effects: ["createItems"],
+  }),
+  {
+    context: itemContext,
+    system: "",
+    output: { do: z.object({ title: z.string() }) },
+    async apply(w, out) {
+      const item = await w.createItem?.({
+        type: "test",
+        title: (out as { title: string }).title,
+      });
+      if (!item) throw new Error("no createItem");
+      return {
+        created: [item.id],
+        kind: "operation",
+        operation: "handmade",
+        token: { created: [item.id] },
+      };
+    },
+    async undo() {},
+  },
+);
+
 const NOW = new Date("2026-11-02T20:00:00.000Z");
 
 async function setup() {
   const { db, close } = await freshTestDb();
-  const collected = collectServerModules([testModule], [...CORE_ROUTER_IDS], {
-    actions: Object.values(coreAiActions),
-    runners: coreAiRunners,
-  });
+  const collected = collectServerModules(
+    [testModule, brokenModule],
+    [...CORE_ROUTER_IDS],
+    { actions: Object.values(coreAiActions), runners: coreAiRunners },
+  );
+  const runners = new Map(collected.aiRunners);
+  runners.set(handmade.action.id, handmade);
   const deps = testDeps(db, {
     now: () => NOW,
-    ai: { runners: collected.aiRunners },
+    ai: { runners },
     operations: collected.operations,
   });
   let t = NOW.getTime();
@@ -383,7 +452,11 @@ test("undo soft-deletes created items", async () => {
   const [made] = await s.db.select().from(items);
   if (!made) throw new Error("nothing created");
   const row = await rowOf(s.db, res.requestId);
-  expect(row.undo).toEqual({ record: null, created: [made.id] });
+  expect(row.undo).toEqual({
+    kind: "operation",
+    operation: "test.create",
+    token: { record: null, created: [made.id] },
+  });
   s.tick();
   await undo(s.deps, { requestId: res.requestId });
   const [after] = await s.db.select().from(items).where(eq(items.id, made.id));
@@ -443,4 +516,46 @@ test("actions derived from operations pass collectAiRunners", async () => {
   );
   expect(create?.output.suggest).toBeDefined();
   expect(aiRunners.get("test.find")?.output.ask).toBeDefined();
+});
+
+test("a hand-written runner's undo record never deletes what it lists", async () => {
+  const s = await setup();
+  s.fake.queue(JSON.stringify({ title: "Kept" }));
+  const res = await prepare(s.deps, {
+    text: "make one",
+    actionId: "handmade",
+    kind: "do",
+  });
+  expect(res.status).toBe("applied");
+  const [made] = await s.db.select().from(items);
+  if (!made) throw new Error("nothing created");
+  s.tick();
+  await undo(s.deps, { requestId: res.requestId });
+  const [after] = await s.db.select().from(items).where(eq(items.id, made.id));
+  expect(after?.deletedAt).toBeNull();
+  expect((await rowOf(s.db, res.requestId)).status).toBe("undone");
+  await s.close();
+});
+
+test("a query that throws ends the request failed", async () => {
+  const s = await setup();
+  s.fake.queue(
+    JSON.stringify({ text: "missing" }),
+    JSON.stringify({ text: "other" }),
+  );
+  const missing = await caught(
+    prepare(s.deps, { text: "x", actionId: "broken.list", kind: "ask" }),
+  );
+  expect((missing.cause as AiError).code).toBe("not_found");
+  const broken = await caught(
+    prepare(s.deps, { text: "x", actionId: "broken.list", kind: "ask" }),
+  );
+  expect((broken.cause as AiError).code).toBe("provider_error");
+  expect(broken.message).toBe("The action failed on the server.");
+  const rows = await s.db.select().from(aiRequests);
+  expect(rows.map((r) => [r.status, r.errorCode])).toEqual([
+    ["failed", "not_found"],
+    ["failed", "provider_error"],
+  ]);
+  await s.close();
 });

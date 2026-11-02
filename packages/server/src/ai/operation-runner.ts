@@ -12,11 +12,12 @@ import type {
   ImplementedMutation,
   ImplementedOperation,
 } from "../operations/implement";
+import { undoToken } from "../operations/undo";
 import type { CoreDeps } from "../trpc";
 import { type AiContext, itemContext } from "./context";
 import { PREAMBLE } from "./core-runners";
 import { AiError } from "./errors";
-import type { AiRunner, Resolved } from "./runners";
+import type { AiRunner, Resolved, RunnerTools } from "./runners";
 
 const WRAPPERS = new Set(["optional", "nullable", "default"]);
 const TITLE_MATCHES = 3;
@@ -173,6 +174,27 @@ Where a field names another item, give that item's title.`;
   });
 }
 
+/**
+ * An operation runner's undo record: tagged, so Core soft-deletes `created`
+ * only for these and never for a hand-written runner's record.
+ */
+export const operationUndo = z.object({
+  kind: z.literal("operation"),
+  operation: z.string(),
+  token: undoToken,
+});
+export type OperationUndo = z.infer<typeof operationUndo>;
+
+/** Operation runners write through Core's tools, which `runApply` and `undo` always pass. */
+function requireTools(tools: RunnerTools | undefined, id: string): RunnerTools {
+  if (!tools) {
+    throw new Error(
+      `AI runner for operation "${id}" was called without Core's RunnerTools`,
+    );
+  }
+  return tools;
+}
+
 function mutationRunner(
   op: ImplementedMutation,
   action: AiActionDescription,
@@ -192,10 +214,14 @@ function mutationRunner(
     if ("expectedUpdatedAt" in shape) keys.expectedUpdatedAt = ctx.version;
     const parsed = desc.input.safeParse({ ...fields, ...keys });
     if (!parsed.success) throw badOutput("The answer didn't fit the request");
+    // The item on screen is the subject, or the task `id` names (addParent's
+    // subject is the parent); null is no item (create without a parent).
+    const onScreen = ctx.item?.id ?? null;
     const subject = desc.subject(parsed.data);
     if (
       subject !== null &&
-      subject !== (ctx.item?.id ?? null) &&
+      subject !== onScreen &&
+      !(onScreen !== null && parsed.data.id === onScreen) &&
       !desc.effects.includes("writeOtherItems")
     ) {
       throw badOutput("The answer changes another item than the one open");
@@ -227,13 +253,15 @@ function mutationRunner(
         })),
       };
     },
-    async apply(_w, out, ctx, tools) {
-      if (!tools) throw new Error(`${desc.id} runs through Core's tools`);
-      return (await tools.mutate(op, inputOf(out, ctx))).undo;
+    operation: op,
+    async apply(_w, out, ctx, tools): Promise<OperationUndo> {
+      const { mutate } = requireTools(tools, desc.id);
+      const { undo } = await mutate(op, inputOf(out, ctx));
+      return { kind: "operation", operation: desc.id, token: undo };
     },
     async undo(_w, record, tools) {
-      if (!tools) throw new Error(`${desc.id} runs through Core's tools`);
-      await tools.revert(op, (record as { record?: unknown }).record);
+      const { revert } = requireTools(tools, desc.id);
+      await revert(op, operationUndo.parse(record).token.record);
     },
     summary(out, ctx) {
       try {

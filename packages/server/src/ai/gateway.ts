@@ -22,6 +22,7 @@ import {
   fail,
   loadRow,
   type RequestRow,
+  RequestUsedError,
   runnerFor,
   suggestShape,
   timing,
@@ -314,8 +315,12 @@ async function finish(
     }
     out = resolved.out;
   } catch (e) {
-    if (e instanceof AiError) return fail(deps, row.id, "pending", e, done);
-    throw e;
+    if (e instanceof RequestUsedError) throw e;
+    // Listing or resolving failed: end the request rather than leave it pending.
+    const err =
+      writeFailure(e, provider) ??
+      new AiError("provider_error", "The action failed on the server.");
+    return fail(deps, row.id, "pending", err, done);
   }
   const summary = await runApply(deps, runner, row, "pending", out, done);
   return { requestId: row.id, status: "applied", summary };
