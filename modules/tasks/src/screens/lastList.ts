@@ -1,3 +1,4 @@
+import { parseDate } from "@internationalized/date";
 import { useSearch } from "@tanstack/react-router";
 
 /** The Tasks list screens, by path. */
@@ -10,12 +11,23 @@ export type TaskListPath = "/tasks" | "/tasks/upcoming" | "/tasks/done";
  */
 export type ListSearch = { week?: string; high?: boolean };
 
-/** A list's search params as the router hands them over, cleaned up. */
+/** A real calendar day as `YYYY-MM-DD`; "2026-02-30" is not. */
+function isDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  try {
+    // parseDate throws out of range, or quietly moves the day; neither is it.
+    return parseDate(value).toString() === value;
+  } catch {
+    return false;
+  }
+}
+
+/** A list's search params as the router hands them over; a bad one is dropped. */
 export function parseListSearch(raw: Record<string, unknown>): ListSearch {
   return {
-    ...(typeof raw.week === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.week)
-      ? { week: raw.week }
-      : {}),
+    ...(isDay(raw.week) ? { week: raw.week } : {}),
     ...(raw.high === true || raw.high === "true" ? { high: true } : {}),
   };
 }
