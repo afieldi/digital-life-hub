@@ -60,8 +60,15 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   preview?(option: Record<string, unknown>): string | undefined;
   /** Set by `operationAiRunner` for a mutation, whose tagged undo record lists what it created. */
   operation?: ImplementedMutation;
-  /** Before suggesting or applying: turns what the model named into ids. */
-  resolve?(deps: CoreDeps, out: unknown): Promise<Resolved>;
+  /**
+   * Before suggesting or applying: turns what the model named into ids, and
+   * local times into instants in `timeZone` (the device's, when sent).
+   */
+  resolve?(
+    deps: CoreDeps,
+    out: unknown,
+    opts?: { timeZone?: string },
+  ): Promise<Resolved>;
 };
 
 export function defineAiRunner<D extends AiActionDescription>(

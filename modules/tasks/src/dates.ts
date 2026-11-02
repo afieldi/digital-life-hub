@@ -162,10 +162,16 @@ const fullDayLabel = new Intl.DateTimeFormat("en-US", {
 
 /**
  * A due without a "today" to compare against, as an operation's summary shows
- * it: "Fri, Nov 6", or "Fri, Nov 6 9:00" at the wall time it was set at.
+ * it: "Fri, Nov 6", or "Fri, Nov 6 9:00" at the wall time it was set at (in
+ * its zone, or as its offset reads when it has none).
  */
 export function formatDue(due: Due): string {
   if ("date" in due) return fullDayLabel.format(utcNoon(due.date));
+  if (due.timeZone) {
+    const instant = new Date(due.dateTime);
+    const day = todayIn(instant, due.timeZone);
+    return `${fullDayLabel.format(utcNoon(day))} ${clock(instant, due.timeZone)}`;
+  }
   const day = fullDayLabel.format(utcNoon(due.dateTime.slice(0, 10)));
   const [hour = "0", minute = "00"] = due.dateTime.slice(11, 16).split(":");
   return `${day} ${Number(hour)}:${minute}`;

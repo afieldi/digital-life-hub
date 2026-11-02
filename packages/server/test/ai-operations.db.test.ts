@@ -481,7 +481,7 @@ test("prompt carries today in the zone", async () => {
     timeZone: "America/Los_Angeles",
   });
   expect(s.fake.calls[0]?.prompt).toMatch(
-    /^Today is Mon, Nov 2, 2026 \(America\/Los_Angeles\)\.\n<instruction>/,
+    /^Today is Mon, Nov 2, 2026, 16:00 \(America\/Los_Angeles\)\.\n<instruction>/,
   );
   await prepare(s.deps, { text: "find x", actionId: "test.find", kind: "ask" });
   expect(s.fake.calls[1]?.prompt).toMatch(/^<instruction>/);

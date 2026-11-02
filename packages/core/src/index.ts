@@ -66,8 +66,8 @@ export type {
   PaletteSpec,
 } from "./operations/describe";
 export { describeOperation, ITEM_KEYS } from "./operations/describe";
-export type { Due } from "./operations/due";
-export { dueValue } from "./operations/due";
+export type { Due, LocalDue } from "./operations/due";
+export { dueFromLocal, dueValue, localDueValue } from "./operations/due";
 export type { FieldSpec } from "./operations/fields";
 export { fields, formFields, OperationError } from "./operations/fields";
 export type { ModuleRegistry, ReservedShell } from "./registry";

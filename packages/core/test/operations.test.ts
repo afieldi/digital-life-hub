@@ -4,10 +4,12 @@ import {
   collectModules,
   defineModule,
   describeOperation,
+  dueFromLocal,
   dueValue,
   fields,
   formFields,
   ITEM_KEYS,
+  localDueValue,
   ModuleRegistryError,
   OperationError,
   operationList,
@@ -392,4 +394,43 @@ describe("registry", () => {
         }),
       ]),
     ).toThrow(/a\.go/));
+});
+
+describe("dueFromLocal", () => {
+  const la = "America/Los_Angeles";
+  test("a wall time is set at the zone's offset that day, DST included", () => {
+    expect(dueFromLocal({ dateTime: "2026-11-06T09:00" }, la)).toEqual({
+      dateTime: "2026-11-06T09:00:00-08:00",
+      timeZone: la,
+    });
+    expect(dueFromLocal({ dateTime: "2026-10-30T09:00" }, la)).toEqual({
+      dateTime: "2026-10-30T09:00:00-07:00",
+      timeZone: la,
+    });
+    expect(
+      dueFromLocal({ dateTime: "2026-11-06T09:00" }, "Asia/Kolkata"),
+    ).toEqual({
+      dateTime: "2026-11-06T09:00:00+05:30",
+      timeZone: "Asia/Kolkata",
+    });
+  });
+  test("a repeated hour is its first time; a skipped hour lands after it", () => {
+    expect(dueFromLocal({ dateTime: "2026-11-01T01:30" }, la)).toMatchObject({
+      dateTime: "2026-11-01T01:30:00-07:00",
+    });
+    expect(dueFromLocal({ dateTime: "2026-03-08T02:30" }, la)).toMatchObject({
+      dateTime: "2026-03-08T03:30:00-07:00",
+    });
+  });
+  test("a day stays a day; the model's schema has no offset", () => {
+    expect(dueFromLocal({ date: "2026-11-06" }, la)).toEqual({
+      date: "2026-11-06",
+    });
+    expect(
+      localDueValue.safeParse({ dateTime: "2026-11-06T09:00-08:00" }).success,
+    ).toBe(false);
+    expect(
+      localDueValue.safeParse({ dateTime: "2026-11-06T09:00" }).success,
+    ).toBe(true);
+  });
 });

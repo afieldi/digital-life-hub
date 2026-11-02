@@ -1,6 +1,8 @@
 import {
   type AiActionDescription,
+  dueFromLocal,
   ITEM_KEYS,
+  localDueValue,
   operationList,
   toAiAction,
 } from "@dlh/core";
@@ -24,26 +26,39 @@ const TITLE_MATCHES = 3;
 
 type Wrapped = z.ZodOptional<z.ZodType>;
 
-/** The types of a `fields.item` field (through optional/nullable), or null. */
-function itemTypesOf(field: z.ZodType): string[] | null {
+type FieldMeta = { dlhField?: string; types?: string[] };
+
+/** A form field's tag and item types, through optional/nullable. */
+function metaOf(field: z.ZodType): FieldMeta {
   let inner = field;
   while (WRAPPERS.has(inner.def.type)) inner = (inner as Wrapped).def.innerType;
-  const meta = (inner.meta() ?? {}) as { dlhField?: string; types?: string[] };
+  return (inner.meta() ?? {}) as FieldMeta;
+}
+
+/** The types of a `fields.item` field (through optional/nullable), or null. */
+function itemTypesOf(field: z.ZodType): string[] | null {
+  const meta = metaOf(field);
   return meta.dlhField === "item" ? (meta.types ?? []) : null;
 }
 
-/** `field` with its item id replaced by the item's title, keeping optional and nullable. */
-function asTitle(field: z.ZodType, types: string[]): z.ZodType {
-  if (WRAPPERS.has(field.def.type)) {
-    const inner = asTitle((field as Wrapped).def.innerType, types);
-    return field.def.type === "nullable" ? inner.nullable() : inner.optional();
-  }
-  return z
+const isDueField = (field: z.ZodType) => metaOf(field).dlhField === "due";
+
+/** `field` with its inner schema replaced by `inner`, keeping optional and nullable. */
+function rewrap(field: z.ZodType, inner: z.ZodType): z.ZodType {
+  if (!WRAPPERS.has(field.def.type)) return inner;
+  const wrapped = rewrap((field as Wrapped).def.innerType, inner);
+  return field.def.type === "nullable"
+    ? wrapped.nullable()
+    : wrapped.optional();
+}
+
+/** An item field as the model fills it: the item's title. */
+const titleOf = (types: string[]) =>
+  z
     .string()
     .min(1)
     .max(500)
     .describe(`The title of an item (${types.join(" or ")})`);
-}
 
 function omitKeys(
   shape: Record<string, z.ZodType>,
@@ -154,10 +169,12 @@ Where a field names another item, give that item's title.`;
     };
   }
 
+  // The model names items by title and gives due times in local time.
   const fill = Object.fromEntries(
     Object.entries(omitKeys(shape, ITEM_KEYS)).map(([k, f]) => {
       const types = itemFields.get(k);
-      return [k, types ? asTitle(f, types) : f];
+      if (types) return [k, rewrap(f, titleOf(types))];
+      return [k, isDueField(f) ? rewrap(f, localDueValue) : f];
     }),
   );
   const doSchema = z.object(fill).strict();
@@ -205,6 +222,10 @@ function mutationRunner(
 ): AiRunner {
   const { desc } = op;
   const shape = desc.input.shape as Record<string, z.ZodType>;
+  const dueFields = Object.keys(shape).filter((k) => {
+    const f = shape[k];
+    return f !== undefined && isDueField(f);
+  });
 
   /** The full input: the model's fields (minus a suggestion's label) and the item keys. */
   function inputOf(out: unknown, ctx: AiContext): Record<string, unknown> {
@@ -234,8 +255,15 @@ function mutationRunner(
     context,
     system,
     output,
-    async resolve(deps, out): Promise<Resolved> {
+    async resolve(deps, out, opts): Promise<Resolved> {
       const resolved: Record<string, unknown> = { ...(out as object) };
+      // Local due times are set in the request's zone (UTC when none was sent).
+      for (const key of dueFields) {
+        const local = localDueValue.safeParse(resolved[key]);
+        if (local.success) {
+          resolved[key] = dueFromLocal(local.data, opts?.timeZone ?? "UTC");
+        }
+      }
       let choice: { key: string; matches: Match[] } | null = null;
       for (const [key, types] of itemFields) {
         const value = resolved[key];

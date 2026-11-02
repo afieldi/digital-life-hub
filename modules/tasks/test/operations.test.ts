@@ -22,6 +22,13 @@ test("formatDue shows the day, and the wall time it was set at", () => {
       timeZone: "America/Los_Angeles",
     }),
   ).toBe("Fri, Nov 6 9:05");
+  // Stored as UTC: shown at the wall time in the zone it was set in.
+  expect(
+    formatDue({
+      dateTime: "2026-11-07T07:30:00.000Z",
+      timeZone: "America/Los_Angeles",
+    }),
+  ).toBe("Fri, Nov 6 23:30");
 });
 
 test("create prefills from quick add and leaves missing parts unset", () => {

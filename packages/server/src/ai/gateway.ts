@@ -74,7 +74,10 @@ function optionLabel(o: Record<string, unknown>): string {
   return typeof label === "string" ? label : "";
 }
 
-/** "Today is Mon, Nov 2, 2026 (America/Los_Angeles)." for `now` in `timeZone`. */
+/**
+ * "Today is Mon, Nov 2, 2026, 10:30 (America/Los_Angeles)." for `now` in
+ * `timeZone`: the model gives times in this local time.
+ */
 export function todayLine(now: Date, timeZone: string): string {
   const day = new Intl.DateTimeFormat("en-US", {
     weekday: "short",
@@ -83,7 +86,14 @@ export function todayLine(now: Date, timeZone: string): string {
     year: "numeric",
     timeZone,
   }).format(now);
-  return `Today is ${day} (${timeZone}).`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  }).formatToParts(now);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `Today is ${day}, ${Number(part("hour"))}:${part("minute")} (${timeZone}).`;
 }
 
 function checkTimeZone(timeZone: string | undefined): void {
@@ -160,9 +170,9 @@ export async function prepare(
       itemId,
       itemVersion: version ? new Date(version) : null,
       status: "pending",
-      // A CLI run finishes in `complete`, which lists rows in this zone.
-      output:
-        runner.list && input.timeZone ? { timeZone: input.timeZone } : null,
+      // A CLI run finishes in `complete`, which lists rows and sets local
+      // times in this zone.
+      output: input.timeZone ? { timeZone: input.timeZone } : null,
     })
     .returning();
   if (!row) throw new Error("ai_requests insert returned no row");
@@ -312,11 +322,13 @@ async function finish(
         deps,
         runner,
         row,
-        await resolveAll(deps, runner, options),
+        await resolveAll(deps, runner, options, timeZone),
         done,
       );
     }
-    const resolved = runner.resolve ? await runner.resolve(deps, out) : { out };
+    const resolved = runner.resolve
+      ? await runner.resolve(deps, out, { timeZone })
+      : { out };
     if ("options" in resolved) {
       const options = resolved.options.map((o) => ({
         ...(o.out as object),
@@ -345,12 +357,13 @@ async function resolveAll(
   deps: CoreDeps,
   runner: AiRunner,
   options: Record<string, unknown>[],
+  timeZone: string | undefined,
 ): Promise<Record<string, unknown>[]> {
   const { resolve } = runner;
   if (!resolve) return options;
   const all: Record<string, unknown>[] = [];
   for (const o of options) {
-    const r = await resolve.call(runner, deps, o);
+    const r = await resolve.call(runner, deps, o, { timeZone });
     if ("out" in r) all.push(r.out as Record<string, unknown>);
     else
       all.push(

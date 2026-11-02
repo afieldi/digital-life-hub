@@ -3,6 +3,7 @@ import {
   apply,
   CORE_ROUTER_IDS,
   collectServerModules,
+  complete,
   coreAiRunners,
   devFakeAi,
   MAX_CONTEXT_CHARS,
@@ -428,5 +429,102 @@ test("the dev fake answers each hand-written Tasks action", async () => {
     status: "applied",
   });
   expect(await notesOf(s.db, trip.id)).toBe("Fake rewritten notes.");
+  await s.close();
+});
+
+test("a due the model gives as local wall time is set in the request's zone", async () => {
+  const s = await setup();
+  const a = await s.mk({ title: "Call the vet" });
+  const dueOf = async () => {
+    const [row] = await s.db.execute<{ due_at: Date | string; due_tz: string }>(
+      sql`select due_at, due_tz from tasks where item_id = ${a.id}`,
+    );
+    return { at: new Date(row?.due_at ?? 0).toISOString(), tz: row?.due_tz };
+  };
+
+  s.deps.fakeProvider.queue(
+    JSON.stringify({ due: { dateTime: "2026-11-06T09:00" } }),
+  );
+  const res = await prepare(s.deps, {
+    text: "move this to friday 9am",
+    itemId: a.id,
+    actionId: "tasks.reschedule",
+    kind: "do",
+    timeZone: "America/Los_Angeles",
+  });
+  expect(res).toMatchObject({
+    status: "applied",
+    summary: "Reschedule to Fri, Nov 6 9:00",
+  });
+  // 9:00 PST, after the clocks went back on Nov 1.
+  expect(await dueOf()).toEqual({
+    at: "2026-11-06T17:00:00.000Z",
+    tz: "America/Los_Angeles",
+  });
+  // The model is told the local time, and to answer in it.
+  const call = s.deps.fakeProvider.calls[0];
+  expect(call?.prompt).toMatch(
+    /^Today is \w+, \w+ \d+, \d{4}, \d{1,2}:\d{2} \(America\/Los_Angeles\)\./,
+  );
+  expect(JSON.stringify(call?.schema)).toContain("local time");
+
+  s.tick();
+  s.deps.fakeProvider.queue(
+    JSON.stringify({ due: { dateTime: "2026-10-30T09:00" } }),
+  );
+  await prepare(s.deps, {
+    text: "move this to oct 30 9am",
+    itemId: a.id,
+    actionId: "tasks.reschedule",
+    kind: "do",
+    timeZone: "America/Los_Angeles",
+  });
+  // 9:00 PDT, before the change.
+  expect((await dueOf()).at).toBe("2026-10-30T16:00:00.000Z");
+
+  // An offset is the model guessing the zone: refused.
+  s.tick();
+  s.deps.fakeProvider.queue(
+    JSON.stringify({ due: { dateTime: "2026-11-06T09:00:00-07:00" } }),
+  );
+  const bad = await prepare(s.deps, {
+    text: "move this to friday 9am",
+    itemId: a.id,
+    actionId: "tasks.reschedule",
+    kind: "do",
+    timeZone: "America/Los_Angeles",
+  }).catch((e: unknown) => e);
+  expect(bad).toMatchObject({ cause: { code: "bad_output" } });
+  await s.close();
+});
+
+test("a CLI do keeps the zone until complete, for the due it converts", async () => {
+  const s = await setup();
+  const a = await s.mk({ title: "Call the vet" });
+  const run = await prepare(s.deps, {
+    text: "move this to friday 9am",
+    itemId: a.id,
+    actionId: "tasks.reschedule",
+    kind: "do",
+    provider: "claude-cli",
+    timeZone: "Asia/Tokyo",
+  });
+  if (run.status !== "run") throw new Error("expected a CLI run");
+  const res = await complete(s.deps, {
+    requestId: run.requestId,
+    raw: JSON.stringify({
+      type: "result",
+      is_error: false,
+      result: JSON.stringify({ due: { dateTime: "2026-11-06T09:00" } }),
+    }),
+  });
+  expect(res).toMatchObject({ status: "applied" });
+  const [row] = await s.db.execute<{ due_at: Date | string; due_tz: string }>(
+    sql`select due_at, due_tz from tasks where item_id = ${a.id}`,
+  );
+  expect(new Date(row?.due_at ?? 0).toISOString()).toBe(
+    "2026-11-06T00:00:00.000Z",
+  );
+  expect(row?.due_tz).toBe("Asia/Tokyo");
   await s.close();
 });
