@@ -115,6 +115,8 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 | AI provider | OpenRouter, or a local CLI (Claude Code, Codex) | The AI gateway has swappable providers: OpenRouter (pay per use, any model) or a CLI on your machine, so a Claude or ChatGPT subscription can cover the usage. The Tauri app runs the CLI locally when you ask; background jobs on the server use OpenRouter |
 | AI access | Anything, on request | The gateway may search all items to build context |
 | Import | None for now | Start fresh; revisit later |
+| AI billing | Vercel AI Gateway, one key | The light AI gateway's server provider moves from OpenRouter to Vercel AI Gateway (its OpenAI-compatible API), a separate small change. The Agent hub uses the same Gateway |
+| Agent harness | Claude Agent SDK through Vercel AI Gateway | The container gets the Gateway's Claude Code endpoint and key in its environment. A throwaway check that the Agent SDK runs through it comes first; the Claude Code CLI run headless on the same endpoint is the fallback |
 | Agent runs | Containers we host | One container per run, started by `apps/agent` on the same host. Needs an always-on host |
 | Agent autonomy | Marking a task for the agent is the approval | The agent picks it up and runs it with no further check, with full write access inside its container. Only a few actions that leave the container ask first, through the queue |
 
@@ -122,7 +124,7 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 
 - [ ] Hosting: where the API and database run. Now blocks Slack intake, which needs an always-on process (Socket Mode avoids a public URL).
 - [ ] Slack at work: admin approval for an app that reads channels and posts as you, and whether work messages may go to a third-party model through OpenRouter.
-- [ ] Server-side AI cost: sorting Slack messages runs with the app closed, so it uses OpenRouter, not a CLI subscription.
+- [ ] Server-side AI cost: sorting Slack messages and agent runs happen with the app closed, so they bill through Vercel AI Gateway, not a CLI subscription. Set a budget on the key.
 - [ ] Saved: what it holds. Decide in its deep dive.
 
 **Tauri or Electron**
