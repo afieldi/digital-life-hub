@@ -1,4 +1,4 @@
-import { createDb, migrate } from "@dlh/db";
+import { createDb } from "@dlh/db";
 import {
   CORE_ROUTER_IDS,
   collectServerModules,
@@ -14,6 +14,7 @@ import { drizzleAuthStore } from "./auth/drizzleStore";
 import { createGoogleOAuth } from "./auth/google";
 import { startPurgeJob } from "./changes";
 import { ConfigError, loadConfig } from "./config";
+import { migrateAll } from "./migrate";
 import { serverModules } from "./modules.gen";
 
 function loadConfigOrExit() {
@@ -58,7 +59,11 @@ try {
 }
 
 if (process.env.MIGRATE_ON_START === "1") {
-  await migrate(config.databaseUrl, "./drizzle");
+  await migrateAll(
+    config.databaseUrl,
+    serverModules,
+    process.env.MIGRATIONS_ROOT,
+  );
 }
 
 const deps = {

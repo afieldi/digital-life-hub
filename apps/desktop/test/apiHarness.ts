@@ -1,4 +1,5 @@
-import { createTestApi } from "@dlh/api/testing";
+import { resolve } from "node:path";
+import { createTestApi, freshModuleDb, serverModules } from "@dlh/api/testing";
 import type { Db } from "@dlh/db";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { type RenderResult, render } from "@testing-library/react";
@@ -8,6 +9,13 @@ import { createApi } from "../src/api/client";
 import { devSignIn } from "../src/auth/signIn";
 import { memoryTokenStore, type TokenStore } from "../src/auth/tokenStore";
 import { createAppRouter } from "../src/router";
+
+/**
+ * A fresh test database with Core's and every module's migrations. jsdom gives
+ * @dlh/db no file URL to find them from, so the root is given: tests run from apps/desktop.
+ */
+export const freshApiDb = () =>
+  freshModuleDb([...serverModules], resolve(process.cwd(), "../.."));
 
 /**
  * A desktop app wired to a real in-process API, already signed in through

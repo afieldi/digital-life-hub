@@ -20,6 +20,8 @@ export type ServerModule<
   id: Id;
   itemTypes: string[];
   router: R;
+  /** The module has migrations in `modules/<id>/drizzle`, applied after Core's. */
+  migrations?: true;
   seed?: (w: ItemWriter) => Promise<void>;
   aiActions?: AiActionDescription[];
   aiRunners?: AiRunner[];

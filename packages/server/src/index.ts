@@ -33,6 +33,7 @@ export { getSettings } from "./ai/settings";
 export { type ChangeBus, createChangeBus } from "./changes";
 export { purgeExpired } from "./items/purge";
 export { type ItemWriter, writeItems } from "./items/writer";
+export { migrationsRoot, moduleMigrations } from "./migrations";
 export {
   CORE_ROUTER_IDS,
   collectServerModules,

@@ -1,5 +1,3 @@
-import { resolve } from "node:path";
-import { freshTestDb } from "@dlh/db/testing";
 import { isMac } from "@dlh/ui";
 import {
   cleanup,
@@ -16,10 +14,7 @@ import {
   type CliRunner,
   setCliRunnerForTests,
 } from "../src/ai/cli";
-import { signedInApp } from "./apiHarness";
-
-// jsdom gives @dlh/db no file URL to find its migrations from; tests run from apps/desktop.
-const MIGRATIONS = resolve(process.cwd(), "../../packages/db/drizzle");
+import { freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -39,7 +34,7 @@ afterEach(async () => {
 });
 
 async function setup(opts: { onHome?: boolean } = {}) {
-  const t = await freshTestDb(MIGRATIONS);
+  const t = await freshApiDb();
   closers.push(t.close);
   const app = await signedInApp("/", { db: t.db });
   const client = app.api.client(app.token);

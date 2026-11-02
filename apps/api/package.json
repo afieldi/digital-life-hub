@@ -9,6 +9,7 @@
     "start": "node --env-file-if-exists=.env dist/main.js",
     "build": "tsx ../../scripts/gen-modules.ts && tsup",
     "sessions": "tsx --env-file-if-exists=.env src/cli/sessions.ts",
+    "migrate": "tsx ../../scripts/gen-modules.ts && tsx --env-file-if-exists=.env src/cli/migrate.ts",
     "seed": "tsx ../../scripts/gen-modules.ts && tsx --env-file-if-exists=.env src/cli/seed.ts",
     "ai:smoke": "tsx --env-file-if-exists=.env src/cli/ai-smoke.ts",
     "docker:build": "docker build -f Dockerfile -t dlh-api ../..",

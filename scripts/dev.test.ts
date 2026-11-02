@@ -4,6 +4,7 @@ import {
   CARGO_MISSING_MESSAGE,
   DOCKER_DOWN_MESSAGE,
   DOCKER_MISSING_MESSAGE,
+  MIGRATE_COMMAND,
   NODE_MODULES_MESSAGE,
   preflight,
   runSteps,
@@ -99,6 +100,10 @@ describe("preflight", () => {
 });
 
 describe("steps", () => {
+  it("the migrate step command is pnpm --filter @dlh/api migrate", () => {
+    expect(MIGRATE_COMMAND.join(" ")).toBe("pnpm --filter @dlh/api migrate");
+  });
+
   it("steps run db → migrate → seed → apps", () => {
     expect(steps.map((s) => s.name)).toEqual(["db", "migrate", "seed", "apps"]);
   });
