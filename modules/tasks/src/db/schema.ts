@@ -23,6 +23,7 @@ const byteText = customType<{ data: string }>({
  * that foreign key is written by hand in the migration SQL, since this module
  * never imports Core's tables.
  */
+// The `items` FK lives only in the hand-edited SQL: drizzle's snapshot has none.
 export const tasks = pgTable(
   "tasks",
   {

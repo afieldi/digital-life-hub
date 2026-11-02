@@ -116,9 +116,9 @@ Plain routers still work, for Core's routers and the sample module.
 | Value | ⌘K does |
 | --- | --- |
 | `false` | Not in ⌘K |
-| `true` or omitted | A form generated from the input. `id` and `expectedUpdatedAt` come from the item on screen; any other fields become the form. With none left (complete, reopen), ↵ runs it |
+| `true` or omitted | A form generated from the input. `id` and `expectedUpdatedAt` come from the item on screen; any other fields become the form. With none left (complete, reopen), ↵ runs it, and it matches only its name or word with nothing after it ("check the car" is not Complete) |
 | `(ctx) => Input \| null` | Builds the input from the context; `null` shows the row as not ready |
-| `{ params, prefill?, toInput }` | `prefill(ctx)` reads what it can into `params`. If that satisfies `params`, ↵ runs; otherwise ↵ opens a form generated from `params` with those values filled, focused on the first missing field. Submit calls `toInput(ctx, params)` |
+| `{ params, prefill?, load?, review?, toInput }` | `prefill(ctx)` reads what it can into `params`; `load(ctx, read)`, with an item on screen, reads more through a query (`read("tasks.get", …)`) and fills `params` under `prefill`'s. If that satisfies `params` (and `review` isn't set), ↵ runs, the row naming any item it filled ("Remove from parent: Groceries"); otherwise ↵ opens a form generated from `params` with those values filled, focused on the first missing field. Submit calls `toInput(ctx, params)` |
 
 `PaletteContext` is `{ item?: { id, type, updatedAt }, text, now, timeZone }`: the item on screen, what you typed after the action's name, the time and the device's zone.
 
@@ -198,7 +198,7 @@ type Due =
 
 - A subtask is a task that a task `contains`. It can have several task parents, and projects or notes may contain it too.
 - One level: `create` and `addParent` refuse a parent that is itself a subtask, and a task with subtasks becoming a subtask. A deeper link added through Core's `links.add` shows as a count on its parent.
-- A subtask with no due date shows only under its parents. One with a due date also shows in that day's group, labelled with its first parent ("in Review vendor contracts", "+1" for each other parent).
+- A subtask with no due date shows only under its parents on Open and Upcoming; Done lists it when it is completed, labelled with its first parent. One with a due date also shows in that day's group, labelled with its first parent ("in Review vendor contracts", "+1" for each other parent).
 - A parent's row shows its subtasks as "2/4 · Next: List questions for legal". A shared subtask counts under every parent; ticking it ticks it everywhere.
 
 **Completing**
@@ -271,7 +271,9 @@ It returns the fields and the spans it read, so the field highlights them; backs
 
 **From operations.** The adapter turns each `ai` operation into an AI action:
 
-- The model fills the input except `id` and `expectedUpdatedAt`, which come from the item on screen. `subject(input)` must be the item on screen or null (creating a task with no parent), unless `writeOtherItems` is declared. The item on screen may also be the one filling `input.id` ("make this a subtask of …", whose subject is the parent).
+- The model fills the input except `id` and `expectedUpdatedAt`, which come from the item on screen. `subject(input)` must be the item on screen, null (creating a task with no parent), or the value of one of the input's `fields.item` keys, which the model names by title and the server resolves by search ("make this a subtask of …", whose subject is the parent), unless `writeOtherItems` is declared. Filling `input.id` from the screen doesn't by itself allow another subject.
+- A due field is filled as local wall time, `{ date }` or `{ dateTime: "YYYY-MM-DDTHH:MM" }` with no offset (models get offsets wrong, DST above all). The server sets it in the request's `timeZone` (UTC when none was sent) and stores `{ dateTime, timeZone }` with that zone's offset.
+- Core's tools for any runner (`RunnerTools.mutate`) hold to the same rule: an operation whose effects the runner doesn't declare, or whose subject breaks the rule above, is refused (`FORBIDDEN`) and the request ends failed.
 - The cap comes from `effects` as for any AI action: mutations here can Do with Undo; queries are Ask, their result shown as rows, with no second model call.
 - `fields.item` values are filled with a title. The server matches it with `search`, limited to the field's types: one clear match runs; an ambiguous one or none drops to Suggest with the top three matches.
 - Undo is the operation's own, through `ai.undo`.
@@ -282,11 +284,11 @@ It returns the fields and the spans it read, so the field highlights them; backs
 | --- | --- | --- | --- | --- |
 | `tasks.breakDown` | `task`, top level | Suggest, Do | `createItems`, `addLinks` | From the title, notes and existing subtasks, proposes 3–7 subtask titles. Suggest shows a checklist (multi-select, applied with `ai.applyOption({ options })`) and creates those you tick; Do creates all. On a subtask: "Subtasks can't have subtasks" |
 | `tasks.rewriteNotes` | `task` | Suggest, Do | `updateItem` | Rewrites the notes more clearly without adding facts. Suggest offers two versions; Do replaces them. Undo restores the old text |
-| `tasks.planToday` | `"none"`, `"*"` | Ask | none | Context: overdue, today's and the next two days' open tasks (title, due, priority, subtask progress), at most 60. Answers with an ordered list of `{ taskId, reason }` and one line of advice, shown as task rows. Ids outside the context are rejected |
+| `tasks.planToday` | `"none"`, `"*"` | Ask | none | Context: overdue, today's and the next two days' open tasks (title, due, priority, subtask progress), at most 60. Answers with an ordered list of `{ taskId, reason }` and one line of advice, shown as task rows. Ids outside the context the model saw (kept with the request) are rejected; a task ticked since shows as done, a deleted one is dropped |
 
-**Time.** `ai.prepare` takes `timeZone`; every task action's context starts with "Today is Mon, Nov 2, 2026 (America/Los_Angeles)".
+**Time.** `ai.prepare` takes `timeZone`; every task action's context starts with "Today is Mon, Nov 2, 2026, 10:30 (America/Los_Angeles)." (the local time too, since due times come back in it). A pending request keeps the zone, so a CLI run's `complete` uses it.
 
-**Created items.** No Core AI action creates items today; `breakDown` and `create` are the first. The writer records every item created, for operation actions and hand-written runners alike, and Undo soft-deletes exactly those (Core does it, since the runner's writer has no delete). `addLinks` still starts only from the item on screen, so new subtasks can only go under the task you're on.
+**Created items.** No Core AI action creates items today; `breakDown` and `create` are the first. The writer records every item created, for operation actions and hand-written runners alike, and Undo soft-deletes exactly those (Core does it, since the runner's writer has no delete). A hand-written runner's `addLinks` still starts only from the item on screen, so `breakDown`'s subtasks go under the task you're on.
 
 **Registration.** Operations can't drift between app and server, since both import one description. For the hand-written runners, a module test checks the manifest's `aiActions` and the server's `aiRunners` list the same ids.
 
@@ -311,13 +313,13 @@ The Tasks canvas (Dusk design system) holds the designs. Every screen has a brea
 
 **Done** (`/tasks/done`)
 
-- "Today is clear" when nothing open is due today; done tasks grouped by the day they were completed, with Undo; paged.
+- "Today is clear" when nothing open is due today; done tasks grouped by the day they were completed, with Undo; paged. Done is a history of completions: undated subtasks are listed too, "in \<parent>" (+N), so its rows agree with `stats`.
 - Side column from `stats`: completions per day this week, on time, overdue cleared.
 
 **Detail** (`/tasks/$id`, the task type's `href`)
 
 - A panel over the list you came from; Esc closes it. Records the view for Recents.
-- Checkbox and title; Due (date, optional time); Priority (Medium / High); "Subtask of" chips with × (`removeParent`) and "+ Add to task…" (`addParent`); Subtasks (add new, add existing, tick, drag to reorder); Notes (plain text, saved as you type after a short pause); Linked; created and edited footer.
+- Checkbox and title; Due (date, optional time, in the device's zone; "· 9:00 PT" beside it when it was set in another zone, which a date change alone keeps); Priority (Medium / High); "Subtask of" chips with × (`removeParent`) and "+ Add to task…" (`addParent`); Subtasks (add new, add existing, tick, drag to reorder); Notes (plain text, saved as you type after a short pause); Linked; created and edited footer.
 - ⋯ lists the task's ⌘K operations and AI actions.
 
 **States.** Empty: Open "Nothing open. Add one above"; Upcoming's empty days dashed; Done "Nothing done yet". Loading: skeleton rows. Error: `EmptyState` with Retry. A conflicting write refetches and shows a toast.
