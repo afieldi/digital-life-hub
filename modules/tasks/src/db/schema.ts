@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  customType,
   date,
   index,
   pgTable,
@@ -8,6 +9,14 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+
+/**
+ * Text that sorts by byte: fractional-indexing keys must not be ordered by the
+ * database's locale collation.
+ */
+const byteText = customType<{ data: string }>({
+  dataType: () => 'text COLLATE "C"',
+});
 
 /**
  * One row per task item. `item_id` references Core's `items(id) on delete cascade`;
@@ -27,7 +36,7 @@ export const tasks = pgTable(
     dueTz: text("due_tz"),
     priority: text("priority").notNull().default("medium"),
     notes: text("notes"),
-    sortKey: text("sort_key").notNull(),
+    sortKey: byteText("sort_key").notNull(),
   },
   (t) => [
     check("tasks_priority_check", sql`${t.priority} in ('medium', 'high')`),

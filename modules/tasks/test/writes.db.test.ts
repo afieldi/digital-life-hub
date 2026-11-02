@@ -376,6 +376,24 @@ test("complete twice is a no-op", async () => {
   await close();
 });
 
+test("overlapping completes and reopens are no-ops, not conflicts", async () => {
+  const { caller, mk, close } = await setup();
+  const a = await mk("A");
+  const v = { id: a.id, expectedUpdatedAt: a.updatedAt };
+  const [one, two] = await Promise.all([
+    caller.tasks.complete(v),
+    caller.tasks.complete(v),
+  ]);
+  expect(one.result.task.updatedAt).toBe(two.result.task.updatedAt);
+  const done = { id: a.id, expectedUpdatedAt: one.result.task.updatedAt };
+  const [three, four] = await Promise.all([
+    caller.tasks.reopen(done),
+    caller.tasks.reopen(done),
+  ]);
+  expect(three.result.updatedAt).toBe(four.result.updatedAt);
+  await close();
+});
+
 test("reopen clears completed_at", async () => {
   const { deps, caller, mk, close } = await setup();
   const a = await mk("A");

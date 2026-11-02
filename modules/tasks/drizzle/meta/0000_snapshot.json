@@ -53,7 +53,7 @@
         },
         "sort_key": {
           "name": "sort_key",
-          "type": "text",
+          "type": "text COLLATE \"C\"",
           "primaryKey": false,
           "notNull": true
         }

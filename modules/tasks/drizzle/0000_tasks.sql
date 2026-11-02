@@ -6,7 +6,7 @@ CREATE TABLE "tasks" (
 	"due_tz" text,
 	"priority" text DEFAULT 'medium' NOT NULL,
 	"notes" text,
-	"sort_key" text NOT NULL,
+	"sort_key" text COLLATE "C" NOT NULL,
 	CONSTRAINT "tasks_item_id_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."items"("id") ON DELETE cascade,
 	CONSTRAINT "tasks_priority_check" CHECK ("tasks"."priority" in ('medium', 'high')),
 	CONSTRAINT "tasks_due_exclusive_check" CHECK ("tasks"."due_date" is null or "tasks"."due_at" is null),

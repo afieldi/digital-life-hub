@@ -25,8 +25,8 @@ import {
 type TaskTableRow = typeof tasks.$inferSelect;
 type TaskChanges = Partial<Omit<TaskTableRow, "itemId">>;
 
-// Sort keys are fractional-indexing keys, which order by byte; "C" collation
-// keeps Postgres from ordering them by locale.
+// Sort keys are fractional-indexing keys, which order by byte. The column is
+// already collated "C"; saying so here keeps these comparisons right on their own.
 const sortKeyC = sql`${tasks.sortKey} collate "C"`;
 
 function badRequest(message: string): never {
@@ -115,13 +115,22 @@ export async function createTask(
   return item;
 }
 
+/**
+ * The task, read after locking its row: a write that overlaps another on the
+ * same task waits for it and then reads what it committed. So a second
+ * complete sees the task done and is a no-op instead of a version conflict.
+ */
 async function loadTask(
   tx: Tx,
   id: string,
 ): Promise<{ item: Item; row: TaskTableRow }> {
-  const item = await getItem(tx, id);
-  const [row] = await tx.select().from(tasks).where(eq(tasks.itemId, id));
+  const [row] = await tx
+    .select()
+    .from(tasks)
+    .where(eq(tasks.itemId, id))
+    .for("update");
   if (!row) notFound();
+  const item = await getItem(tx, id);
   return { item, row };
 }
 

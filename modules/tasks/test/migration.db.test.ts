@@ -62,3 +62,12 @@ test("deleting the item removes the task row", async () => {
   expect(rows.length).toBe(0);
   await close();
 });
+
+test("sort_key sorts by byte (collation C)", async () => {
+  const { db, close } = await setup();
+  const rows = await db.execute<{ collation_name: string }>(sql`
+    select collation_name from information_schema.columns
+    where table_name = 'tasks' and column_name = 'sort_key'`);
+  expect(rows[0]?.collation_name).toBe("C");
+  await close();
+});
