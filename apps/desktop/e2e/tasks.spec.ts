@@ -251,11 +251,25 @@ test("dragging a card in Upcoming moves it to that day", async ({
     card.getByRole("button", { name: `Drag ${title}` }),
   ).toBeFocused();
   await page.keyboard.press("Enter");
-  // Tab moves between drop targets until one is inside Wednesday.
-  for (let i = 0; i < 40; i++) {
-    if (await to.evaluate((el) => el.contains(document.activeElement))) break;
+  // Tab moves between drop targets until one is inside Wednesday. WebKit
+  // moves focus after the key press returns, so wait for it to move each
+  // time or the loop can step past Wednesday.
+  let inside = false;
+  for (let i = 0; i < 40 && !inside; i++) {
+    inside = await to.evaluate((el) => el.contains(document.activeElement));
+    if (inside) break;
+    await page.evaluate(() => {
+      (window as { __dragFrom?: Element | null }).__dragFrom =
+        document.activeElement;
+    });
     await page.keyboard.press("Tab");
+    await page.waitForFunction(
+      () =>
+        document.activeElement !==
+        (window as { __dragFrom?: Element | null }).__dragFrom,
+    );
   }
+  expect(inside).toBe(true);
   await page.keyboard.press("Enter");
 
   await expect(to.getByText(title, { exact: true })).toBeVisible();
