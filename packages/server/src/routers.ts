@@ -5,6 +5,7 @@ import { getItem, linksForItem, listContained, listItems } from "./items/read";
 import { listRecents, recordView } from "./items/recents";
 import { searchItems } from "./items/search";
 import { writeItems } from "./items/writer";
+import { opsRouter } from "./operations/undo";
 import { protectedProcedure, router } from "./trpc";
 
 const id = z.uuid();
@@ -144,5 +145,6 @@ export const coreRouters = {
   search,
   recents,
   ai: aiRouter,
+  ops: opsRouter,
 };
 export type CoreRouter = ReturnType<typeof router<typeof coreRouters>>;

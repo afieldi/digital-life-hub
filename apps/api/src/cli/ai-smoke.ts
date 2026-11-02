@@ -219,7 +219,7 @@ async function softDelete(deps: CoreDeps, id: string): Promise<void> {
 
 async function main(): Promise<void> {
   const { db, close } = createDb(databaseUrlFrom(process.env));
-  const { itemTypes, aiRunners, deleteWith } = collectServerModules(
+  const { itemTypes, aiRunners, deleteWith, operations } = collectServerModules(
     [...serverModules],
     [...CORE_ROUTER_IDS],
     coreAi,
@@ -237,6 +237,7 @@ async function main(): Promise<void> {
     changes: createChangeBus(),
     itemTypes,
     deleteWith,
+    operations,
     now: () => new Date(),
     devErrors: false,
     ai: {

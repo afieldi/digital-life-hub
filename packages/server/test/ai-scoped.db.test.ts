@@ -37,6 +37,8 @@ test("only allowed methods exist", async () => {
     expect(all.setArchived).toBeDefined();
     expect(all.updateItem).toBeUndefined();
     expect(all).not.toHaveProperty("removeLink");
+    const unlink = scopedWriter(w, { effects: ["removeLinks"], itemId: a.id });
+    expect(unlink.removeLink).toBeDefined();
   });
   await close();
 });
@@ -177,5 +179,48 @@ test("setArchived is limited to the scope item", async () => {
   expect(row?.archivedAt).not.toBeNull();
   const [other] = await db.select().from(items).where(eq(items.id, b.id));
   expect(other?.archivedAt).toBeNull();
+  await close();
+});
+
+test("removeLink only from the scope item; writeOtherItems lifts it", async () => {
+  const { db, deps, a, b, close } = await setup();
+  const [ab, ba] = await writeItems(deps, async (w) => [
+    await w.addLink({ fromId: a.id, toId: b.id, kind: "relates" }),
+    await w.addLink({ fromId: b.id, toId: a.id, kind: "relates" }),
+  ]);
+  await expect(
+    writeItems(deps, async (w) => {
+      const s = scopedWriter(w, { effects: ["removeLinks"], itemId: a.id });
+      await s.removeLink?.(ba?.id ?? "");
+    }),
+  ).rejects.toMatchObject(FORBIDDEN);
+  await writeItems(deps, async (w) => {
+    const s = scopedWriter(w, { effects: ["removeLinks"], itemId: a.id });
+    await s.removeLink?.(ab?.id ?? "");
+  });
+  expect((await db.select().from(links)).map((r) => r.id)).toEqual([ba?.id]);
+  await writeItems(deps, async (w) => {
+    const s = scopedWriter(w, {
+      effects: ["removeLinks", "writeOtherItems"],
+      itemId: a.id,
+    });
+    await s.removeLink?.(ba?.id ?? "");
+  });
+  expect(await db.select().from(links)).toEqual([]);
+  await close();
+});
+
+test("createItem records created ids", async () => {
+  const { deps, a, close } = await setup();
+  const created: string[] = [];
+  const made = await writeItems(deps, async (w) => {
+    const s = scopedWriter(w, {
+      effects: ["createItems"],
+      itemId: a.id,
+      created,
+    });
+    return s.createItem?.({ type: "test", title: "C" });
+  });
+  expect(created).toEqual([made?.id]);
   await close();
 });

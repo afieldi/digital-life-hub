@@ -1,7 +1,13 @@
 import type { AiActionDescription } from "@dlh/core";
 import type { AnyRouter } from "@trpc/server";
-import { type AiRunner, collectAiRunners } from "./ai/runners";
+import {
+  type AiRunner,
+  checkModuleAction,
+  collectAiRunners,
+} from "./ai/runners";
 import type { ItemWriter } from "./items/writer";
+import type { ImplementedOperation, Operations } from "./operations/implement";
+import { operationsRouter } from "./operations/router";
 import type { DeleteWith } from "./trpc";
 
 export const CORE_ROUTER_IDS = [
@@ -12,15 +18,20 @@ export const CORE_ROUTER_IDS = [
   "search",
   "recents",
   "ai",
+  "ops",
 ] as const;
 
+/** A module's endpoints come from `router` or, in its place, `operations`. */
 export type ServerModule<
   Id extends string = string,
   R extends AnyRouter = AnyRouter,
+  Ops extends Operations = Operations,
 > = {
   id: Id;
   itemTypes: string[];
-  router: R;
+  router?: R;
+  /** Each becomes a procedure `<id>.<key>`; the operation's id must be that path. */
+  operations?: Ops;
   /** The module has migrations in `modules/<id>/drizzle`, applied after Core's. */
   migrations?: true;
   seed?: (w: ItemWriter) => Promise<void>;
@@ -37,8 +48,26 @@ export class ServerModuleError extends Error {
 export function defineServerModule<
   const Id extends string,
   R extends AnyRouter,
->(m: ServerModule<Id, R>): ServerModule<Id, R> {
+>(
+  m: ServerModule<Id, R> & { router: R; operations?: undefined },
+): ServerModule<Id, R> & { router: R };
+export function defineServerModule<
+  const Id extends string,
+  Ops extends Operations,
+>(
+  m: ServerModule<Id, AnyRouter, Ops> & { operations: Ops; router?: undefined },
+): ServerModule<Id, AnyRouter, Ops> & { operations: Ops };
+export function defineServerModule(m: ServerModule): ServerModule {
   return m;
+}
+
+/** The router mounted under the module's id. */
+export function moduleRouter(m: ServerModule): AnyRouter {
+  if (m.router) return m.router;
+  if (m.operations) return operationsRouter(m.operations);
+  throw new ServerModuleError(
+    `Module "${m.id}" has neither a router nor operations`,
+  );
 }
 
 export function collectServerModules(
@@ -50,6 +79,7 @@ export function collectServerModules(
   itemTypes: Set<string>;
   aiRunners: Map<string, AiRunner>;
   deleteWith: Map<string, DeleteWith>;
+  operations: Map<string, ImplementedOperation>;
 } {
   const ids = new Set<string>();
   const owners = new Map<string, string>();
@@ -67,6 +97,11 @@ export function collectServerModules(
       throw new ServerModuleError(`Duplicate server module id "${m.id}"`);
     }
     ids.add(m.id);
+    if (!m.router && !m.operations) {
+      throw new ServerModuleError(
+        `Module "${m.id}" has neither a router nor operations`,
+      );
+    }
     for (const a of m.aiActions ?? []) {
       moduleOf.set(a.id, m.id);
       descriptions.push(a);
@@ -84,10 +119,24 @@ export function collectServerModules(
     }
   }
   const aiRunners = collectAiRunners(descriptions, runners, moduleOf, owners);
+  // Ids are `<module>.<key>`, so with unique module ids none can repeat.
+  const operations = new Map<string, ImplementedOperation>();
+  for (const m of mods) {
+    for (const [key, op] of Object.entries(m.operations ?? {})) {
+      checkModuleAction("Operation", op.desc, m.id, owners);
+      if (op.desc.id !== `${m.id}.${key}`) {
+        throw new ServerModuleError(
+          `Operation "${op.desc.id}" is mounted as "${m.id}.${key}"`,
+        );
+      }
+      operations.set(op.desc.id, op);
+    }
+  }
   return {
     modules: mods,
     itemTypes: new Set(owners.keys()),
     aiRunners,
     deleteWith,
+    operations,
   };
 }

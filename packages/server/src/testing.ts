@@ -15,6 +15,7 @@ import type {
 import { createChangeBus } from "./changes";
 import { migrationsRoot, moduleMigrations } from "./migrations";
 import type { ServerModule } from "./modules";
+import type { ImplementedOperation } from "./operations/implement";
 import type { CoreDeps, DeleteWith } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
@@ -71,6 +72,7 @@ export function testDeps(
     now?: () => Date;
     ai?: Partial<AiDeps>;
     deleteWith?: Record<string, DeleteWith>;
+    operations?: ReadonlyMap<string, ImplementedOperation>;
   } = {},
 ): TestDeps {
   let clock = opts.now?.() ?? new Date("2026-10-30T12:00:00.000Z");
@@ -83,6 +85,7 @@ export function testDeps(
     devErrors: true,
     ai: testAiDeps(opts.ai, fakeProvider),
     deleteWith: new Map(Object.entries(opts.deleteWith ?? {})),
+    operations: opts.operations ?? new Map(),
     fakeProvider,
     setNow(date) {
       clock = date;

@@ -41,7 +41,7 @@ function hostPort(url: string): string {
 
 const config = loadConfigOrExit();
 // Throws on a duplicate module id or item type, or an id that clashes with a core router.
-const { itemTypes, aiRunners, deleteWith } = collectServerModules(
+const { itemTypes, aiRunners, deleteWith, operations } = collectServerModules(
   [...serverModules],
   [...CORE_ROUTER_IDS],
   coreAi,
@@ -71,6 +71,7 @@ const deps = {
   changes: createChangeBus(),
   itemTypes,
   deleteWith,
+  operations,
   devErrors: config.devAuth,
   config,
   store: drizzleAuthStore(db),

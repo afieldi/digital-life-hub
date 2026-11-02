@@ -23,6 +23,39 @@ export function defineAiRunner<D extends AiActionDescription>(
 }
 
 /**
+ * Checks an AI action's or operation's id prefix and `appliesTo` against `mod`,
+ * the module that registered it (`undefined` for Core: no prefix, and only
+ * "*"/"none").
+ */
+export function checkModuleAction(
+  noun: "AI action" | "Operation",
+  d: Pick<AiActionDescription, "id" | "appliesTo">,
+  mod: string | undefined,
+  ownedTypes: Map<string, string>,
+): void {
+  if (mod === undefined) {
+    if (d.id.includes(".")) {
+      throw new ServerModuleError(
+        `${noun} "${d.id}" has a module prefix but no module registered it`,
+      );
+    }
+  } else if (!d.id.startsWith(`${mod}.`)) {
+    throw new ServerModuleError(
+      `${noun} "${d.id}" must be prefixed with its module id "${mod}."`,
+    );
+  }
+  const applies = Array.isArray(d.appliesTo) ? d.appliesTo : [d.appliesTo];
+  for (const t of applies) {
+    if (t === "*" || t === "none") continue;
+    if (mod === undefined || ownedTypes.get(t) !== mod) {
+      throw new ServerModuleError(
+        `${noun} "${d.id}" applies to item type "${t}" that its module does not own`,
+      );
+    }
+  }
+}
+
+/**
  * Pairs descriptions with runners and checks each against its module.
  * Core actions (no module in `moduleOf`) have unprefixed ids and may only use "*"/"none".
  */
@@ -45,28 +78,7 @@ export function collectAiRunners(
       throw new ServerModuleError(`Duplicate AI action "${d.id}"`);
     }
     seen.add(d.id);
-    const mod = moduleOf.get(d.id);
-    const dot = d.id.indexOf(".");
-    if (mod === undefined) {
-      if (dot !== -1) {
-        throw new ServerModuleError(
-          `AI action "${d.id}" has a module prefix but no module registered it`,
-        );
-      }
-    } else if (!d.id.startsWith(`${mod}.`)) {
-      throw new ServerModuleError(
-        `AI action "${d.id}" must be prefixed with its module id "${mod}."`,
-      );
-    }
-    const applies = Array.isArray(d.appliesTo) ? d.appliesTo : [d.appliesTo];
-    for (const t of applies) {
-      if (t === "*" || t === "none") continue;
-      if (mod === undefined || ownedTypes.get(t) !== mod) {
-        throw new ServerModuleError(
-          `AI action "${d.id}" applies to item type "${t}" that its module does not own`,
-        );
-      }
-    }
+    checkModuleAction("AI action", d, moduleOf.get(d.id), ownedTypes);
     if (!byId.has(d.id)) {
       throw new ServerModuleError(`AI action "${d.id}" has no runner`);
     }

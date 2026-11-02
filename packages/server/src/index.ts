@@ -38,9 +38,27 @@ export {
   CORE_ROUTER_IDS,
   collectServerModules,
   defineServerModule,
+  moduleRouter,
   type ServerModule,
   ServerModuleError,
 } from "./modules";
+export {
+  type ImplementedMutation,
+  type ImplementedOperation,
+  type ImplementedQuery,
+  implementOperation,
+  type MutationImpl,
+  type Operations,
+  type QueryImpl,
+  runMutation,
+  type UndoToken,
+} from "./operations/implement";
+export {
+  type OperationProcedure,
+  type OperationsRouter,
+  operationsRouter,
+} from "./operations/router";
+export { deleteCreated, undoToken } from "./operations/undo";
 export { type CoreRouter, coreRouters } from "./routers";
 export {
   type ApiDeps,

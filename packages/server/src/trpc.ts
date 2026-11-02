@@ -3,6 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { AiError } from "./ai/errors";
 import type { AiDeps } from "./ai/gateway";
 import type { ChangeBus } from "./changes";
+import type { ImplementedOperation } from "./operations/implement";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -26,6 +27,8 @@ export type CoreDeps = {
   ai: AiDeps;
   /** Item type -> hook of the module that owns it. */
   deleteWith: ReadonlyMap<string, DeleteWith>;
+  /** Operation id -> module operation, for `ops.undo`. */
+  operations: ReadonlyMap<string, ImplementedOperation>;
 };
 
 /** Augmented by apps/api (`declare module "@dlh/server"`) with its own deps. */

@@ -1,8 +1,11 @@
+import { describeOperation } from "@dlh/core";
 import { initTRPC } from "@trpc/server";
+import { z } from "zod";
 import {
   CORE_ROUTER_IDS,
   collectServerModules,
   defineServerModule,
+  implementOperation,
 } from "../src";
 
 const router = initTRPC.create().router({});
@@ -64,5 +67,77 @@ describe("collectServerModules deleteWith", () => {
     expect([...deleteWith.keys()].sort()).toEqual(["subtask", "task"]);
     expect(deleteWith.get("task")).toBe(hook);
     expect(deleteWith.get("subtask")).toBe(hook);
+  });
+});
+
+describe("collectServerModules operations", () => {
+  const peek = (id: string, appliesTo: string[] = ["note"]) =>
+    implementOperation(
+      describeOperation({
+        id,
+        kind: "query",
+        label: "Peek",
+        description: "Peek.",
+        appliesTo,
+        input: z.object({}),
+        subject: () => null,
+        effects: [],
+        summary: () => "Peek",
+      }),
+      { run: async () => null },
+    );
+  const withOps = (
+    id: string,
+    operations: Record<string, ReturnType<typeof peek>>,
+  ) => defineServerModule({ id, itemTypes: ["note"], operations });
+
+  it("maps operations by id", () => {
+    const op = peek("a.peek");
+    const { operations } = collectServerModules(
+      [withOps("a", { peek: op })],
+      reserved,
+      core,
+    );
+    expect([...operations.keys()]).toEqual(["a.peek"]);
+    expect(operations.get("a.peek")).toBe(op);
+  });
+
+  it("rejects an id without the module prefix", () => {
+    expect(() =>
+      collectServerModules(
+        [withOps("a", { peek: peek("b.peek") })],
+        reserved,
+        core,
+      ),
+    ).toThrow('Operation "b.peek" must be prefixed with its module id "a."');
+  });
+
+  it("rejects an id that does not match its key", () => {
+    expect(() =>
+      collectServerModules(
+        [withOps("a", { look: peek("a.peek") })],
+        reserved,
+        core,
+      ),
+    ).toThrow('Operation "a.peek" is mounted as "a.look"');
+  });
+
+  it("rejects an appliesTo type the module does not own", () => {
+    const other = defineServerModule({ id: "b", itemTypes: ["task"], router });
+    expect(() =>
+      collectServerModules(
+        [withOps("a", { peek: peek("a.peek", ["task"]) }), other],
+        reserved,
+        core,
+      ),
+    ).toThrow(
+      'Operation "a.peek" applies to item type "task" that its module does not own',
+    );
+  });
+
+  it("rejects a module with neither router nor operations", () => {
+    expect(() =>
+      collectServerModules([{ id: "a", itemTypes: [] }], reserved, core),
+    ).toThrow('Module "a" has neither a router nor operations');
   });
 });
