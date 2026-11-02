@@ -36,7 +36,7 @@ Shared shell: a floating bottom nav (Home, Tasks, Notes, Projects, Saved, ⌘K) 
 
 ## Modules
 
-Eight modules cover what the designs show. Each owns its own screens and item type, and gets a deep-dive spec before it is built.
+Eight modules cover what the designs show, and four more bring in work: a review queue and Slack. Each owns its own screens and item type, and gets a deep-dive spec before it is built.
 
 | Module | Purpose | Key features from the designs | Depends on |
 | --- | --- | --- | --- |
@@ -48,6 +48,10 @@ Eight modules cover what the designs show. Each owns its own screens and item ty
 | Events / Calendar | Time-bound items | "Block time on the calendar" (marked Soon), week strip in Sunroom | Core, Google Calendar |
 | Saved | Bookmarks and clippings | A nav slot exists in every design; no screen yet | Core |
 | AI assistant | Help in context | Ask AI tile, "Turn the priorities into tasks", "What's still unresolved?", "What else is open in Q4 planning?" | All modules' data, OpenRouter or a local CLI |
+| Queue | Things that need you, reviewed once | File a request, then Make task, Handled or Not for me; sender and link back to the source | Core, Tasks |
+| Slack intake | Find what involves you | Watches DMs, mentions and chosen channels; files requests through Queue; rules first, AI for unclear cases | Queue, server-side AI |
+| Notifications | Tell you eventually | Immediate notices for what matters, a digest for the rest; desktop while the app is open, a Slack DM when it isn't | Queue, Slack intake |
+| Slack bot | Talk to the hub from Slack | You ask it about tasks and the queue and capture through it; others can leave you requests and get an acknowledgement; a short allowlist of things it does alone, and anything sent as you is drafted into the queue for approval | Queue, AI gateway |
 
 Events, Saved and AI have no full screen yet, so their deep dives start with design work.
 
@@ -77,7 +81,7 @@ We build one module at a time. Each one goes through the same steps, and nothing
 
 This doc stays the map. Each deep dive links back here, and the Modules table gets updated when scope changes.
 
-**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
+**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
 
 ## Suggested build order
 
@@ -89,7 +93,8 @@ Start with the core and Tasks. Tasks is the smallest useful module, and it tests
 4. **Notes.** Editor, `[[wiki links]]`, backlinks, inline tasks. The biggest module, built on a tested core.
 5. **Command palette.** Basic ⌘K jump and create early on; natural-language parsing lands here, once there are three item types to parse into.
 6. **Home.** Mostly views of modules 2–4, so it comes after them.
-7. **Events, Saved, AI assistant.** Each needs design work first. AI goes last because it is most useful once the other modules hold real data.
+7. **Queue, then Slack.** Paused Home for this: the queue first, so Slack has somewhere to land and Home v1 can show "Needs you". Then Slack intake with notifications, the bot for you, the bot for others, and last its autonomous actions, once the "involves me" sorting has proven itself.
+8. **Events, Saved, AI assistant.** Each needs design work first. AI goes last because it is most useful once the other modules hold real data.
 
 The order can bend: Notes could come before Projects if writing matters more to you day to day.
 
@@ -101,7 +106,7 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 | --- | --- | --- |
 | Platform | Desktop app | macOS and Windows. React UI inside a Tauri shell |
 | Data | Server-first | Hosted database behind an API; the desktop app is a client of it |
-| Users | Just you | One account, no sharing or permissions model |
+| Users | Just you | One account. Others reach the hub only through the Slack bot, and may only leave requests and get a reply; they never read your data |
 | Stack | TypeScript + React | TypeScript on both sides: React UI, Node API |
 | Look | Dusk only | Glass panels over a background, always. Time of day stays; backgrounds become swappable scenes within that look |
 | Calendar | Two-way Google Calendar sync | Events needs Google sign-in and a sync job on the server |
@@ -111,7 +116,9 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 
 **Still open**
 
-- [ ] Hosting: where the API and database run.
+- [ ] Hosting: where the API and database run. Now blocks Slack intake, which needs an always-on process (Socket Mode avoids a public URL).
+- [ ] Slack at work: admin approval for an app that reads channels and posts as you, and whether work messages may go to a third-party model through OpenRouter.
+- [ ] Server-side AI cost: sorting Slack messages runs with the app closed, so it uses OpenRouter, not a CLI subscription.
 - [ ] Saved: what it holds. Decide in its deep dive.
 
 **Tauri or Electron**
