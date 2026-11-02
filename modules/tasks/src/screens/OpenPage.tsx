@@ -64,11 +64,24 @@ export function OpenPage() {
   });
   const rows = list.data?.rows ?? [];
 
-  /** Shows the tick at once; the write's refresh brings the server's version. */
-  const setCompleted = useCallback(
-    (id: string, completedAt: string | null) => {
-      // A refetch already on its way would put the old state back.
-      void queryClient.cancelQueries({ queryKey: openListKey(timeZone) });
+  const cachedRow = useCallback(
+    (id: string) =>
+      queryClient
+        .getQueryData<{ rows: TaskRow[] }>(openListKey(timeZone))
+        ?.rows.find((r) => r.id === id),
+    [queryClient, timeZone],
+  );
+
+  /**
+   * Changes a cached row now. A tick (`optimistic`) first cancels a refetch
+   * already on its way, which would put the old state back; a version from a
+   * write's result leaves that write's own refresh running.
+   */
+  const patchRow = useCallback(
+    (id: string, patch: Partial<TaskRow>, optimistic = false) => {
+      if (optimistic) {
+        void queryClient.cancelQueries({ queryKey: openListKey(timeZone) });
+      }
       queryClient.setQueryData<{ rows: TaskRow[] }>(
         openListKey(timeZone),
         (old) =>
@@ -76,7 +89,7 @@ export function OpenPage() {
             ? {
                 ...old,
                 rows: old.rows.map((r) =>
-                  r.id === id ? { ...r, completedAt } : r,
+                  r.id === id ? { ...r, ...patch } : r,
                 ),
               }
             : old,
@@ -88,13 +101,12 @@ export function OpenPage() {
   const complete = useCallback(
     async (id: string, expectedUpdatedAt: string) => {
       const input = { id, expectedUpdatedAt };
-      const res = await write({
+      return write({
         op: taskOps.complete.id,
         summary: taskOps.complete.summary(input),
         verb: "complete the task",
         call: () => tasks.complete.mutate(input),
       });
-      return res?.parentsNowDone ?? [];
     },
     [tasks, write],
   );
@@ -111,21 +123,25 @@ export function OpenPage() {
     [tasks, complete, timeZone],
   );
 
-  const toggle = useCallback(
-    async (row: TaskRow) => {
+  /** Sends one tick or untick, with the version the cache holds by then. */
+  const sendToggle = useCallback(
+    async (fallback: TaskRow, done: boolean) => {
+      const row = cachedRow(fallback.id) ?? fallback;
       const input = { id: row.id, expectedUpdatedAt: row.updatedAt };
-      if (row.completedAt) {
-        setCompleted(row.id, null);
-        await write({
+      if (!done) {
+        const item = await write({
           op: taskOps.reopen.id,
           summary: taskOps.reopen.summary(input),
           verb: "reopen the task",
           call: () => tasks.reopen.mutate(input),
         });
+        if (item) patchRow(row.id, { updatedAt: item.updatedAt });
         return;
       }
-      setCompleted(row.id, new Date().toISOString());
-      for (const parent of await complete(row.id, row.updatedAt)) {
+      const res = await complete(row.id, row.updatedAt);
+      if (!res) return;
+      patchRow(row.id, { updatedAt: res.task.updatedAt });
+      for (const parent of res.parentsNowDone) {
         toast("All subtasks done. Complete the task?", {
           actions: [
             {
@@ -136,7 +152,33 @@ export function OpenPage() {
         });
       }
     },
-    [tasks, write, complete, completeParent, setCompleted],
+    [tasks, write, complete, completeParent, cachedRow, patchRow],
+  );
+
+  /**
+   * Writes for one row run one after another, so a quick tick-then-untick
+   * sends the second with the version the first wrote, not a stale one.
+   */
+  const pending = useRef(new Map<string, Promise<void>>());
+  const toggle = useCallback(
+    (row: TaskRow) => {
+      const current = cachedRow(row.id) ?? row;
+      const done = current.completedAt === null;
+      patchRow(
+        row.id,
+        { completedAt: done ? new Date().toISOString() : null },
+        true,
+      );
+      const before = pending.current.get(row.id) ?? Promise.resolve();
+      const next = before.then(() => sendToggle(row, done));
+      pending.current.set(row.id, next);
+      void next.finally(() => {
+        if (pending.current.get(row.id) === next) {
+          pending.current.delete(row.id);
+        }
+      });
+    },
+    [cachedRow, patchRow, sendToggle],
   );
 
   const groups = groupOpenRows(rows, today, { highOnly });
@@ -145,17 +187,25 @@ export function OpenPage() {
     (r) => !r.completedAt && groupFor(r.day, today) === "overdue",
   );
 
-  const rescheduleAll = () => {
+  const rescheduling = useRef(false);
+  const rescheduleAll = async () => {
+    // A second press while the first is on its way would send stale versions.
+    if (rescheduling.current || overdue.length === 0) return;
+    rescheduling.current = true;
     const input = {
       items: overdue.map((r) => ({ id: r.id, expectedUpdatedAt: r.updatedAt })),
       due: { date: today },
     };
-    void write({
+    const items = await write({
       op: taskOps.rescheduleMany.id,
       summary: taskOps.rescheduleMany.summary(input),
       verb: "reschedule",
       call: () => tasks.rescheduleMany.mutate(input),
     });
+    for (const item of items ?? []) {
+      patchRow(item.id, { updatedAt: item.updatedAt });
+    }
+    rescheduling.current = false;
   };
 
   // N: new task. X: complete the focused row. ↵: open it. Not while typing.
@@ -176,7 +226,7 @@ export function OpenPage() {
       if (!row) return;
       if (key === "x") {
         e.preventDefault();
-        void toggle(row);
+        toggle(row);
       } else if (!el?.closest("a")) {
         // A focused link opens itself.
         e.preventDefault();
@@ -218,7 +268,7 @@ export function OpenPage() {
         tone={g.key === "overdue" ? "danger" : "default"}
         action={
           g.key === "overdue" ? (
-            <Button variant="ghost" onPress={rescheduleAll}>
+            <Button variant="ghost" onPress={() => void rescheduleAll()}>
               Reschedule all
             </Button>
           ) : undefined
@@ -230,7 +280,7 @@ export function OpenPage() {
             row={row}
             today={today}
             timeZone={timeZone}
-            onToggle={(r) => void toggle(r)}
+            onToggle={toggle}
             href={taskHref(row.id)}
           />
         ))}

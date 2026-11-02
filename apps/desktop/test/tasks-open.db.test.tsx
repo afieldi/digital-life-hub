@@ -101,6 +101,51 @@ test("ticking moves it to struck-through and Undo restores", async () => {
   expect(after.completedAt).toBeNull();
 });
 
+test("tick then untick at once ends open, with no conflict", async () => {
+  const { renderApp, client } = await setup();
+  const { result: task } = await client.tasks.create.mutate({
+    title: "Quick change",
+  });
+  renderApp();
+  const box = await screen.findByRole("checkbox", {
+    name: "Complete: Quick change",
+  });
+  fireEvent.click(box);
+  // The tick shows at once; untick before the first write is back.
+  fireEvent.click(
+    await screen.findByRole("checkbox", {
+      name: "Mark not done: Quick change",
+    }),
+  );
+  expect(
+    await screen.findByRole("checkbox", { name: "Complete: Quick change" }),
+  ).not.toBeChecked();
+  await waitFor(() =>
+    expect(screen.getAllByText("Reopen").length).toBeGreaterThan(0),
+  );
+  expect(screen.queryByText("Changed since")).toBeNull();
+  const { task: after } = await client.tasks.get.query({ id: task.id });
+  expect(after.completedAt).toBeNull();
+});
+
+test("X pressed twice ends open, with no conflict", async () => {
+  const { renderApp, client } = await setup();
+  const { result: task } = await client.tasks.create.mutate({
+    title: "Twice",
+  });
+  renderApp();
+  const box = await screen.findByRole("checkbox", { name: "Complete: Twice" });
+  box.focus();
+  fireEvent.keyDown(box, { key: "x" });
+  fireEvent.keyDown(box, { key: "x" });
+  await waitFor(() =>
+    expect(screen.getAllByText("Reopen").length).toBeGreaterThan(0),
+  );
+  expect(screen.queryByText("Changed since")).toBeNull();
+  const { task: after } = await client.tasks.get.query({ id: task.id });
+  expect(after.completedAt).toBeNull();
+});
+
 test('ticking the last subtask offers "All subtasks done. Complete the task?"', async () => {
   const { renderApp, client } = await setup();
   const { result: parent } = await client.tasks.create.mutate({
