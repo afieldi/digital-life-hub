@@ -512,3 +512,31 @@ test("CommandBar onKeyDown hook sees Tab and ArrowDown", async () => {
   expect(keys).toContain("ArrowDown");
   expect(keys).toContain("Tab");
 });
+
+test("CommandBar: keepOpen rows don't close the bar", async () => {
+  const run = vi.fn();
+  const onOpenChange = vi.fn();
+  render(
+    bar(
+      [
+        {
+          id: "actions",
+          label: "Actions",
+          items: [
+            { id: "k", label: "Keep", keepOpen: true, onAction: run },
+            { id: "c", label: "Close", onAction: run },
+          ],
+        },
+      ],
+      onOpenChange,
+    ),
+  );
+  await userEvent.keyboard("{Enter}");
+  expect(run).toHaveBeenCalledOnce();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("option", { name: /Keep/ }));
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(onOpenChange).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("option", { name: /Close/ }));
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+});

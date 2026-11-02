@@ -58,6 +58,7 @@ export function useAskAi({
   navigate,
   hasRows,
   rowsPending,
+  forcedActionId,
 }: {
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -68,6 +69,12 @@ export function useAskAi({
   hasRows: boolean;
   /** Whether the search for the current text has yet to settle. */
   rowsPending: boolean;
+  /**
+   * An action the person already chose (an operation's ⌘K step): it is the
+   * one understood, whatever the text, and alternatives are not offered. An id
+   * with no AI action offers no AI at all.
+   */
+  forcedActionId?: string;
 }): {
   interpretation?: ReactNode;
   result?: ReactNode;
@@ -110,11 +117,21 @@ export function useAskAi({
   const candidates = interp
     ? [{ actionId: interp.actionId, kind: interp.kind }, ...interp.alternatives]
     : [];
-  const candidate =
-    candidates.find((c) => c.actionId === pick?.actionId) ?? candidates[0];
-  const action = candidate
-    ? actions?.find((a) => a.id === candidate.actionId)
+  const forced = forcedActionId
+    ? ALL_ACTIONS.find((a) => a.id === forcedActionId)
     : undefined;
+  const candidate = forced
+    ? (candidates.find((c) => c.actionId === forced.id) ?? {
+        actionId: forced.id,
+        kind: interp?.kind ?? null,
+      })
+    : (candidates.find((c) => c.actionId === pick?.actionId) ?? candidates[0]);
+  // A forced id with no AI action (an operation with `ai: false`) offers no AI.
+  const action = forcedActionId
+    ? forced
+    : candidate
+      ? actions?.find((a) => a.id === candidate.actionId)
+      : undefined;
   const kinds = action ? allowedKinds(action) : [];
   const wanted = pick?.kind ?? candidate?.kind;
   const kind = wanted && kinds.includes(wanted) ? wanted : kinds[0];
@@ -125,7 +142,11 @@ export function useAskAi({
     !!interp && action?.id === interp.actionId && kind === firstKind;
   // The no-match fallback offers no AI: the bar keeps its own rows and keys.
   const showRow =
-    open && query.trim() !== "" && !!interp?.matched && !!action && !!kind;
+    open &&
+    query.trim() !== "" &&
+    (!!forced || !!interp?.matched) &&
+    !!action &&
+    !!kind;
 
   const client = useTRPCClient();
   const bar = useAiRequest(defaultProvider);
@@ -246,7 +267,7 @@ export function useAskAi({
   const rowsWaiting = rowsPending && !showsResult;
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): boolean => {
-    if (!showRow || !action || !kind || !interp) {
+    if (!showRow || !action || !kind) {
       // mod+↵ asks AI: with no request understood yet, it does nothing rather
       // than open the highlighted row.
       if (isModEnter(e) && open && query.trim() !== "") {
@@ -286,6 +307,7 @@ export function useAskAi({
     if (
       (e.key === "ArrowDown" || e.key === "ArrowUp") &&
       !rowsListed &&
+      !forced &&
       candidates.length > 1 &&
       candidate
     ) {
@@ -303,13 +325,15 @@ export function useAskAi({
     if (e.key === "Enter" && (!rowsListed || isModEnter(e))) {
       e.preventDefault();
       // Wait for the guess about the text as it is now.
-      if (interpCurrent && phase !== "working" && phase !== "suggested") {
+      // A forced action needs no guess.
+      const ready = forced || interpCurrent;
+      if (ready && phase !== "working" && phase !== "suggested") {
         runRequest({
           text: query,
           itemId,
           actionId: action.id,
           kind,
-          ...(interpreted ? { interpretedBy: interp.source } : {}),
+          ...(interpreted && interp ? { interpretedBy: interp.source } : {}),
         });
       }
       return true;
@@ -355,11 +379,12 @@ export function useAskAi({
 
   return {
     interpretation:
-      showRow && action && kind && interp ? (
+      showRow && action && kind ? (
         <UnderstoodAs
           action={action}
           kind={kind}
-          confidence={interp.confidence}
+          // A forced action was chosen by the person, not guessed.
+          confidence={forced ? 1 : (interp?.confidence ?? 1)}
           providerName={providerName}
           onKindChange={(k) => {
             bar.discard();
@@ -372,7 +397,7 @@ export function useAskAi({
       <AiFooter
         rowsListed={rowsListed}
         modAsks={rowsListed || rowsWaiting}
-        alternatives={candidates.length > 1}
+        alternatives={!forced && candidates.length > 1}
       />
     ) : undefined,
     onKeyDown,
