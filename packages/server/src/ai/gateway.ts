@@ -173,10 +173,13 @@ export async function prepare(
     schema: z.toJSONSchema(schema) as object,
   };
   if (provider !== "openrouter") {
+    // The Claude CLI validates --json-schema against draft-07 and rejects
+    // zod's draft 2020-12 `$schema` URI; the schema itself is valid in both.
+    const { $schema: _, ...cliSchema } = call.schema as Record<string, unknown>;
     return {
       requestId: row.id,
       status: "run",
-      run: { provider, ...call },
+      run: { provider, ...call, schema: cliSchema },
     };
   }
 

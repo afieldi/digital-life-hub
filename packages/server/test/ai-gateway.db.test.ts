@@ -479,6 +479,8 @@ test("CLI: prepare returns a run and complete finishes it", async () => {
     type: "object",
     properties: { title: { type: "string" } },
   });
+  // The Claude CLI rejects draft 2020-12's `$schema` URI.
+  expect(res.run.schema).not.toHaveProperty("$schema");
   expect(s.fake.calls).toHaveLength(0);
   const pending = await rowOf(s, res.requestId);
   expect(pending.status).toBe("pending");
