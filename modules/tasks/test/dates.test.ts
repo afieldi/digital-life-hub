@@ -108,12 +108,20 @@ test("formatWhen", () => {
   );
 });
 
+test("formatWhen uses 24-hour times", () => {
+  const due = { dateTime: "2026-11-02T14:00:00-08:00", timeZone: LA };
+  expect(formatWhen(due, LA, "2026-11-02")).toEqual({ text: "Today 14:00" });
+  expect(formatWhen(due, "America/New_York", "2026-11-02").origin).toBe(
+    "14:00 PT",
+  );
+});
+
 test("formatWhen shows the time and the origin zone when it differs", () => {
   const today = "2026-11-02";
   const due = { dateTime: "2026-11-02T09:00:00-08:00", timeZone: LA };
-  expect(formatWhen(due, LA, today)).toEqual({ text: "Today 9:00 AM" });
+  expect(formatWhen(due, LA, today)).toEqual({ text: "Today 9:00" });
   expect(formatWhen(due, "America/New_York", today)).toEqual({
-    text: "Today 12:00 PM",
+    text: "Today 12:00",
     origin: "9:00 PT",
   });
 });

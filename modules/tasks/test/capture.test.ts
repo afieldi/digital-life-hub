@@ -109,3 +109,20 @@ test("no date means null", () => {
     spans: [],
   });
 });
+
+test("a priority word inside a date does not bring date text back", () => {
+  const r = parseTaskInput("Call the bank fri p1 9am", ctx);
+  expect(r.title).toBe("Call the bank");
+  expect(r.priority).toBe("high");
+  expect(r.due).toEqual({
+    dateTime: "2026-11-06T09:00:00-08:00",
+    timeZone: LA,
+  });
+});
+
+test("a lone ! before a date", () => {
+  const r = parseTaskInput("Call the bank ! tomorrow", ctx);
+  expect(r.title).toBe("Call the bank");
+  expect(r.priority).toBe("high");
+  expect(r.due).toEqual({ date: "2026-11-03" });
+});

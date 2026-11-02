@@ -112,16 +112,15 @@ function describeDay(day: Day, today: Day): string {
     : dayLabelYear.format(utcNoon(day));
 }
 
-function clock(date: Date, tz: string, withPeriod: boolean): string {
+function clock(date: Date, tz: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    hour12: true,
+    hourCycle: "h23",
     timeZone: tz,
   }).formatToParts(date);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  const time = `${get("hour")}:${get("minute")}`;
-  return withPeriod ? `${time} ${get("dayPeriod")}` : time;
+  return `${Number(get("hour"))}:${get("minute")}`;
 }
 
 /** "PST" and "PDT" read as "PT"; other zones keep Intl's short name. */
@@ -134,9 +133,8 @@ function zoneAbbreviation(date: Date, tz: string): string {
 }
 
 /**
- * What a row shows: the day (and time, in `tz`). When the time was set in another
- * zone, `origin` says what it was there, like "9:00 PT". An origin in the afternoon
- * carries "PM"; mornings omit "AM".
+ * What a row shows: the day and the 24-hour time in `tz`, like "Today 14:00". When
+ * the time was set in another zone, `origin` says what it was there, like "9:00 PT".
  */
 export function formatWhen(
   due: Due,
@@ -146,12 +144,10 @@ export function formatWhen(
   const day = describeDay(dayOfDue(due, tz) as Day, today);
   if ("date" in due) return { text: day };
   const instant = new Date(due.dateTime);
-  const text = `${day} ${clock(instant, tz, true)}`;
+  const text = `${day} ${clock(instant, tz)}`;
   if (!due.timeZone || due.timeZone === tz) return { text };
-  const time = clock(instant, due.timeZone, false);
-  const pm = clock(instant, due.timeZone, true).endsWith("PM");
   return {
     text,
-    origin: `${time}${pm ? " PM" : ""} ${zoneAbbreviation(instant, due.timeZone)}`,
+    origin: `${clock(instant, due.timeZone)} ${zoneAbbreviation(instant, due.timeZone)}`,
   };
 }

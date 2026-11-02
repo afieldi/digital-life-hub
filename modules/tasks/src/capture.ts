@@ -104,8 +104,8 @@ export function parseTaskInput(
   let title = "";
   let at = 0;
   for (const span of spans) {
-    title += text.slice(at, span.start);
-    at = span.end;
+    if (span.start >= at) title += text.slice(at, span.start);
+    at = Math.max(at, span.end);
   }
   title += text.slice(at);
   return {
