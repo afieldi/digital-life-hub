@@ -22,6 +22,21 @@ export const aiCompleteInput = z.object({
 });
 export type AiCompleteInput = z.infer<typeof aiCompleteInput>;
 
+/**
+ * Applies a suggestion, once: one `option`, or for a `multiSelect` action the
+ * ticked `options` (indexes, at least one).
+ */
+export const aiApplyInput = z
+  .object({
+    requestId: z.uuid(),
+    option: z.number().int().min(0).optional(),
+    options: z.array(z.number().int().min(0)).min(1).optional(),
+  })
+  .refine((i) => (i.option === undefined) !== (i.options === undefined), {
+    message: "Give either option or options",
+  });
+export type AiApplyInput = z.infer<typeof aiApplyInput>;
+
 export const aiResult = z.discriminatedUnion("status", [
   z.object({
     requestId: z.string(),
@@ -35,6 +50,8 @@ export const aiResult = z.discriminatedUnion("status", [
     options: z.array(
       z.object({ label: z.string(), reason: z.string().optional() }),
     ),
+    /** A checklist: apply any of the options together with `options`. */
+    multiSelect: z.boolean().optional(),
   }),
   z.object({
     requestId: z.string(),

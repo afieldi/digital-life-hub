@@ -155,10 +155,40 @@ export async function runApply(
   }
 }
 
-/** Applies one of a suggestion's options, once, within 30 minutes. */
+/**
+ * The chosen option, or for `options` (a `multiSelect` action only) the
+ * chosen options as one array, deduped in the order given.
+ */
+function chosenOut(
+  runner: AiRunner,
+  options: Record<string, unknown>[],
+  input: { option?: number; options?: number[] },
+): unknown {
+  const at = (i: number) => {
+    const chosen = Number.isInteger(i) ? options[i] : undefined;
+    if (!chosen) throw badRequest(`no option ${i}`);
+    return chosen;
+  };
+  if (input.options === undefined) {
+    if (input.option === undefined) throw badRequest("no option chosen");
+    return at(input.option);
+  }
+  if (!runner.action.multiSelect) {
+    throw badRequest(
+      `AI action "${runner.action.id}" applies one option at a time`,
+    );
+  }
+  if (input.options.length === 0) throw badRequest("no option chosen");
+  return [...new Set(input.options)].map(at);
+}
+
+/**
+ * Applies a suggestion, once, within 30 minutes: one option, or several
+ * together for a `multiSelect` action.
+ */
 export async function apply(
   deps: CoreDeps,
-  input: { requestId: string; option: number },
+  input: { requestId: string; option?: number; options?: number[] },
 ): Promise<AiResult & { status: "applied" }> {
   const row = await loadRow(deps, input.requestId);
   if (row.status !== "suggested") throw new RequestUsedError();
@@ -175,10 +205,7 @@ export async function apply(
   }
   const runner = runnerFor(deps, row.actionId);
   const options = suggestShape.safeParse(row.output).data?.options ?? [];
-  const chosen = options[input.option];
-  if (!Number.isInteger(input.option) || !chosen) {
-    throw badRequest(`no option ${input.option}`);
-  }
+  const chosen = chosenOut(runner, options, input);
   const summary = await runApply(deps, runner, row, "suggested", chosen, {});
   return { requestId: row.id, status: "applied", summary };
 }

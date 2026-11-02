@@ -1,4 +1,5 @@
 import {
+  aiApplyInput,
   aiCancelInput,
   aiCompleteInput,
   aiLogEntry,
@@ -73,7 +74,7 @@ export const aiRouter = router({
 
   // tRPC reserves the name `apply` (it collides with Function.prototype.apply).
   applyOption: protectedProcedure
-    .input(requestId.extend({ option: z.number().int().min(0) }))
+    .input(aiApplyInput)
     .output(summary)
     .mutation(async ({ ctx, input }) => {
       const res = await apply(ctx.deps, input);

@@ -645,3 +645,75 @@ test("mod+↵ before the request is understood does nothing", async () => {
   expect(fake.calls).toHaveLength(0);
   expect((await client.ai.log.list.query({})).entries).toHaveLength(0);
 });
+
+test("Break down suggests a checklist; untick one and Add selected creates the rest", async () => {
+  const t = await freshApiDb();
+  closers.push(t.close);
+  const app = await signedInApp("/", { db: t.db });
+  const client = app.api.client(app.token);
+  const { result: trip } = await client.tasks.create.mutate({
+    title: "Plan the trip",
+  });
+  app.router.history.push(`/tasks/${trip.id}`);
+  app.renderApp();
+  await screen.findByRole("complementary", { name: "Plan the trip" });
+  app.api.ai.queue(
+    JSON.stringify({
+      options: [
+        { label: "Book hotel" },
+        { label: "Pack bags" },
+        { label: "Get euros" },
+      ],
+    }),
+  );
+  await ask("suggest subtasks for this");
+  expect(await screen.findByText("Break down")).toBeInTheDocument();
+  await searched();
+  await userEvent.keyboard("{Enter}");
+  const hotel = await screen.findByRole("checkbox", { name: "Book hotel" });
+  // All ticked to start; key 2 unticks the second.
+  expect(screen.getAllByRole("checkbox", { checked: true })).toHaveLength(3);
+  await userEvent.keyboard("2");
+  expect(screen.getByRole("checkbox", { name: "Pack bags" })).not.toBeChecked();
+  await userEvent.click(hotel);
+  await userEvent.click(hotel);
+  expect(hotel).toBeChecked();
+  await userEvent.click(screen.getByRole("button", { name: "Add selected" }));
+  expect(await screen.findByText("Added 2 subtasks")).toBeInTheDocument();
+  const subtasks = async () =>
+    (await client.tasks.get.query({ id: trip.id })).subtasks
+      .map((s) => s.title)
+      .sort();
+  expect(await subtasks()).toEqual(["Book hotel", "Get euros"]);
+  await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(await screen.findByText("Undid break down")).toBeInTheDocument();
+  expect(await subtasks()).toEqual([]);
+});
+
+test("↵ on a Break down checklist adds every ticked subtask", async () => {
+  const t = await freshApiDb();
+  closers.push(t.close);
+  const app = await signedInApp("/", { db: t.db });
+  const client = app.api.client(app.token);
+  const { result: trip } = await client.tasks.create.mutate({
+    title: "Plan the trip",
+  });
+  app.router.history.push(`/tasks/${trip.id}`);
+  app.renderApp();
+  await screen.findByRole("complementary", { name: "Plan the trip" });
+  app.api.ai.queue(
+    JSON.stringify({
+      options: [{ label: "One" }, { label: "Two" }, { label: "Three" }],
+    }),
+  );
+  await ask("suggest subtasks for this");
+  await screen.findByText("Break down");
+  await searched();
+  await userEvent.keyboard("{Enter}");
+  await screen.findByRole("checkbox", { name: "Three" });
+  await userEvent.keyboard("1");
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByText("Added 2 subtasks")).toBeInTheDocument();
+  const { subtasks } = await client.tasks.get.query({ id: trip.id });
+  expect(subtasks.map((s) => s.title).sort()).toEqual(["Three", "Two"]);
+});

@@ -11,7 +11,7 @@ import {
   useState,
 } from "react";
 import { useTRPC, useTRPCClient } from "../api/client";
-import { AiResult } from "./AiResult";
+import { AiResult, CHECKLIST_KEYS } from "./AiResult";
 import { ALL_ACTIONS } from "./actions";
 import { errorActions } from "./errorActions";
 import { PROVIDER_NAMES } from "./providers";
@@ -265,8 +265,8 @@ export function useAskAi({
   retryRef.current = runRequest;
 
   const pickOption = useCallback(
-    async (option: number) => {
-      const done = await bar.apply(option);
+    async (choice: number | number[]) => {
+      const done = await bar.apply(choice);
       if (done.result?.status === "applied") {
         closeBar();
         showApplied(done.result.requestId, done.result.summary, done.request);
@@ -274,6 +274,32 @@ export function useAskAi({
     },
     [bar, closeBar, showApplied],
   );
+
+  // A checklist starts all ticked; this holds what was unticked, per request.
+  const [unticked, setUnticked] = useState<{
+    requestId: string;
+    off: ReadonlySet<number>;
+  } | null>(null);
+  const shown = bar.state.result;
+  const checklist =
+    shown?.status === "suggested" && shown.multiSelect ? shown : null;
+  const off =
+    checklist && unticked?.requestId === checklist.requestId
+      ? unticked.off
+      : null;
+  const ticked = checklist
+    ? checklist.options.map((_, i) => i).filter((i) => !off?.has(i))
+    : [];
+  const toggle = (i: number) => {
+    if (!checklist) return;
+    const next = new Set(off);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    setUnticked({ requestId: checklist.requestId, off: next });
+  };
+  const addTicked = () => {
+    if (ticked.length > 0) void pickOption(ticked);
+  };
 
   const { phase } = bar.state;
   // A result replaces the rows, and the bar then leaves ↵ and ↑↓ alone.
@@ -293,6 +319,24 @@ export function useAskAi({
     }
     const { result } = bar.state;
     if (phase === "suggested" && result?.status === "suggested") {
+      if (result.multiSelect) {
+        const n = Number(e.key);
+        if (
+          Number.isInteger(n) &&
+          n >= 1 &&
+          n <= CHECKLIST_KEYS &&
+          n <= result.options.length
+        ) {
+          e.preventDefault();
+          toggle(n - 1);
+          return true;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addTicked();
+          return true;
+        }
+      }
       const n = Number(e.key);
       if (
         Number.isInteger(n) &&
@@ -386,6 +430,9 @@ export function useAskAi({
           : []
       }
       onUse={(i) => void pickOption(i)}
+      ticked={ticked}
+      onToggle={toggle}
+      onAddTicked={addTicked}
       onNone={closeBar}
       onCancel={bar.cancel}
       onClose={closeBar}

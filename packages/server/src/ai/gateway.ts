@@ -305,7 +305,13 @@ async function finish(
     }
     if (kind === "suggest") {
       const { options } = suggestShape.parse(out);
-      return suggest(deps, row, await resolveAll(deps, runner, options), done);
+      return suggest(
+        deps,
+        row,
+        await resolveAll(deps, runner, options),
+        done,
+        runner.action.multiSelect,
+      );
     }
     const resolved = runner.resolve ? await runner.resolve(deps, out) : { out };
     if ("options" in resolved) {
@@ -357,6 +363,7 @@ async function suggest(
   row: RequestRow,
   options: Record<string, unknown>[],
   done: Partial<RequestRow>,
+  multiSelect?: boolean,
 ): Promise<AiResult> {
   await claim(deps.db, row.id, "pending", {
     ...done,
@@ -370,5 +377,6 @@ async function suggest(
       label: optionLabel(o),
       ...(typeof o.reason === "string" ? { reason: o.reason } : {}),
     })),
+    ...(multiSelect ? { multiSelect: true } : {}),
   };
 }

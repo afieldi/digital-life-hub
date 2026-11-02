@@ -11,6 +11,7 @@ export const tasksAiActions = {
     kinds: ["suggest", "do"],
     effects: ["createItems", "addLinks"],
     words: ["break down", "break", "split", "steps", "subtasks", "checklist"],
+    multiSelect: true,
   }),
   rewriteNotes: describeAiAction({
     id: "tasks.rewriteNotes",

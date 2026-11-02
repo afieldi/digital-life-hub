@@ -1,4 +1,9 @@
-import { type AiPrepareInput, describeAiAction, itemTitle } from "@dlh/core";
+import {
+  type AiPrepareInput,
+  aiApplyInput,
+  describeAiAction,
+  itemTitle,
+} from "@dlh/core";
 import { aiRequests, aiSettings } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -184,6 +189,35 @@ test("apply with an option out of range is a bad request", async () => {
   expect(e.code).toBe("BAD_REQUEST");
   expect((await rowOf(s, res.requestId)).status).toBe("suggested");
   await s.close();
+});
+
+test("several options at once are only for a multiSelect action", async () => {
+  const s = await setup();
+  s.fake.queue(SUGGEST);
+  const res = await prepare(s.deps, input(s.item.id, "retitle", "suggest"));
+  expect(res).not.toHaveProperty("multiSelect");
+  const e = await caught(
+    apply(s.deps, { requestId: res.requestId, options: [0, 1] }),
+  );
+  expect(e.code).toBe("BAD_REQUEST");
+  expect((await rowOf(s, res.requestId)).status).toBe("suggested");
+  expect(await titleOf(s)).toBe("Old");
+  await s.close();
+});
+
+test("applyOption takes either option or options", () => {
+  const requestId = "01a19dab-01b0-7a77-8e92-851a6b8a4296";
+  expect(aiApplyInput.safeParse({ requestId, option: 0 }).success).toBe(true);
+  expect(aiApplyInput.safeParse({ requestId, options: [0, 2] }).success).toBe(
+    true,
+  );
+  expect(aiApplyInput.safeParse({ requestId }).success).toBe(false);
+  expect(
+    aiApplyInput.safeParse({ requestId, option: 0, options: [1] }).success,
+  ).toBe(false);
+  expect(aiApplyInput.safeParse({ requestId, options: [] }).success).toBe(
+    false,
+  );
 });
 
 test("discard clears the options; apply afterwards conflicts", async () => {

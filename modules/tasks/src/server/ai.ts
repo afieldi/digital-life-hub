@@ -53,7 +53,7 @@ Break the task into 3 to 7 concrete subtasks, each a short title that starts wit
       })
       .strict(),
   },
-  /** Do creates every subtask; a ticked suggestion creates its own. */
+  /** Do creates every subtask; a suggestion creates the ticked ones, in one go. */
   async apply(_w, out, ctx, tools) {
     const { mutate } = needTools(tools);
     const parentId = onScreen(ctx);
@@ -72,7 +72,9 @@ Break the task into 3 to 7 concrete subtasks, each a short title that starts wit
   },
 });
 
+/** Do's `subtasks`, the ticked options of a suggestion, or one option. */
 function titlesOf(out: unknown): string[] {
+  if (Array.isArray(out)) return out.flatMap(titlesOf);
   const o = out as { subtasks?: string[]; label?: string };
   return o.subtasks ?? (o.label ? [o.label] : []);
 }

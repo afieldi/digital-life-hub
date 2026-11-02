@@ -226,9 +226,12 @@ export function useAiRequest(defaultProvider: AiProviderId | null) {
     [client, defaultProvider, setState],
   );
 
-  /** Applies suggested option `option` (0-based). */
+  /**
+   * Applies suggested option `choice` (0-based), or for a multiSelect
+   * suggestion the ticked options together.
+   */
   const apply = useCallback(
-    async (option: number): Promise<AiUiState> => {
+    async (choice: number | number[]): Promise<AiUiState> => {
       const s = stateRef.current;
       if (s.result?.status !== "suggested") return s;
       const { requestId } = s.result;
@@ -237,10 +240,11 @@ export function useAiRequest(defaultProvider: AiProviderId | null) {
       setState({ ...s, phase: "working" });
       let next: AiUiState;
       try {
-        const { summary } = await client.ai.applyOption.mutate({
-          requestId,
-          option,
-        });
+        const { summary } = await client.ai.applyOption.mutate(
+          Array.isArray(choice)
+            ? { requestId, options: choice }
+            : { requestId, option: choice },
+        );
         next = {
           phase: "applied",
           provider: s.provider,

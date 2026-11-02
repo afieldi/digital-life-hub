@@ -1,4 +1,4 @@
-import { Button, Kbd, toast } from "@dlh/ui";
+import { Button, Checkbox, Kbd, toast } from "@dlh/ui";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "react-aria-components";
 import { useTRPC } from "../api/client";
@@ -6,6 +6,9 @@ import { registry } from "../modules";
 import { ListResult } from "../operations/ListResult";
 import type { AiAction } from "./errorActions";
 import type { AiUiState } from "./useAiRequest";
+
+/** Number keys toggle a checklist's first options. */
+export const CHECKLIST_KEYS = 7;
 
 const linkClass =
   "inline-flex min-h-11 items-center rounded-10 border border-white/14 bg-white/8 px-3 text-xs text-ink-secondary hover:brightness-125";
@@ -48,6 +51,9 @@ export function AiResult({
   providerName,
   errorActions,
   onUse,
+  ticked,
+  onToggle,
+  onAddTicked,
   onNone,
   onCancel,
   onClose,
@@ -57,6 +63,11 @@ export function AiResult({
   providerName: string;
   errorActions: AiAction[];
   onUse: (option: number) => void;
+  /** A multiSelect suggestion's ticked options (0-based). */
+  ticked: readonly number[];
+  onToggle: (option: number) => void;
+  /** Applies the ticked options together. */
+  onAddTicked: () => void;
   onNone: () => void;
   onCancel: () => void;
   /** Called when a link leaves the bar. */
@@ -121,6 +132,42 @@ export function AiResult({
         itemTypes={registry.itemTypes}
         onOpen={onOpen}
       />
+    );
+  }
+  if (result?.status === "suggested" && result.multiSelect) {
+    return (
+      <div className="flex flex-col gap-1">
+        <ul className="flex flex-col">
+          {result.options.map((o, i) => (
+            <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: options are fixed per result
+              key={i}
+              className="flex items-center gap-3 px-1"
+            >
+              <Checkbox
+                isSelected={ticked.includes(i)}
+                onChange={() => onToggle(i)}
+              >
+                <span className="font-semibold">{o.label}</span>
+              </Checkbox>
+              <span className="flex-1" />
+              {i < CHECKLIST_KEYS ? <Kbd keys={[String(i + 1)]} /> : null}
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-2">
+          <Button
+            variant="glass"
+            isDisabled={ticked.length === 0}
+            onPress={onAddTicked}
+          >
+            Add selected
+          </Button>
+          <Button variant="ghost" onPress={onNone}>
+            None of these
+          </Button>
+        </div>
+      </div>
     );
   }
   if (result?.status === "suggested") {

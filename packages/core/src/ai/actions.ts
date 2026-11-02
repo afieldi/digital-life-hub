@@ -8,6 +8,8 @@ export type AiActionDescription = {
   kinds: AiKind[];
   effects: AiEffect[];
   words?: string[];
+  /** Suggest offers a checklist: several options can be applied together, once. */
+  multiSelect?: boolean;
 };
 
 export const ACTION_ID = /^([a-z][a-z0-9]*\.)?[a-z][a-zA-Z0-9]*$/;

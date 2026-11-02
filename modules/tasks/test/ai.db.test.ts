@@ -143,9 +143,10 @@ test("breakDown suggest creates the ticked ones", async () => {
     actionId: "tasks.breakDown",
     kind: "suggest",
   });
-  // All of them are offered: a checklist, not the usual three.
+  // All of them are offered as a checklist, not the usual three.
   expect(res).toMatchObject({
     status: "suggested",
+    multiSelect: true,
     options: [
       { label: "Book hotel" },
       { label: "Pack bags" },
@@ -153,8 +154,47 @@ test("breakDown suggest creates the ticked ones", async () => {
       { label: "Renew passport" },
     ],
   });
-  await apply(s.deps, { requestId: res.requestId, option: 3 });
-  expect(await liveSubtasks(s.db, trip.id)).toEqual(["Renew passport"]);
+  const applied = await apply(s.deps, {
+    requestId: res.requestId,
+    options: [0, 2, 0],
+  });
+  expect(applied.summary).toBe("Added 2 subtasks");
+  expect(await liveSubtasks(s.db, trip.id)).toEqual([
+    "Book hotel",
+    "Get euros",
+  ]);
+  // Applied once: the rest can't be added later from the same suggestion.
+  await expect(
+    apply(s.deps, { requestId: res.requestId, options: [1] }),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+
+  s.tick();
+  await undo(s.deps, { requestId: res.requestId });
+  expect(await liveSubtasks(s.db, trip.id)).toEqual([]);
+  await s.close();
+});
+
+test("breakDown suggest refuses an option index it didn't offer", async () => {
+  const s = await setup();
+  const trip = await s.mk({ title: "Plan the trip" });
+  s.deps.fakeProvider.queue(
+    JSON.stringify({
+      options: [{ label: "A" }, { label: "B" }, { label: "C" }],
+    }),
+  );
+  const res = await prepare(s.deps, {
+    text: "suggest some subtasks",
+    itemId: trip.id,
+    actionId: "tasks.breakDown",
+    kind: "suggest",
+  });
+  await expect(
+    apply(s.deps, { requestId: res.requestId, options: [0, 5] }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  expect(await liveSubtasks(s.db, trip.id)).toEqual([]);
+  // Still suggested: a valid pick works after a refused one.
+  await apply(s.deps, { requestId: res.requestId, options: [1] });
+  expect(await liveSubtasks(s.db, trip.id)).toEqual(["B"]);
   await s.close();
 });
 
@@ -223,6 +263,11 @@ test("rewriteNotes do and undo", async () => {
     status: "suggested",
     options: [{ label: "Shorter" }, { label: "Clearer" }],
   });
+  expect(sug).not.toHaveProperty("multiSelect");
+  // Two versions of the notes can't both apply: one option at a time.
+  await expect(
+    apply(s.deps, { requestId: sug.requestId, options: [0, 1] }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   await apply(s.deps, { requestId: sug.requestId, option: 1 });
   expect(await notesOf(s.db, task.id)).toBe("Ask the bank about the fee.");
   await s.close();
