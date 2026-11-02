@@ -25,7 +25,10 @@ export type FieldSpec = {
   name: string;
   label: string;
   kind: "text" | "longText" | "choice" | "switch" | "due" | "item";
+  /** The key may be left out (`.optional()`, `.nullish()` or `.default()`). */
   optional: boolean;
+  /** `null` is a value: clearing the field submits `null` rather than omitting it. */
+  nullable: boolean;
   options?: string[];
   types?: string[];
 };
@@ -44,13 +47,25 @@ export function formFields(
     .map(([name, field]) => fieldSpec(name, field as z.ZodType));
 }
 
+/** Wrappers a form field may have around its kind, in any order. */
+const WRAPPERS = new Set(["optional", "nullable", "default"]);
+
 function fieldSpec(name: string, outer: z.ZodType): FieldSpec {
   // Read kinds from `def.type`: string formats such as `z.uuid()` have type
   // "string" but are not all `instanceof z.ZodString`.
-  const optional = outer.def.type === "optional";
-  const inner = optional ? (outer as z.ZodOptional<z.ZodType>).unwrap() : outer;
-  const label = outer.description ?? inner.description ?? name;
-  const base = { name, label, optional };
+  let inner = outer;
+  let optional = false;
+  let nullable = false;
+  let label = outer.description;
+  while (WRAPPERS.has(inner.def.type)) {
+    if (inner.def.type === "nullable") nullable = true;
+    else optional = true;
+    // Optional, nullable and default all keep the wrapped schema in
+    // `def.innerType`; the cast names that shared shape.
+    inner = (inner as z.ZodOptional<z.ZodType>).def.innerType;
+    label ??= inner.description;
+  }
+  const base = { name, label: label ?? name, optional, nullable };
   const meta = (inner.meta() ?? {}) as FieldMeta;
 
   if (meta.dlhField === "item") {

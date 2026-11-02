@@ -53,27 +53,87 @@ describe("formFields", () => {
       ref: z.uuid(),
     });
     expect(formFields(schema)).toEqual([
-      { name: "title", label: "Title", kind: "text", optional: false },
+      {
+        name: "title",
+        label: "Title",
+        kind: "text",
+        optional: false,
+        nullable: false,
+      },
       {
         name: "priority",
         label: "Priority",
         kind: "choice",
         optional: false,
+        nullable: false,
         options: ["medium", "high"],
       },
-      { name: "done", label: "done", kind: "switch", optional: false },
-      { name: "due", label: "Due", kind: "due", optional: true },
+      {
+        name: "done",
+        label: "done",
+        kind: "switch",
+        optional: false,
+        nullable: false,
+      },
+      {
+        name: "due",
+        label: "Due",
+        kind: "due",
+        optional: true,
+        nullable: false,
+      },
       {
         name: "parentId",
         label: "parentId",
         kind: "item",
         optional: true,
+        nullable: false,
         types: ["task"],
       },
-      { name: "notes", label: "Notes", kind: "longText", optional: true },
-      { name: "ref", label: "ref", kind: "text", optional: false },
+      {
+        name: "notes",
+        label: "Notes",
+        kind: "longText",
+        optional: true,
+        nullable: false,
+      },
+      {
+        name: "ref",
+        label: "ref",
+        kind: "text",
+        optional: false,
+        nullable: false,
+      },
     ]);
   });
+  test("nullable fields are optional and nullable, in either order", () => {
+    const schema = z.object({
+      a: fields.due().nullable().optional().describe("Due"),
+      b: fields.due().optional().nullable(),
+      c: fields.due().nullish(),
+      d: z.enum(["medium", "high"]).default("medium"),
+    });
+    const due = { kind: "due", optional: true, nullable: true };
+    expect(formFields(schema)).toEqual([
+      { name: "a", label: "Due", ...due },
+      { name: "b", label: "b", ...due },
+      { name: "c", label: "c", ...due },
+      {
+        name: "d",
+        label: "d",
+        kind: "choice",
+        optional: true,
+        nullable: false,
+        options: ["medium", "high"],
+      },
+    ]);
+  });
+  test("a label set on an inner layer is kept", () =>
+    expect(
+      formFields(
+        z.object({ due: fields.due().describe("Due").nullable().optional() }),
+      )[0]?.label,
+    ).toBe("Due"));
   test("omits the given keys", () =>
     expect(
       formFields(
