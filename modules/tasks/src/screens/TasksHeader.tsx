@@ -2,7 +2,12 @@ import { Breadcrumb, PageHeader, ViewTabs } from "@dlh/ui";
 import { useEffect } from "react";
 import { todayIn, weekStartOf } from "../dates";
 import { deviceTimeZone } from "./api";
-import { rememberList, type TaskListPath } from "./lastList";
+import {
+  forgetList,
+  type ListSearch,
+  rememberList,
+  type TaskListPath,
+} from "./lastList";
 import { comingUpCount, openCount, openStatus } from "./openView";
 import { useOpenList, useUpcomingList, useWeekStats } from "./queries";
 
@@ -16,13 +21,21 @@ const VIEWS: { path: TaskListPath; label: string }[] = [
  * The top of every Tasks list: breadcrumb, "Tasks" with a status line, and
  * the Open · N / Upcoming · N / Done tabs.
  */
-export function TasksHeader({ current }: { current: TaskListPath }) {
+export function TasksHeader({
+  current,
+  search = {},
+}: {
+  current: TaskListPath;
+  /** The list's view state, remembered for the Detail panel. */
+  search?: ListSearch;
+}) {
+  const searchText = JSON.stringify(search);
   useEffect(() => {
-    rememberList(current);
+    rememberList({ path: current, search: JSON.parse(searchText) });
     // Gone from the Tasks lists (not just into Detail, which reads this while
     // rendering, first): a task opened from elsewhere shows over Open.
-    return () => rememberList("/tasks");
-  }, [current]);
+    return forgetList;
+  }, [current, searchText]);
   const timeZone = deviceTimeZone();
   const today = todayIn(new Date(), timeZone);
   const open = useOpenList();

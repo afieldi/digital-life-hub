@@ -55,15 +55,15 @@ export function groupFor(day: Day | null, today: Day): DueGroup {
 }
 
 /**
- * The same due on another day. A day-only due just changes day. A timed due
- * keeps its wall-clock time in the zone it was set in (or `tz` when it has none),
- * so the offset is re-read for the new day.
+ * The same due on another day, as `tz` sees days: a day-only due just changes
+ * day; a timed due keeps the wall-clock time it shows in `tz` (the zone the
+ * days are read in, e.g. the device's), re-reading the offset for the new day,
+ * so it lands on `day` in `tz`. The zone it was set in is kept as it was.
  */
 export function moveToDay(due: Due, day: Day, tz: string): Due {
   if ("date" in due) return { date: day };
-  const zone = due.timeZone ?? tz;
   const target = parseDate(day);
-  const at = parseAbsolute(due.dateTime, zone);
+  const at = parseAbsolute(due.dateTime, tz);
   const moved = toZoned(
     new CalendarDateTime(
       target.year,
@@ -74,7 +74,7 @@ export function moveToDay(due: Due, day: Day, tz: string): Due {
       at.second,
       at.millisecond,
     ),
-    zone,
+    tz,
   );
   const dateTime = moved.toString().replace(/\[.*\]$/, "");
   return due.timeZone ? { dateTime, timeZone: due.timeZone } : { dateTime };

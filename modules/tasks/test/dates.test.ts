@@ -98,6 +98,22 @@ test("moveToDay keeps the local time", () => {
   expect(formatWhen(moved, LA, "2026-11-05").text).toBe("Today 9:00");
 });
 
+test("moveToDay keeps the time it shows in the viewing zone, and the zone it was set in", () => {
+  // 9:00 in Tokyo on Nov 5 is 16:00 on Nov 4 in Los Angeles.
+  const due = { dateTime: "2026-11-05T09:00:00+09:00", timeZone: "Asia/Tokyo" };
+  expect(dayOfDue(due, LA)).toBe("2026-11-04");
+  const moved = moveToDay(due, "2026-11-06", LA);
+  expect(moved).toEqual({
+    dateTime: "2026-11-06T16:00:00-08:00",
+    timeZone: "Asia/Tokyo",
+  });
+  expect(dayOfDue(moved, LA)).toBe("2026-11-06");
+  expect(formatWhen(moved, LA, "2026-11-06")).toEqual({
+    text: "Today 16:00",
+    origin: "9:00 GMT+9",
+  });
+});
+
 test("moveToDay without a stored zone uses the given zone", () => {
   expect(
     moveToDay({ dateTime: "2026-11-02T09:00:00-08:00" }, "2026-11-03", LA),

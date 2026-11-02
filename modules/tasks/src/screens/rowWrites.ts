@@ -52,6 +52,24 @@ function versionIn(result: unknown): string | undefined {
 }
 
 /**
+ * Runs `run` for task `id` behind that task's other writes, with the newest
+ * version we know of (the cache's `seen`, or a later one our writes got back),
+ * and remembers the version its result carries.
+ */
+export function queueVersioned<T>(
+  id: string,
+  seen: string,
+  run: (expectedUpdatedAt: string) => Promise<T>,
+): Promise<T> {
+  return enqueue(id, async () => {
+    const result = await run(freshest(id, seen));
+    const version = versionIn(result);
+    if (version) noteVersion(id, version);
+    return result;
+  });
+}
+
+/**
  * A versioned write to one task: queued behind that task's other writes, sent
  * with the newest version we know of, through `useTaskWrite` (toast, Undo,
  * refresh). Resolves to the result, or null when it failed.
@@ -64,12 +82,7 @@ export function useVersionedWrite() {
       seen: string,
       make: (expectedUpdatedAt: string) => TaskWrite<T>,
     ): Promise<T | null> =>
-      enqueue(id, async () => {
-        const result = await write(make(freshest(id, seen)));
-        const version = versionIn(result);
-        if (version) noteVersion(id, version);
-        return result;
-      }),
+      queueVersioned(id, seen, (version) => write(make(version))),
     [write],
   );
 }

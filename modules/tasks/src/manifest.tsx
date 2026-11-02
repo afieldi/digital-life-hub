@@ -3,6 +3,7 @@ import { createRoute } from "@tanstack/react-router";
 import { taskOps } from "./operations";
 import { DetailRoute } from "./screens/DetailRoute";
 import { DonePage } from "./screens/DonePage";
+import { parseListSearch } from "./screens/lastList";
 import { OpenPage } from "./screens/OpenPage";
 import { UpcomingPage } from "./screens/UpcomingPage";
 
@@ -26,16 +27,19 @@ export default defineModule({
     createRoute({
       getParentRoute: () => parent,
       path: "/tasks",
+      validateSearch: parseListSearch,
       component: OpenPage,
     }),
     createRoute({
       getParentRoute: () => parent,
       path: "/tasks/upcoming",
+      validateSearch: parseListSearch,
       component: UpcomingPage,
     }),
     createRoute({
       getParentRoute: () => parent,
       path: "/tasks/done",
+      validateSearch: parseListSearch,
       component: DonePage,
     }),
     createRoute({

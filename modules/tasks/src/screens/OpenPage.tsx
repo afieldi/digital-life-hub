@@ -11,10 +11,11 @@ import {
 } from "@dlh/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { CircleAlert, ListChecks } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { groupFor, todayIn } from "../dates";
 import { taskOps } from "../operations";
 import { deviceTimeZone, taskHref, useTasksApi, useTaskWrite } from "./api";
+import { type ListSearch, useListSearch } from "./lastList";
 import { groupOpenRows, nextUp, todayProgress } from "./openView";
 import { QuickAdd } from "./QuickAdd";
 import { taskKeys, useOpenList } from "./queries";
@@ -35,13 +36,17 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /** The Open screen (`/tasks`): quick add, tasks grouped by when, a side column. */
-export function OpenPage() {
+export function OpenPage({ search: given }: { search?: ListSearch }) {
+  const search = useListSearch(given);
   const tasks = useTasksApi();
   const write = useTaskWrite();
   const navigate = useNavigate();
   const timeZone = deviceTimeZone();
   const today = todayIn(new Date(), timeZone);
-  const [highOnly, setHighOnly] = useState(false);
+  // High only lives in the URL (`?high=true`), so it survives a remount.
+  const highOnly = search.high === true;
+  const setHighOnly = (on: boolean) =>
+    void navigate({ to: "/tasks", search: on ? { high: true } : {} });
   const quickAdd = useRef<HTMLInputElement>(null);
 
   const list = useOpenList();
@@ -159,7 +164,7 @@ export function OpenPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-6 pt-8 pb-[150px]">
-      <TasksHeader current="/tasks" />
+      <TasksHeader current="/tasks" search={search} />
       <div className="flex flex-wrap items-start gap-6">
         <section
           aria-label="Open tasks"

@@ -29,7 +29,12 @@ import {
 } from "./DetailSections";
 import { editedLine } from "./detailView";
 import { taskKeys } from "./queries";
-import { useRowCache, useTaskToggle, useVersionedWrite } from "./rowWrites";
+import {
+  queueVersioned,
+  useRowCache,
+  useTaskToggle,
+  useVersionedWrite,
+} from "./rowWrites";
 import { useTaskEditor } from "./useTaskEditor";
 
 const PRIORITIES: { id: Priority; label: string }[] = [
@@ -65,7 +70,7 @@ export function TaskDetail({
   });
   const cache = useRowCache(key);
   const { toggle } = useTaskToggle(cache);
-  const { draft, edit } = useTaskEditor(id, cache);
+  const { draft, edit } = useTaskEditor(id, cache, detail.refetch);
   const [addingParent, setAddingParent] = useState(false);
   const parentSearch = useRef<HTMLDivElement>(null);
 
@@ -205,10 +210,12 @@ function TaskMenu({
     const refresh = () =>
       queryClient.invalidateQueries({ queryKey: TASKS_KEY });
     try {
-      const deleted = await core.items.delete.mutate({
-        id: task.id,
-        expectedUpdatedAt: task.updatedAt,
-      });
+      const deleted = await queueVersioned(
+        task.id,
+        task.updatedAt,
+        (expectedUpdatedAt) =>
+          core.items.delete.mutate({ id: task.id, expectedUpdatedAt }),
+      );
       onDeleted();
       void refresh();
       toast(`Deleted ${task.title}`, {

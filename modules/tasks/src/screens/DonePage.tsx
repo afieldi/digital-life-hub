@@ -18,6 +18,7 @@ import { todayIn, weekStartOf } from "../dates";
 import type { TaskRow } from "../schema";
 import { deviceTimeZone, taskHref, useTasksApi } from "./api";
 import { dayBars, doneTime, groupDone } from "./doneView";
+import type { ListSearch } from "./lastList";
 import { taskKeys, useOpenList, useWeekStats } from "./queries";
 import { useRowCache, useTaskToggle } from "./rowWrites";
 import { TasksHeader } from "./TasksHeader";
@@ -27,7 +28,7 @@ import { TasksHeader } from "./TasksHeader";
  * tasks by the day they were completed, each with Undo, a page at a time; and
  * this week's completions beside them.
  */
-export function DonePage() {
+export function DonePage(_: { search?: ListSearch }) {
   const tasks = useTasksApi();
   const timeZone = deviceTimeZone();
   const today = todayIn(new Date(), timeZone);

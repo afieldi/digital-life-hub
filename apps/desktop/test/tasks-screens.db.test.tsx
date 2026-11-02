@@ -53,10 +53,13 @@ function columnTitle(day: string): string {
   return `${dow} ${d.getUTCDate()}`;
 }
 
-async function setup(path: string) {
+async function setup(
+  path: string,
+  opts: Omit<NonNullable<Parameters<typeof signedInApp>[1]>, "db"> = {},
+) {
   const t = await freshApiDb();
   closers.push(t.close);
-  const app = await signedInApp(path, { db: t.db });
+  const app = await signedInApp(path, { ...opts, db: t.db });
   return { ...app, db: t.db, client: app.api.client(app.token) };
 }
 
@@ -110,6 +113,30 @@ describe("tabs and status", () => {
   });
 });
 
+/** A keyboard drag: Enter picks the card up, Tab walks drop targets, Enter drops. */
+async function dragCard(title: string, from: string, to: string) {
+  const start = await column(from);
+  const drag = await within(start).findByRole("button", {
+    name: new RegExp(`Drag ${title}`),
+  });
+  fireEvent.keyDown(drag, { key: "Enter" });
+  fireEvent.keyUp(drag, { key: "Enter" });
+  const target = within(await column(to)).getByRole("grid");
+  for (let i = 0; i < 20 && !target.contains(document.activeElement); i++) {
+    await userEvent.tab();
+  }
+  fireEvent.keyDown(document.activeElement as Element, { key: "Enter" });
+  fireEvent.keyUp(document.activeElement as Element, { key: "Enter" });
+}
+
+/** "HH:MM" of an instant in `tz`. */
+const wallTime = (iso: string, tz: string) =>
+  new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: tz,
+  }).format(new Date(iso));
+
 describe("Upcoming", () => {
   test("upcoming drag reschedules", async () => {
     const today = dayFromToday(0);
@@ -126,19 +153,7 @@ describe("Upcoming", () => {
       },
     });
     renderApp();
-    const start = await column(from);
-    const drag = await within(start).findByRole("button", {
-      name: /Drag Call Mum/,
-    });
-    // A keyboard drag: Enter picks the card up, Tab walks drop targets, Enter drops.
-    fireEvent.keyDown(drag, { key: "Enter" });
-    fireEvent.keyUp(drag, { key: "Enter" });
-    const target = within(await column(to)).getByRole("grid");
-    for (let i = 0; i < 20 && !target.contains(document.activeElement); i++) {
-      await userEvent.tab();
-    }
-    fireEvent.keyDown(document.activeElement as Element, { key: "Enter" });
-    fireEvent.keyUp(document.activeElement as Element, { key: "Enter" });
+    await dragCard("Call Mum", from, to);
     await waitFor(async () => {
       const { task: after } = await client.tasks.get.query({
         id: task.id,
@@ -151,13 +166,74 @@ describe("Upcoming", () => {
       timeZone: zone,
     });
     // Same wall-clock time on the new day.
-    expect(
-      new Intl.DateTimeFormat("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
+    expect(wallTime((after.due as { dateTime: string }).dateTime, zone)).toBe(
+      "09:00",
+    );
+  });
+
+  test("a task set in another zone lands on the day it is dropped on", async () => {
+    const monday = mondayOf(dayFromToday(0));
+    const to = plusDays(monday, 3);
+    const other = zone === "Asia/Tokyo" ? "America/New_York" : "Asia/Tokyo";
+    const { renderApp, client } = await setup("/tasks/upcoming");
+    // 23:00 on Monday here: already (or still) another day in `other`.
+    const { result: task } = await client.tasks.create.mutate({
+      title: "Late call",
+      due: {
+        dateTime: new Date(`${monday}T23:00:00`).toISOString(),
+        timeZone: other,
+      },
+    });
+    renderApp();
+    await dragCard("Late call", monday, to);
+    await waitFor(async () => {
+      const { task: after } = await client.tasks.get.query({
+        id: task.id,
         timeZone: zone,
-      }).format(new Date((after.due as { dateTime: string }).dateTime)),
-    ).toBe("09:00");
+      });
+      expect(after.day).toBe(to);
+    });
+    const { task: after } = await client.tasks.get.query({
+      id: task.id,
+      timeZone: zone,
+    });
+    const due = after.due as { dateTime: string; timeZone?: string };
+    expect(wallTime(due.dateTime, zone)).toBe("23:00");
+    // Still set in its own zone, so the row keeps its "· … " origin label.
+    expect(due.timeZone).toBe(other);
+  });
+
+  test("the week stays behind Detail and after closing it", async () => {
+    const nextMonday = plusDays(mondayOf(dayFromToday(0)), 7);
+    const day = plusDays(nextMonday, 2);
+    const { renderApp, client, router } = await setup("/tasks/upcoming");
+    await client.tasks.create.mutate({
+      title: "Plan offsite",
+      due: { date: day },
+    });
+    renderApp();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Next week" }),
+    );
+    await userEvent.click(
+      await within(await column(day)).findByText("Plan offsite"),
+    );
+    await screen.findByRole("complementary", { name: "Plan offsite" });
+    expect(router.state.location.pathname).not.toBe("/tasks/upcoming");
+    // The same week is behind the panel.
+    expect(
+      within(await column(day)).getByText("Plan offsite"),
+    ).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/tasks/upcoming"),
+    );
+    expect(
+      screen.queryByRole("complementary", { name: "Plan offsite" }),
+    ).toBeNull();
+    expect(
+      within(await column(day)).getByText("Plan offsite"),
+    ).toBeInTheDocument();
   });
 
   test("Add on a day prefills its date", async () => {
@@ -318,6 +394,51 @@ describe("Detail", () => {
     await waitFor(async () =>
       expect((await read()).notes).toBe("Check the SLA."),
     );
+  });
+
+  test("typed notes survive a refused save and are sent again", async () => {
+    let rename: (() => Promise<unknown>) | undefined;
+    const app = await setup("/tasks", {
+      wrapFetch: (inner) => async (input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        // Someone renames the task just before the notes reach the server.
+        if (url.includes("/trpc/tasks.update") && rename) {
+          const run = rename;
+          rename = undefined;
+          await run();
+        }
+        return inner(input, init);
+      },
+    });
+    const { result: task } = await app.client.tasks.create.mutate({
+      title: "Old title",
+    });
+    rename = () =>
+      app.client.tasks.update.mutate({
+        id: task.id,
+        expectedUpdatedAt: task.updatedAt,
+        title: "New title",
+      });
+    app.router.history.push(`/tasks/${task.id}`);
+    app.renderApp();
+    const p = await panel("Old title");
+    const notes = within(p).getByRole("textbox", { name: "Notes" });
+    await userEvent.type(notes, "Call before Friday");
+    expect(await screen.findByText("Changed since")).toBeInTheDocument();
+    // The text stays in the field, and the retry saves it.
+    expect(notes).toHaveValue("Call before Friday");
+    await waitFor(async () => {
+      const { task: after } = await app.client.tasks.get.query({
+        id: task.id,
+      });
+      expect(after).toMatchObject({
+        title: "New title",
+        notes: "Call before Friday",
+      });
+    });
+    expect(
+      within(await panel("New title")).getByRole("textbox", { name: "Notes" }),
+    ).toHaveValue("Call before Friday");
   });
 
   test("detail edits due", async () => {

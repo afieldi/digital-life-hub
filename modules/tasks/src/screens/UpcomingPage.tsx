@@ -8,6 +8,7 @@ import {
   PeriodNav,
   Skeleton,
 } from "@dlh/ui";
+import { useNavigate } from "@tanstack/react-router";
 import { CircleAlert } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +22,7 @@ import {
 import { taskOps } from "../operations";
 import type { TaskRow } from "../schema";
 import { deviceTimeZone, taskHref, useTasksApi } from "./api";
+import { type ListSearch, useListSearch } from "./lastList";
 import { QuickAdd } from "./QuickAdd";
 import { taskKeys, useUpcomingList } from "./queries";
 import { useRowCache, useTaskToggle, useVersionedWrite } from "./rowWrites";
@@ -43,12 +45,17 @@ const BUSY_DOT = "var(--color-type-note)";
  * Dragging a card to another day reschedules it, keeping its time; Add on a
  * day opens quick add with that day filled in. Later lists what comes after.
  */
-export function UpcomingPage() {
+export function UpcomingPage({ search: given }: { search?: ListSearch }) {
+  const search = useListSearch(given);
+  const navigate = useNavigate();
   const tasks = useTasksApi();
   const send = useVersionedWrite();
   const timeZone = deviceTimeZone();
   const today = todayIn(new Date(), timeZone);
-  const [weekStart, setWeekStart] = useState(() => weekStartOf(today));
+  // The week lives in the URL (`?week=`), so it survives a remount.
+  const weekStart = weekStartOf(search.week ?? today);
+  const showWeek = (start: Day) =>
+    void navigate({ to: "/tasks/upcoming", search: { week: start } });
   const [addDay, setAddDay] = useState<Day | null>(null);
   const quickAdd = useRef<HTMLInputElement>(null);
 
@@ -143,14 +150,14 @@ export function UpcomingPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1960px] flex-col gap-5 px-6 pt-8 pb-[150px]">
-      <TasksHeader current="/tasks/upcoming" />
+      <TasksHeader current="/tasks/upcoming" search={search} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PeriodNav
           label={weekLabel(weekStart)}
           previousLabel="Previous week"
           nextLabel="Next week"
-          onPrevious={() => setWeekStart((w) => addDays(w, -7))}
-          onNext={() => setWeekStart((w) => addDays(w, 7))}
+          onPrevious={() => showWeek(addDays(weekStart, -7))}
+          onNext={() => showWeek(addDays(weekStart, 7))}
         />
         <Caption>Drag a task onto a day to reschedule it</Caption>
       </div>
