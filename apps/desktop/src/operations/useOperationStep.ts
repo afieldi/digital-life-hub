@@ -25,12 +25,7 @@ import {
   useState,
 } from "react";
 import { useTRPC, useTRPCClient } from "../api/client";
-import {
-  callOperation,
-  isConflict,
-  type UndoToken,
-  undoOperation,
-} from "./call";
+import { callOperation, hasUndo, isConflict, undoOperation } from "./call";
 import { ListResult } from "./ListResult";
 import {
   type OperationGroupId,
@@ -138,30 +133,31 @@ export function useOperationStep({
     async (op: OperationDescription, input: unknown) => {
       setOpen(false);
       try {
-        const { undo } = (await callOperation(client, op, input)) as {
-          undo: UndoToken;
-        };
+        const res = await callOperation(client, op, input);
+        const undo = hasUndo(res) ? res.undo : null;
         // The item on screen has a new version for the next write.
         void queryClient.invalidateQueries({ queryKey: trpc.items.pathKey() });
         toast(op.summary(input as never), {
           tone: "success",
           timeout: UNDO_TOAST_MS,
-          actions: [
-            {
-              label: "Undo",
-              onAction: () => {
-                undoOperation(client, op.id, undo).then(
-                  (summary) => {
-                    void queryClient.invalidateQueries({
-                      queryKey: trpc.items.pathKey(),
-                    });
-                    toast(summary);
+          actions: !undo
+            ? []
+            : [
+                {
+                  label: "Undo",
+                  onAction: () => {
+                    undoOperation(client, op.id, undo).then(
+                      (summary) => {
+                        void queryClient.invalidateQueries({
+                          queryKey: trpc.items.pathKey(),
+                        });
+                        toast(summary);
+                      },
+                      (err) => showError(err, "Couldn't undo"),
+                    );
                   },
-                  (err) => showError(err, "Couldn't undo"),
-                );
-              },
-            },
-          ],
+                },
+              ],
         });
       } catch (err) {
         showError(err, `Couldn't ${op.label.toLowerCase()}`);
@@ -259,7 +255,7 @@ export function useOperationStep({
   if (active) {
     const ctx = {
       ...baseCtx(),
-      text: operationText(active, query) ?? query.trim(),
+      text: operationText(active, query)?.text ?? query.trim(),
     };
     const plan = planOperation(active, ctx);
     const group = active.group ?? "actions";

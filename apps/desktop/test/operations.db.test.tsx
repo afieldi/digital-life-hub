@@ -199,26 +199,64 @@ test("⌘↵ in a step asks AI with that action chosen", async () => {
   await settled();
   // No date yet: choosing the row enters its step rather than running it.
   await userEvent.keyboard("{Enter}");
-  const stepRow = await screen.findByRole("option", { name: "Due" });
+  const stepRow = await screen.findByRole("option", {
+    name: /^Due\s*Type a date$/,
+  });
   expect(stepRow).toHaveAttribute("aria-disabled", "true");
   // Esc leaves the step and keeps the bar open.
   await userEvent.keyboard("{Escape}");
   await waitFor(() =>
-    expect(screen.getByRole("option", { name: "Due" })).not.toHaveAttribute(
-      "aria-disabled",
-    ),
+    expect(
+      screen.getByRole("option", { name: /^Due\s*Type a date$/ }),
+    ).not.toHaveAttribute("aria-disabled"),
   );
   expect(input).toBeInTheDocument();
   await userEvent.keyboard("{Enter}");
   await waitFor(() =>
-    expect(screen.getByRole("option", { name: "Due" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    ),
+    expect(
+      screen.getByRole("option", { name: /^Due\s*Type a date$/ }),
+    ).toHaveAttribute("aria-disabled", "true"),
   );
   expect(screen.queryByText("Understood as")).toBeNull();
   await userEvent.type(input, " whenever");
   await modEnter();
   const understood = await screen.findByText("Understood as");
   expect(understood.parentElement).toHaveTextContent("Understood asDue");
+});
+
+test('"due friday" with a task open lists before it reschedules', async () => {
+  const { read, task } = await setup({ taskOpen: true });
+  await type("due friday");
+  // Due is named by its label; Reschedule only by its word "due".
+  const due = await screen.findByRole("option", { name: /^Due \w+, \w+ \d+$/ });
+  expect(screen.getAllByRole("option")[0]).toBe(due);
+  expect(
+    screen.getByRole("option", { name: /^Reschedule to / }),
+  ).toBeInTheDocument();
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("heading", { name: due.textContent }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("combobox")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  const after = await read();
+  expect(after.due).toBeNull();
+  expect(after.updatedAt).toBe(task.updatedAt);
+});
+
+test('"Reschedule" and "due" alone with a task open say Type a date', async () => {
+  await setup({ taskOpen: true });
+  const input = await type("Reschedule");
+  expect(
+    await screen.findByRole("option", { name: /^Reschedule\s*Type a date$/ }),
+  ).toBeInTheDocument();
+  await userEvent.clear(input);
+  await userEvent.type(input, "due");
+  expect(
+    await screen.findByRole("option", { name: /^Due\s*Type a date$/ }),
+  ).toBe(screen.getAllByRole("option")[0]);
+  expect(
+    screen.getByRole("option", { name: /^Reschedule\s*Type a date$/ }),
+  ).toBeInTheDocument();
 });

@@ -51,3 +51,17 @@ export async function undoOperation(
 export function isConflict(err: unknown): err is TRPCClientError<AppRouter> {
   return err instanceof TRPCClientError && err.data?.code === "CONFLICT";
 }
+
+/** Whether a mutation's result carries an `undo` token to send back to `ops.undo`. */
+export function hasUndo(res: unknown): res is { undo: UndoToken } {
+  if (typeof res !== "object" || res === null || !("undo" in res)) {
+    return false;
+  }
+  const { undo } = res;
+  return (
+    typeof undo === "object" &&
+    undo !== null &&
+    "created" in undo &&
+    Array.isArray(undo.created)
+  );
+}

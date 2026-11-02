@@ -18,7 +18,7 @@ export type OperationPlan =
       toInput: (values: Record<string, unknown>) => unknown;
     }
   /** Not buildable yet, and no form to ask with: only AI can take it from here. */
-  | { status: "waiting" };
+  | { status: "waiting"; hint?: string };
 
 export type OperationGroupId = "create" | "actions";
 
@@ -35,28 +35,36 @@ export function appliesTo(
     : scopes.includes("*") || scopes.includes(itemType);
 }
 
+/** How the query named an operation: by its label, or only by one of its `words`. */
+export type OperationMatch = { text: string; by: "label" | "word" };
+
 /**
  * The text typed after the operation's name: the query starts with its label
- * or one of its `words` (any case), or is the start of its label (text "").
- * `null` when the query names something else.
+ * or one of its `words` (any case, longest name first), or is the start of its
+ * label (text ""). `null` when the query names something else.
  */
 export function operationText(
   op: OperationDescription,
   query: string,
-): string | null {
+): OperationMatch | null {
   const q = query.trimStart();
   const lower = q.toLowerCase();
   // "Make subtask of…" is matched without its ellipsis.
   const label = op.label.replace(/(…|\.\.\.)$/, "").toLowerCase();
+  const starts = (name: string) =>
+    lower === name || lower.startsWith(`${name} `);
+  const byLabel = starts(label) || label.startsWith(lower.trimEnd());
   const names = [label, ...(op.words ?? []).map((w) => w.toLowerCase())].sort(
     (a, b) => b.length - a.length,
   );
-  for (const name of names) {
-    if (lower === name || lower.startsWith(`${name} `)) {
-      return q.slice(name.length).trim();
-    }
+  const name = names.find(starts);
+  if (name !== undefined) {
+    return {
+      text: q.slice(name.length).trim(),
+      by: byLabel ? "label" : "word",
+    };
   }
-  return label.startsWith(lower.trimEnd()) ? "" : null;
+  return byLabel ? { text: "", by: "label" } : null;
 }
 
 /** Drops keys whose value is `undefined`, so a schema sees them as missing. */
@@ -106,7 +114,9 @@ export function planOperation(
   }
   if (typeof spec === "function") {
     const input = attempt(() => spec(ctx));
-    return input === null ? { status: "waiting" } : { status: "ready", input };
+    return input === null
+      ? { status: "waiting", hint: waitingHint(op) }
+      : { status: "ready", input };
   }
   const initial = defined(spec.prefill?.(ctx) ?? {});
   const parsed = spec.params.safeParse(initial);
@@ -122,8 +132,29 @@ export function planOperation(
   };
 }
 
+/**
+ * What a palette function waits for, read from the operation's input: a date
+ * (a due field, or a `from`/`to` range) or a title.
+ */
+function waitingHint(op: OperationDescription): string | undefined {
+  const shape = op.input.shape;
+  // Inputs the form generator can't render (e.g. unions) have no field kinds.
+  const fields = attempt(() => formFields(op.input, [...ITEM_KEYS])) ?? [];
+  if (
+    fields.some((f) => f.kind === "due") ||
+    ("from" in shape && "to" in shape)
+  ) {
+    return "Type a date";
+  }
+  if (fields.some((f) => f.name === "title" && !f.optional)) {
+    return "Add a title";
+  }
+  return undefined;
+}
+
 /** What a row that isn't ready still needs, for the first such field ⌘K has copy for. */
 export function missingHint(plan: OperationPlan): string | undefined {
+  if (plan.status === "waiting") return plan.hint;
   if (plan.status !== "form") return undefined;
   const missing = plan.fields.find(
     (f) =>
@@ -163,8 +194,10 @@ export function operationRow(
 
 /**
  * ⌘K rows for the operations that apply to the item on screen and that the
- * query names, by group. Choosing one passes its context, with `text` set to
- * what was typed after its name.
+ * query names, by group: those named by their label first, then those named
+ * only by a word ("due friday" lists before it reschedules), each in registry
+ * order. Choosing one passes its context, with `text` set to what was typed
+ * after its name.
  */
 export function operationRows(
   ops: readonly OperationDescription[],
@@ -177,11 +210,17 @@ export function operationRows(
     actions: [],
   };
   const itemType = ctx.item?.type ?? null;
-  for (const op of ops) {
-    if (op.palette === false || !appliesTo(op, itemType)) continue;
-    const text = operationText(op, query);
-    if (text === null) continue;
-    const full = { ...ctx, text };
+  const matched = ops.flatMap((op) => {
+    if (op.palette === false || !appliesTo(op, itemType)) return [];
+    const match = operationText(op, query);
+    return match ? [{ op, match }] : [];
+  });
+  // Array sort is stable, so registry order holds within each kind of match.
+  matched.sort(
+    (a, b) => Number(a.match.by === "word") - Number(b.match.by === "word"),
+  );
+  for (const { op, match } of matched) {
+    const full = { ...ctx, text: match.text };
     const plan = planOperation(op, full);
     rows[op.group ?? "actions"].push(
       operationRow(op, plan, () => onChoose(op, full)),
