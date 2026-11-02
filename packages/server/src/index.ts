@@ -4,7 +4,7 @@ export {
   MAX_CONTEXT_CHARS,
 } from "./ai/context";
 export { coreAi, coreAiRunners, PREAMBLE } from "./ai/core-runners";
-export { devFakeAi } from "./ai/devFake";
+export { devFakeAi, scriptedFakeProvider } from "./ai/devFake";
 export { AiError, aiErrorMessage, PROVIDER_NAMES } from "./ai/errors";
 export {
   type AiDeps,

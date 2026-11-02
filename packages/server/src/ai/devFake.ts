@@ -13,32 +13,55 @@ type Shape = { properties?: Record<string, unknown>; required?: string[] };
 type OptionsShape = { items?: Shape; minItems?: number };
 type Property = { enum?: unknown[] };
 
-const day = (offset: number) =>
-  new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+const MONTHS = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+/**
+ * The day the prompt's "Today is Fri, Nov 6, 2026 (…)" line names, at UTC
+ * midnight, so the fake agrees with the device's day; the UTC day without one.
+ */
+export function promptToday(prompt: string): Date {
+  const m = /Today is \w+, (\w{3}) (\d{1,2}), (\d{4})/.exec(prompt);
+  const month = m ? MONTHS.indexOf(m[1] ?? "") / 3 : -1;
+  if (m && month >= 0) {
+    return new Date(Date.UTC(Number(m[3]), month, Number(m[2])));
+  }
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+}
+
+const dayAfter = (today: Date, offset: number) =>
+  new Date(today.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
 
 /** Fake values for operation inputs, by property name. */
-const FILLERS: Record<string, (p: Property) => unknown> = {
+const FILLERS: Record<string, (p: Property, today: Date) => unknown> = {
   title: () => "Fake new title",
-  due: () => ({ date: day(1) }),
+  due: (_p, today) => ({ date: dayAfter(today, 1) }),
   priority: (p) => p.enum?.[0],
   position: () => "top",
   parentId: () => "Fake parent",
-  from: () => day(0),
-  to: () => day(7),
+  // Today through a week today (`to` is the day after the last): any
+  // weekday named from today, today's own weekday included, falls inside.
+  from: (_p, today) => dayAfter(today, 0),
+  to: (_p, today) => dayAfter(today, 8),
 };
 
 /**
  * An operation's input filled from `props`: every property it has a filler
  * for, except an optional `parentId` (a title that would have to match).
  */
-function fillOperation(shape: Shape): Record<string, unknown> | null {
+function fillOperation(
+  shape: Shape,
+  today: Date,
+): Record<string, unknown> | null {
   const props = shape.properties ?? {};
   const out: Record<string, unknown> = {};
   for (const [name, prop] of Object.entries(props)) {
     const fill = FILLERS[name];
     if (!fill) continue;
     if (name === "parentId" && !shape.required?.includes(name)) continue;
-    out[name] = fill(prop as Property);
+    out[name] = fill(prop as Property, today);
   }
   return Object.keys(out).length > 0 ? out : null;
 }
@@ -109,12 +132,12 @@ export const scriptedFakeProvider: AiProvider = {
     if (tasks) return { raw: JSON.stringify(tasks) };
     // An operation's suggestion: options are its input plus a label.
     if (optionShape && optionProps && "label" in optionProps) {
-      const option = fillOperation(optionShape) ?? {};
+      const option = fillOperation(optionShape, promptToday(req.prompt)) ?? {};
       return {
         raw: JSON.stringify({ options: [{ ...option, label: "Fake option" }] }),
       };
     }
-    const filled = fillOperation(req.schema as Shape);
+    const filled = fillOperation(req.schema as Shape, promptToday(req.prompt));
     if (filled) return { raw: JSON.stringify(filled) };
     // An operation whose input is only the item on screen (Complete).
     if (Object.keys(props).length === 0) return { raw: "{}" };

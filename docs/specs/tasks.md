@@ -1,6 +1,6 @@
 # Tasks — Deep-dive Spec
 
-Nov 2, 2026 · Arek · Draft
+Nov 2, 2026 · Arek · Implemented
 
 **Status:** implemented (Nov 2026); the manual Done check is pending.
 

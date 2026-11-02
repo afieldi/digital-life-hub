@@ -2,7 +2,11 @@ import { describeOperation, fields } from "@dlh/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { coreAiRunners } from "../src/ai/core-runners";
-import { devFakeAi, scriptedFakeProvider } from "../src/ai/devFake";
+import {
+  devFakeAi,
+  promptToday,
+  scriptedFakeProvider,
+} from "../src/ai/devFake";
 import { operationAiRunner } from "../src/ai/operation-runner";
 import { implementOperation } from "../src/operations/implement";
 
@@ -167,4 +171,33 @@ describe("scriptedFakeProvider for operations", () => {
       }
     },
   );
+
+  it.each([
+    ["Fri, Nov 6, 2026", "2026-11-06", "2026-11-14"],
+    ["Mon, Nov 2, 2026", "2026-11-02", "2026-11-10"],
+    ["Thu, Dec 31, 2026", "2026-12-31", "2027-01-08"],
+  ])(
+    "fills a due range from the prompt's today (%s) through a week on",
+    async (today, from, to) => {
+      const { raw } = await scriptedFakeProvider.complete({
+        system: "",
+        prompt: `Today is ${today} (Europe/Warsaw).\n<instruction>\nwhat's due friday\n</instruction>`,
+        schema: z.toJSONSchema(ops.due.input) as object,
+        model: "m",
+        signal,
+      });
+      expect(JSON.parse(raw)).toEqual({ from, to });
+    },
+  );
+});
+
+describe("promptToday", () => {
+  it("reads the Today is line, or falls back to the UTC day", () => {
+    expect(promptToday("Today is Fri, Nov 6, 2026 (UTC).").toISOString()).toBe(
+      "2026-11-06T00:00:00.000Z",
+    );
+    expect(promptToday("no date here").toISOString().slice(0, 10)).toBe(
+      new Date().toISOString().slice(0, 10),
+    );
+  });
 });
