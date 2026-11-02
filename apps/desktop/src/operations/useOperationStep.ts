@@ -1,11 +1,13 @@
 import { useOpenItem } from "@dlh/client";
 import {
+  formFields,
   type ItemSummary,
   type ModuleRegistry,
   type OperationDescription,
   type OperationList,
   operationList,
   type PaletteContext,
+  type PaletteRead,
 } from "@dlh/core";
 import {
   type CommandGroup,
@@ -13,7 +15,12 @@ import {
   OperationForm,
   toast,
 } from "@dlh/ui";
-import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  skipToken,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createElement,
   type KeyboardEvent,
@@ -28,6 +35,9 @@ import { useTRPC, useTRPCClient } from "../api/client";
 import { callOperation, hasUndo, isConflict, undoOperation } from "./call";
 import { ListResult } from "./ListResult";
 import {
+  appliesTo,
+  type Loaded,
+  needsLoad,
   type OperationGroupId,
   type OperationPlan,
   operationRow,
@@ -37,6 +47,9 @@ import {
 } from "./rows";
 
 const UNDO_TOAST_MS = 10_000;
+
+/** Query keys for palette `load`s; every write refreshes them. */
+const LOAD_KEY = ["palette-load"] as const;
 
 const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -60,6 +73,23 @@ type ListState = {
 function showError(err: unknown, fallback: string) {
   if (isConflict(err)) toast(err.message);
   else toast(fallback, { tone: "error" });
+}
+
+/**
+ * Refetches what ⌘K reads of items after a write: the open item (its version
+ * for the next write) and palette loads. Screens call it through
+ * `ShellApi.itemsChanged`, so ⌘K never acts on a version from before them.
+ */
+export function useRefreshItems(): () => void {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  return useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: trpc.items.pathKey(),
+      refetchType: "all",
+    });
+    void queryClient.invalidateQueries({ queryKey: LOAD_KEY });
+  }, [queryClient, trpc]);
 }
 
 /**
@@ -113,8 +143,17 @@ export function useOperationStep({
     setListed(null);
   }, [open]);
 
-  // Unknown while the open item loads; a missing item counts as none.
-  const known = openItemId === null || openItem.isError || !!openItem.data;
+  // Unknown while the open item loads, or refetches after a write said its
+  // version is old; a missing item counts as none.
+  const invalidated =
+    openItemId !== null &&
+    openItem.isFetching &&
+    queryClient.getQueryState(trpc.items.get.queryKey({ id: openItemId }))
+      ?.isInvalidated === true;
+  const known =
+    openItemId === null ||
+    openItem.isError ||
+    (!!openItem.data && !invalidated);
   const item =
     openItemId !== null && openItem.data
       ? {
@@ -129,15 +168,60 @@ export function useOperationStep({
     timeZone: deviceTimeZone(),
   });
 
+  const read = useCallback<PaletteRead>(
+    (operationId, input) => {
+      const op = registry.operations.find(
+        (o) => o.id === operationId && o.kind === "query",
+      );
+      if (!op) {
+        return Promise.reject(new Error(`No query "${operationId}"`));
+      }
+      return callOperation(client, op, input);
+    },
+    [client, registry.operations],
+  );
+
+  /** Runs `op`'s palette `load`, then looks up the titles of the item fields it filled. */
+  const loadFor = useCallback(
+    async (
+      op: OperationDescription,
+      ctx: Omit<PaletteContext, "text">,
+    ): Promise<Loaded> => {
+      const spec = op.palette;
+      if (typeof spec !== "object" || !spec.load) {
+        return { values: {}, titles: {} };
+      }
+      const values = await spec.load({ ...ctx, text: "" }, read);
+      const titles: Record<string, string> = {};
+      for (const f of formFields(spec.params)) {
+        const id = values[f.name];
+        if (f.kind !== "item" || typeof id !== "string") continue;
+        titles[f.name] = (await client.items.get.query({ id })).title;
+      }
+      return { values, titles };
+    },
+    [client, read],
+  );
+
+  const loadOptions = (
+    op: OperationDescription,
+    ctx: Omit<PaletteContext, "text">,
+  ) => ({
+    queryKey: [...LOAD_KEY, op.id, ctx.item?.id, ctx.item?.updatedAt],
+    queryFn: () => loadFor(op, ctx),
+    retry: false,
+  });
+
+  const refresh = useRefreshItems();
+
   const runMutation = useCallback(
-    async (op: OperationDescription, input: unknown) => {
+    async (op: OperationDescription, input: unknown, label?: string) => {
       setOpen(false);
       try {
         const res = await callOperation(client, op, input);
         const undo = hasUndo(res) ? res.undo : null;
-        // The item on screen has a new version for the next write.
-        void queryClient.invalidateQueries({ queryKey: trpc.items.pathKey() });
-        toast(op.summary(input as never), {
+        refresh();
+        toast(label ?? op.summary(input as never), {
           tone: "success",
           timeout: UNDO_TOAST_MS,
           actions: !undo
@@ -148,9 +232,7 @@ export function useOperationStep({
                   onAction: () => {
                     undoOperation(client, op.id, undo).then(
                       (summary) => {
-                        void queryClient.invalidateQueries({
-                          queryKey: trpc.items.pathKey(),
-                        });
+                        refresh();
                         toast(summary);
                       },
                       (err) => showError(err, "Couldn't undo"),
@@ -163,7 +245,7 @@ export function useOperationStep({
         showError(err, `Couldn't ${op.label.toLowerCase()}`);
       }
     },
-    [client, queryClient, setOpen, trpc],
+    [client, refresh, setOpen],
   );
 
   const runQuery = useCallback(
@@ -183,9 +265,9 @@ export function useOperationStep({
     [client],
   );
 
-  const run = (op: OperationDescription, input: unknown) => {
+  const run = (op: OperationDescription, input: unknown, label?: string) => {
     if (op.kind === "query") void runQuery(op, input, query);
-    else void runMutation(op, input);
+    else void runMutation(op, input, label);
   };
 
   const openForm = async (
@@ -213,10 +295,23 @@ export function useOperationStep({
     setForm({ op, plan: { ...plan, initial } });
   };
 
+  /** `op`'s load for `ctx`, from the cache or read now; none when it fails. */
+  const loadedFor = async (
+    op: OperationDescription,
+    ctx: PaletteContext,
+  ): Promise<Loaded | undefined> => {
+    if (!needsLoad(op, ctx)) return undefined;
+    try {
+      return await queryClient.fetchQuery(loadOptions(op, ctx));
+    } catch {
+      return undefined;
+    }
+  };
+
   /** ↵ on an operation: run it, ask with its form, or wait in its step. */
-  const choose = (op: OperationDescription, ctx: PaletteContext) => {
-    const plan = planOperation(op, ctx);
-    if (plan.status === "ready") run(op, plan.input);
+  const choose = async (op: OperationDescription, ctx: PaletteContext) => {
+    const plan = planOperation(op, ctx, await loadedFor(op, ctx));
+    if (plan.status === "ready") run(op, plan.input, plan.label);
     else if (plan.status === "form") void openForm(op, plan);
     else {
       setListed(null);
@@ -228,6 +323,27 @@ export function useOperationStep({
   const chooseRef = useRef(choose);
   chooseRef.current = choose;
   const { id: itemId, type: itemType, updatedAt } = item ?? {};
+  // Loads for the operations that apply to the item on screen, so their rows
+  // can show what ↵ will do.
+  const loadable =
+    open && item
+      ? registry.operations.filter(
+          (op) => appliesTo(op, item.type) && needsLoad(op, baseCtx()),
+        )
+      : [];
+  const loads = useQueries({
+    queries: loadable.map((op) => loadOptions(op, baseCtx())),
+  });
+  const loadedKey = loads.map((l) => l.dataUpdatedAt).join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `loadedKey` changes exactly when a load's data does.
+  const loaded = useMemo(() => {
+    const out: Record<string, Loaded> = {};
+    loadable.forEach((op, n) => {
+      const data = loads[n]?.data;
+      if (data) out[op.id] = data;
+    });
+    return out;
+  }, [loadedKey, loadable.map((op) => op.id).join()]);
   const rows = useMemo(() => {
     if (!open || !known || active) return { create: [], actions: [] };
     const ctx = {
@@ -237,10 +353,15 @@ export function useOperationStep({
       now: new Date(),
       timeZone: deviceTimeZone(),
     };
-    return operationRows(registry.operations, ctx, query, (op, c) =>
-      chooseRef.current(op, c),
+    return operationRows(
+      registry.operations,
+      ctx,
+      query,
+      (op, c) => void chooseRef.current(op, c),
+      loaded,
     );
   }, [
+    loaded,
     open,
     known,
     active,
@@ -257,14 +378,14 @@ export function useOperationStep({
       ...baseCtx(),
       text: operationText(active, query)?.text ?? query.trim(),
     };
-    const plan = planOperation(active, ctx);
+    const plan = planOperation(active, ctx, loaded[active.id]);
     const group = active.group ?? "actions";
     groups = [
       {
         id: group,
         label: GROUP_LABELS[group],
         items: [
-          operationRow(active, plan, () => choose(active, ctx), {
+          operationRow(active, plan, () => void choose(active, ctx), {
             // Nothing for ↵ to do: ⌘↵ (or ↵) asks AI instead.
             disabled: plan.status === "waiting",
           }),

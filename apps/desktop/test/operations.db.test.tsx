@@ -48,7 +48,12 @@ async function setup(opts: { taskOpen?: boolean } = {}) {
   }
   const read = async () =>
     (await client.tasks.get.query({ id: task.id, timeZone })).task;
-  return { ...app, client, task, read };
+  /** Opens the task's Detail panel after the app has rendered. */
+  const openTask = async () => {
+    app.router.history.push(`/tasks/${task.id}`);
+    await screen.findByRole("complementary", { name: "Pay rent" });
+  };
+  return { ...app, client, task, read, openTask };
 }
 
 async function type(text: string) {
@@ -259,5 +264,104 @@ test('"Reschedule" and "due" alone with a task open say Type a date', async () =
   ).toBe(screen.getAllByRole("option")[0]);
   expect(
     screen.getByRole("option", { name: /^Reschedule\s*Type a date$/ }),
+  ).toBeInTheDocument();
+});
+
+test('"check the car" and "open questions" with a task open don\'t complete or reopen it', async () => {
+  const { read, task } = await setup({ taskOpen: true });
+  const input = await type("check the car");
+  await settled();
+  expect(screen.queryByRole("option", { name: "Complete" })).toBeNull();
+  await userEvent.clear(input);
+  await userEvent.type(input, "done list");
+  await settled();
+  expect(screen.queryByRole("option", { name: "Complete" })).toBeNull();
+  await userEvent.clear(input);
+  await userEvent.type(input, "open questions");
+  await settled();
+  expect(screen.queryByRole("option", { name: "Reopen" })).toBeNull();
+  await userEvent.clear(input);
+  await userEvent.type(input, "check the car");
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  const after = await read();
+  expect(after.completedAt).toBeNull();
+  expect(after.updatedAt).toBe(task.updatedAt);
+});
+
+test('"done" and "comp" alone with a task open still offer Complete first', async () => {
+  await setup({ taskOpen: true });
+  const input = await type("done");
+  expect(await screen.findByRole("option", { name: "Complete" })).toBe(
+    screen.getAllByRole("option")[0],
+  );
+  await userEvent.clear(input);
+  await userEvent.type(input, "comp");
+  expect(await screen.findByRole("option", { name: "Complete" })).toBe(
+    screen.getAllByRole("option")[0],
+  );
+});
+
+test('"Edit task" opens its form filled from the task', async () => {
+  const { client, task, openTask } = await setup();
+  await client.tasks.update.mutate({
+    id: task.id,
+    expectedUpdatedAt: task.updatedAt,
+    notes: "Before the 5th",
+    priority: "high",
+  });
+  await openTask();
+  await type("Edit task");
+  await screen.findByRole("option", { name: "Edit task" });
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  const form = await screen.findByRole("dialog", { name: "Edit task" });
+  expect(within(form).getByRole("textbox", { name: "Title" })).toHaveValue(
+    "Pay rent",
+  );
+  expect(within(form).getByRole("textbox", { name: "Notes" })).toHaveValue(
+    "Before the 5th",
+  );
+});
+
+test('"Remove from parent" with one parent removes it on ↵, and Undo restores it', async () => {
+  const { client, task, openTask } = await setup();
+  const { result: parent } = await client.tasks.create.mutate({
+    title: "Groceries",
+  });
+  await client.tasks.addParent.mutate({ id: task.id, parentId: parent.id });
+  const parents = async () =>
+    (await client.tasks.get.query({ id: task.id, timeZone })).parents.map(
+      (p) => p.id,
+    );
+  await openTask();
+  await type("Remove from parent");
+  const row = await screen.findByRole("option", {
+    name: "Remove from parent: Groceries",
+  });
+  expect(row).toBe(screen.getAllByRole("option")[0]);
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  const undo = await screen.findByRole("button", { name: "Undo" });
+  await waitFor(async () => expect(await parents()).toEqual([]));
+  await userEvent.click(undo);
+  expect(await screen.findByText(/^Undid/)).toBeInTheDocument();
+  expect(await parents()).toEqual([parent.id]);
+});
+
+test('"Remove from parent" with two parents asks which', async () => {
+  const { client, task, openTask } = await setup();
+  for (const title of ["Groceries", "Errands"]) {
+    const { result: parent } = await client.tasks.create.mutate({ title });
+    await client.tasks.addParent.mutate({ id: task.id, parentId: parent.id });
+  }
+  await openTask();
+  await type("Remove from parent");
+  await screen.findByRole("option", { name: "Remove from parent" });
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("dialog", { name: "Remove from parent" }),
   ).toBeInTheDocument();
 });

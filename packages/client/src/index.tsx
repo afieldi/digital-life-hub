@@ -95,11 +95,17 @@ export type ShellApi = {
   openCommandBar: (query?: string) => void;
   /** An item's page, from its module's item type; undefined for unknown types. */
   itemHref: (item: { id: string; type: string }) => string | undefined;
+  /**
+   * A screen wrote items: the shell's own reads of them (⌘K's open item and
+   * its version) refetch now, rather than when the change stream says so.
+   */
+  itemsChanged: () => void;
 };
 
 const ShellContext = createContext<ShellApi>({
   openCommandBar: () => {},
   itemHref: () => undefined,
+  itemsChanged: () => {},
 });
 
 /** Given by the shell around every module screen. */
@@ -117,6 +123,11 @@ export function ShellProvider({
 export function useCommandBar(): { open: (query?: string) => void } {
   const { openCommandBar } = useContext(ShellContext);
   return { open: openCommandBar };
+}
+
+/** Tells the shell a screen wrote items (see `ShellApi.itemsChanged`). */
+export function useItemsChanged(): () => void {
+  return useContext(ShellContext).itemsChanged;
 }
 
 /** Finds the page of an item of any module's type. */

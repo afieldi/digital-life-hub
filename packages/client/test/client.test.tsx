@@ -6,6 +6,7 @@ import {
   ShellProvider,
   useCommandBar,
   useItemHref,
+  useItemsChanged,
   useModuleApi,
   useOpenItem,
   useRecordView,
@@ -114,15 +115,20 @@ test("useOpenItem is null without a provider", () => {
   expect(result.current).toBeNull();
 });
 
-test("useCommandBar and useItemHref use the shell's, and do nothing without one", () => {
+test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do nothing without one", () => {
   const openCommandBar = vi.fn();
+  const itemsChanged = vi.fn();
   const itemHref = (item: { id: string; type: string }) =>
     item.type === "task" ? `/tasks/${item.id}` : undefined;
   const { result } = renderHook(
-    () => ({ bar: useCommandBar(), href: useItemHref() }),
+    () => ({
+      bar: useCommandBar(),
+      href: useItemHref(),
+      changed: useItemsChanged(),
+    }),
     {
       wrapper: ({ children }: { children: ReactNode }) => (
-        <ShellProvider value={{ openCommandBar, itemHref }}>
+        <ShellProvider value={{ openCommandBar, itemHref, itemsChanged }}>
           {children}
         </ShellProvider>
       ),
@@ -131,11 +137,15 @@ test("useCommandBar and useItemHref use the shell's, and do nothing without one"
   result.current.bar.open("Reschedule ");
   expect(openCommandBar).toHaveBeenCalledWith("Reschedule ");
   expect(result.current.href({ id: "1", type: "task" })).toBe("/tasks/1");
+  result.current.changed();
+  expect(itemsChanged).toHaveBeenCalledOnce();
 
   const bare = renderHook(() => ({
     bar: useCommandBar(),
     href: useItemHref(),
+    changed: useItemsChanged(),
   }));
   expect(() => bare.result.current.bar.open()).not.toThrow();
+  expect(() => bare.result.current.changed()).not.toThrow();
   expect(bare.result.current.href({ id: "1", type: "task" })).toBeUndefined();
 });

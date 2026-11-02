@@ -9,7 +9,8 @@ import type { CommandItem } from "@dlh/ui";
 
 /** How ⌘K can get an operation's input from what is on screen and typed. */
 export type OperationPlan =
-  | { status: "ready"; input: unknown }
+  /** `label` names the row when the input came with item titles to show. */
+  | { status: "ready"; input: unknown; label?: string }
   /** A form asks for the rest; `toInput` turns its values into the input. */
   | {
       status: "form";
@@ -21,6 +22,27 @@ export type OperationPlan =
   | { status: "waiting"; hint?: string };
 
 export type OperationGroupId = "create" | "actions";
+
+/**
+ * What a palette form's `load` read for the item on screen: its `values`, and
+ * the titles of the item fields among them, so a ready row can name them.
+ */
+export type Loaded = {
+  values: Record<string, unknown>;
+  titles: Record<string, string>;
+};
+
+/** Whether ⌘K must run `op`'s palette `load` before planning it with this context. */
+export function needsLoad(
+  op: OperationDescription,
+  ctx: Omit<PaletteContext, "text">,
+): boolean {
+  return (
+    typeof op.palette === "object" &&
+    op.palette.load !== undefined &&
+    ctx.item !== undefined
+  );
+}
 
 /** Whether `op` is offered for the item on screen (`null` for none). */
 export function appliesTo(
@@ -67,6 +89,15 @@ export function operationText(
   return byLabel ? { text: "", by: "label" } : null;
 }
 
+/**
+ * Whether ⌘K builds `op`'s input from the item on screen alone (palette `true`
+ * with no form fields left), so typed text has nowhere to go.
+ */
+export function consumesNoText(op: OperationDescription): boolean {
+  if (op.palette !== undefined && op.palette !== true) return false;
+  return attempt(() => formFields(op.input, [...ITEM_KEYS]))?.length === 0;
+}
+
 /** Drops keys whose value is `undefined`, so a schema sees them as missing. */
 function defined(values: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -87,6 +118,7 @@ function attempt<T>(build: () => T): T | null {
 export function planOperation(
   op: OperationDescription,
   ctx: PaletteContext,
+  loaded?: Loaded,
 ): OperationPlan {
   const spec = op.palette ?? true;
   if (spec === false) return { status: "waiting" };
@@ -118,11 +150,16 @@ export function planOperation(
       ? { status: "waiting", hint: waitingHint(op) }
       : { status: "ready", input };
   }
-  const initial = defined(spec.prefill?.(ctx) ?? {});
+  const initial = {
+    ...defined(loaded?.values ?? {}),
+    ...defined(spec.prefill?.(ctx) ?? {}),
+  };
   const parsed = spec.params.safeParse(initial);
-  if (parsed.success) {
+  if (parsed.success && !spec.review) {
     const input = attempt(() => spec.toInput(ctx, parsed.data));
-    if (input !== null) return { status: "ready", input };
+    if (input !== null) {
+      return { status: "ready", input, ...named(op, input, initial, loaded) };
+    }
   }
   return {
     status: "form",
@@ -166,13 +203,33 @@ export function missingHint(plan: OperationPlan): string | undefined {
   return undefined;
 }
 
+/**
+ * A ready row's label when loaded item fields are in its input: its summary
+ * and their titles ("Remove from parent: Groceries").
+ */
+function named(
+  op: OperationDescription,
+  input: unknown,
+  values: Record<string, unknown>,
+  loaded: Loaded | undefined,
+): { label: string } | Record<string, never> {
+  const titles = Object.entries(loaded?.titles ?? {})
+    .filter(([name]) => values[name] === loaded?.values[name])
+    .map(([, title]) => title);
+  if (titles.length === 0) return {};
+  const summary = attempt(() => op.summary(input as never)) ?? op.label;
+  return { label: `${summary}: ${titles.join(", ")}` };
+}
+
 /** The row's label: the summary of a ready input, else the operation's name. */
 export function rowLabel(
   op: OperationDescription,
   plan: OperationPlan,
 ): string {
   if (plan.status !== "ready") return op.label;
-  return attempt(() => op.summary(plan.input as never)) ?? op.label;
+  return (
+    plan.label ?? attempt(() => op.summary(plan.input as never)) ?? op.label
+  );
 }
 
 /** The row for `op` given its plan; it stays open so choosing can enter the step. */
@@ -204,6 +261,7 @@ export function operationRows(
   ctx: Omit<PaletteContext, "text">,
   query: string,
   onChoose: (op: OperationDescription, ctx: PaletteContext) => void,
+  loaded: Readonly<Record<string, Loaded>> = {},
 ): Record<OperationGroupId, CommandItem[]> {
   const rows: Record<OperationGroupId, CommandItem[]> = {
     create: [],
@@ -213,7 +271,11 @@ export function operationRows(
   const matched = ops.flatMap((op) => {
     if (op.palette === false || !appliesTo(op, itemType)) return [];
     const match = operationText(op, query);
-    return match ? [{ op, match }] : [];
+    if (!match) return [];
+    // "check the car" names a thing to find, not Complete: an operation that
+    // takes no text matches only when nothing follows its name.
+    if (match.text !== "" && consumesNoText(op)) return [];
+    return [{ op, match }];
   });
   // Array sort is stable, so registry order holds within each kind of match.
   matched.sort(
@@ -221,7 +283,7 @@ export function operationRows(
   );
   for (const { op, match } of matched) {
     const full = { ...ctx, text: match.text };
-    const plan = planOperation(op, full);
+    const plan = planOperation(op, full, loaded[op.id]);
     rows[op.group ?? "actions"].push(
       operationRow(op, plan, () => onChoose(op, full)),
     );

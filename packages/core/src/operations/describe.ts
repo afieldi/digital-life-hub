@@ -14,6 +14,12 @@ export type PaletteContext = {
   timeZone: string;
 };
 
+/** Runs one of the registry's query operations by id, as ⌘K would call it. */
+export type PaletteRead = (
+  operationId: string,
+  input: Record<string, unknown>,
+) => Promise<unknown>;
+
 /**
  * ⌘K's form for an operation whose input is built from other params:
  * `prefill` reads what it can from the context, a form generated from
@@ -22,6 +28,18 @@ export type PaletteContext = {
 export type PaletteForm<I, P extends z.ZodObject = z.ZodObject> = {
   params: P;
   prefill?: (ctx: PaletteContext) => Record<string, unknown>;
+  /**
+   * Reads what the context doesn't hold, such as the item on screen's current
+   * values or parents, through a query. Its values fill `params` under
+   * `prefill`'s; ⌘K waits for it before it plans the row. Runs only with an
+   * item on screen.
+   */
+  load?: (
+    ctx: PaletteContext,
+    read: PaletteRead,
+  ) => Promise<Record<string, unknown>>;
+  /** Always open the form, even when `params` are filled (e.g. editing the item's values). */
+  review?: boolean;
   // Method syntax on purpose: a form with specific params must still be
   // assignable to `PaletteForm<I>` (any params) in `ModuleManifest.operations`.
   toInput(ctx: PaletteContext, params: z.infer<P>): I;

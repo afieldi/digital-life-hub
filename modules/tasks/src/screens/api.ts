@@ -1,4 +1,4 @@
-import { useCoreApi, useModuleApi } from "@dlh/client";
+import { useCoreApi, useItemsChanged, useModuleApi } from "@dlh/client";
 import { toast } from "@dlh/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
@@ -55,10 +55,12 @@ export type TaskWrite<T> = {
 export function useTaskWrite() {
   const core = useCoreApi();
   const queryClient = useQueryClient();
-  const refresh = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: TASKS_KEY }),
-    [queryClient],
-  );
+  const itemsChanged = useItemsChanged();
+  const refresh = useCallback(() => {
+    // The shell's reads too: ⌘K's next write needs the version this one made.
+    itemsChanged();
+    return queryClient.invalidateQueries({ queryKey: TASKS_KEY });
+  }, [queryClient, itemsChanged]);
   const failed = useCallback(
     (err: unknown, verb: string) => {
       if (isConflict(err)) toast("Changed since");
@@ -85,23 +87,28 @@ export function useTaskWrite() {
       }
       void refresh();
       if (quiet) return res.result;
+      // A write that changed nothing (completing a task already done) has
+      // nothing to undo.
+      const changed = res.undo.record != null || res.undo.created.length > 0;
       toast(summary, {
         tone: "success",
         timeout: UNDO_TOAST_MS,
-        actions: [
-          {
-            label: "Undo",
-            onAction: () => {
-              core.ops.undo.mutate({ id: op, token: res.undo }).then(
-                ({ summary: undone }) => {
-                  toast(undone);
-                  void refresh();
+        actions: !changed
+          ? []
+          : [
+              {
+                label: "Undo",
+                onAction: () => {
+                  core.ops.undo.mutate({ id: op, token: res.undo }).then(
+                    ({ summary: undone }) => {
+                      toast(undone);
+                      void refresh();
+                    },
+                    (err: unknown) => failed(err, "undo"),
+                  );
                 },
-                (err: unknown) => failed(err, "undo"),
-              );
-            },
-          },
-        ],
+              },
+            ],
       });
       return res.result;
     },

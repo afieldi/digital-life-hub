@@ -62,6 +62,7 @@ export type {
   OperationDescription,
   PaletteContext,
   PaletteForm,
+  PaletteRead,
   PaletteSpec,
 } from "./operations/describe";
 export { describeOperation, ITEM_KEYS } from "./operations/describe";

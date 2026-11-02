@@ -19,7 +19,10 @@ import { RouterProvider } from "react-aria-components";
 import { useAskAi } from "../ai/useAskAi";
 import { useTRPC } from "../api/client";
 import { registry } from "../modules";
-import { useOperationStep } from "../operations/useOperationStep";
+import {
+  useOperationStep,
+  useRefreshItems,
+} from "../operations/useOperationStep";
 import { createHotkeys } from "./hotkeys";
 import { iconFor } from "./icons";
 import { goToRows, itemRows, jumpGroup, matchesQuery } from "./palette";
@@ -100,12 +103,14 @@ export function Shell() {
     setQuery(text);
     setCommandOpen(true);
   }, []);
+  const itemsChanged = useRefreshItems();
   const shellApi = useMemo<ShellApi>(
     () => ({
       openCommandBar,
       itemHref: (item) => registry.itemTypes.get(item.type)?.href(item.id),
+      itemsChanged,
     }),
-    [openCommandBar],
+    [openCommandBar, itemsChanged],
   );
 
   const navigate = useCallback(

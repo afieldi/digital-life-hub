@@ -318,3 +318,75 @@ test("a conflicting tick refetches and toasts", async () => {
     await screen.findByRole("checkbox", { name: "Complete: New title" }),
   ).not.toBeChecked();
 });
+
+test("ticking a task that is already done offers no Undo", async () => {
+  const { renderApp, client } = await setup();
+  const { result: task } = await client.tasks.create.mutate({
+    title: "Done elsewhere",
+  });
+  renderApp();
+  const box = await screen.findByRole("checkbox", {
+    name: "Complete: Done elsewhere",
+  });
+  // Another device completes it before this tick reaches the server.
+  await client.tasks.complete.mutate({
+    id: task.id,
+    expectedUpdatedAt: task.updatedAt,
+  });
+  await userEvent.click(box);
+  const toastText = await screen.findByText("Complete");
+  expect(toastText).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(screen.queryByText("Changed since")).toBeNull();
+});
+
+test("tick on Open, then ⌘K Reopen at once: no conflict", async () => {
+  // Once ticked, reads of items are slow: ⌘K must not act on the version it
+  // read before the tick.
+  let slow = false;
+  const { renderApp, client, router } = await setup({
+    wrapFetch: (inner) => async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (slow && url.includes("items.get")) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return inner(input, init);
+    },
+  });
+  const { result: task } = await client.tasks.create.mutate({
+    title: "Water the fern",
+  });
+  renderApp();
+  router.history.push(`/tasks/${task.id}`);
+  await screen.findByRole("complementary", { name: "Water the fern" });
+  // ⌘K has read the open task's version once already.
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Command bar" }),
+  );
+  await userEvent.type(await screen.findByRole("combobox"), "Reopen");
+  await screen.findByRole("option", { name: "Reopen" });
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Command bar" })).toBeNull(),
+  );
+
+  const [box] = await screen.findAllByRole("checkbox", {
+    name: "Complete: Water the fern",
+  });
+  if (!box) throw new Error("no checkbox");
+  slow = true;
+  await userEvent.click(box);
+  await screen.findByRole("button", { name: "Undo" });
+
+  await userEvent.click(screen.getByRole("button", { name: "Command bar" }));
+  const input = await screen.findByRole("combobox");
+  await userEvent.clear(input);
+  await userEvent.type(input, "Reopen");
+  await screen.findByRole("option", { name: "Reopen" });
+  await userEvent.keyboard("{Enter}");
+  await waitFor(async () => {
+    const { task: after } = await client.tasks.get.query({ id: task.id });
+    expect(after.completedAt).toBeNull();
+  });
+  expect(screen.queryByText("Changed since")).toBeNull();
+});

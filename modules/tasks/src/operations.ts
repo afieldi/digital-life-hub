@@ -4,6 +4,7 @@ import {
   fields,
   itemTitle,
   type PaletteContext,
+  type PaletteRead,
 } from "@dlh/core";
 import { z } from "zod";
 import { parseDue, parseTaskInput } from "./capture";
@@ -16,7 +17,7 @@ import {
   todayIn,
   weekStartOf,
 } from "./dates";
-import { priority } from "./schema";
+import { priority, taskRow } from "./schema";
 
 const id = z.uuid();
 const expectedUpdatedAt = z.iso.datetime();
@@ -33,6 +34,20 @@ function onScreen(ctx: PaletteContext): {
 } {
   if (!ctx.item) throw new Error("No task on screen");
   return { id: ctx.item.id, expectedUpdatedAt: ctx.item.updatedAt };
+}
+
+/** What `readTask` needs of `tasks.get`'s result. */
+const taskView = z.object({
+  task: taskRow,
+  parents: taskRow.shape.parents,
+});
+
+/** `tasks.get` for the task on screen, as ⌘K's `load` reads it. */
+async function readTask(ctx: PaletteContext, read: PaletteRead) {
+  const { id } = onScreen(ctx);
+  return taskView.parse(
+    await read("tasks.get", { id, timeZone: ctx.timeZone }),
+  );
 }
 
 const dueText = (d: Due | null) => (d ? formatDue(d) : "no date");
@@ -107,6 +122,26 @@ const update = describeOperation({
   subject: (input) => input.id,
   effects: ["updateItem"],
   summary: (input) => (input.title ? `Edit task: ${input.title}` : "Edit task"),
+  palette: {
+    params: z.object({
+      title: title.optional(),
+      due: due.nullable().optional(),
+      priority: priorityField.optional(),
+      notes: notes.nullable().optional(),
+    }),
+    // The form starts from the task's current values.
+    load: async (ctx, read) => {
+      const { task } = await readTask(ctx, read);
+      return {
+        title: task.title,
+        due: task.due,
+        priority: task.priority,
+        notes: task.notes,
+      };
+    },
+    review: true,
+    toInput: (ctx, params) => ({ ...onScreen(ctx), ...params }),
+  },
 });
 
 const complete = describeOperation({
@@ -269,6 +304,18 @@ const removeParent = describeOperation({
   subject: (input) => input.parentId,
   effects: ["removeLinks"],
   summary: () => "Remove from parent",
+  palette: {
+    params: z.object({ parentId }),
+    // Its one parent runs on ↵; with more (or none) the form searches.
+    load: async (ctx, read) => {
+      const { parents } = await readTask(ctx, read);
+      return parents.length === 1 ? { parentId: parents[0]?.id } : {};
+    },
+    toInput: (ctx, params) => ({
+      id: onScreen(ctx).id,
+      parentId: params.parentId,
+    }),
+  },
 });
 
 const timeZone = z
