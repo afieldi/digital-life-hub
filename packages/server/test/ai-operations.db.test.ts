@@ -24,6 +24,7 @@ import {
   undo,
   writeItems,
 } from "../src";
+import { toolsFor } from "../src/ai/followups";
 import { getItem } from "../src/items/read";
 import { freshTestDb, testDeps } from "../src/testing";
 
@@ -66,6 +67,19 @@ const findDesc = describeOperation({
   subject: () => null,
   effects: [],
   summary: (i) => `Find ${i.text}`,
+});
+
+/** Its subject is a plain id the model fills, not an item it names. */
+const pokeDesc = describeOperation({
+  id: "test.poke",
+  kind: "mutation",
+  label: "Poke",
+  description: "Pokes another test item from this one.",
+  appliesTo: ["test"],
+  input: z.object({ id: z.uuid(), otherId: z.uuid() }),
+  subject: (i) => i.otherId,
+  effects: ["updateItem"],
+  summary: () => "Poke",
 });
 
 const hiddenDesc = describeOperation({
@@ -147,6 +161,22 @@ const testModule = defineServerModule({
         };
       },
     }),
+    poke: implementOperation(pokeDesc, {
+      async run(w, input) {
+        const [other] = await w.tx
+          .select({ updatedAt: items.updatedAt })
+          .from(items)
+          .where(eq(items.id, input.otherId));
+        const item = await w.updateItem?.({
+          id: input.otherId,
+          expectedUpdatedAt: other?.updatedAt.toISOString() ?? "",
+          title: "Poked",
+        });
+        return { result: item, undo: null };
+      },
+      async undo() {},
+      undoRecord: z.null(),
+    }),
     hidden: implementOperation(hiddenDesc, {
       async run() {
         return { heading: "Hidden", items: [] };
@@ -219,6 +249,40 @@ const handmade = defineAiRunner(
   },
 );
 
+/**
+ * A hand-written runner that renames an item through Core's tools: the item
+ * on screen, or `other` when the model names one.
+ */
+function renamer(id: string, effects: ("createItems" | "updateItem")[]) {
+  return defineAiRunner(
+    describeAiAction({
+      id,
+      label: "Renamer",
+      description: "Renames through an operation.",
+      appliesTo: ["test"],
+      kinds: ["do"],
+      effects,
+    }),
+    {
+      context: itemContext,
+      system: "",
+      output: { do: z.object({ title: z.string(), other: z.string() }) },
+      async apply(_w, out, ctx, tools) {
+        const { title, other } = out as { title: string; other: string };
+        const op = testModule.operations.rename;
+        if (!tools || op.kind !== "mutation") throw new Error("no tools");
+        const target = other || ctx.item?.id;
+        await tools.mutate(op, {
+          id: target,
+          expectedUpdatedAt: ctx.version,
+          title,
+        });
+        return null;
+      },
+    },
+  );
+}
+
 const NOW = new Date("2026-11-02T20:00:00.000Z");
 
 async function setup() {
@@ -229,7 +293,13 @@ async function setup() {
     { actions: Object.values(coreAiActions), runners: coreAiRunners },
   );
   const runners = new Map(collected.aiRunners);
-  runners.set(handmade.action.id, handmade);
+  for (const r of [
+    handmade,
+    renamer("renameHere", ["updateItem"]),
+    renamer("renameCreating", ["createItems"]),
+  ]) {
+    runners.set(r.action.id, r);
+  }
   const deps = testDeps(db, {
     now: () => NOW,
     ai: { runners },
@@ -399,16 +469,19 @@ test("an ambiguous item title drops to suggested with matches", async () => {
   const before = await s.db.select().from(items);
   expect(before).toHaveLength(2);
 
-  // On no item, a subtask can't go under another item.
+  // The parent is one the model named, resolved by search: it may be the
+  // subject though no item is open.
   s.tick();
   const pick = res.options.findIndex((o) => o.label.endsWith("plan"));
-  const err = await caught(
-    apply(s.deps, { requestId: res.requestId, option: pick }),
-  );
-  expect((err.cause as AiError).code).toBe("bad_output");
-  expect(await s.db.select().from(items)).toHaveLength(2);
+  expect(
+    await apply(s.deps, { requestId: res.requestId, option: pick }),
+  ).toMatchObject({ status: "applied" });
+  const linked = await s.db
+    .select({ fromId: links.fromId })
+    .from(links)
+    .where(eq(links.kind, "relates"));
+  expect(linked).toEqual([{ fromId: p2.id }]);
   void p1;
-  void p2;
   await s.close();
 });
 
@@ -503,6 +576,7 @@ test("actions derived from operations pass collectAiRunners", async () => {
     ["test.create", ["suggest", "do"]],
     ["test.rename", ["suggest", "do"]],
     ["test.find", ["ask"]],
+    ["test.poke", ["suggest", "do"]],
   ]);
   const { aiRunners } = collectServerModules(
     [testModule],
@@ -513,6 +587,7 @@ test("actions derived from operations pass collectAiRunners", async () => {
     "test.create",
     "test.rename",
     "test.find",
+    "test.poke",
   ]);
   const create = aiRunners.get("test.create");
   const doShape = create?.output.do as z.ZodObject;
@@ -566,5 +641,89 @@ test("a query that throws ends the request failed", async () => {
     ["failed", "not_found"],
     ["failed", "provider_error"],
   ]);
+  await s.close();
+});
+
+test("a runner's tools write only within its effects and the item on screen", async () => {
+  const s = await setup();
+  const a = await s.mk("Alpha");
+  const b = await s.mk("Beta");
+  const doIt = (actionId: string, other: string) => {
+    s.fake.queue(JSON.stringify({ title: "Renamed", other }));
+    return prepare(s.deps, {
+      text: "rename",
+      itemId: a.id,
+      actionId,
+      kind: "do",
+    });
+  };
+  // Within its effects, on the item on screen: runs.
+  expect(await doIt("renameHere", "")).toMatchObject({ status: "applied" });
+  s.tick();
+  // `updateItem` is not among its effects.
+  const noEffect = await caught(doIt("renameCreating", ""));
+  expect(noEffect.code).toBe("FORBIDDEN");
+  // Another item than the one on screen.
+  const other = await caught(doIt("renameHere", b.id));
+  expect(other.code).toBe("FORBIDDEN");
+  const rows = await s.db
+    .select()
+    .from(aiRequests)
+    .where(eq(aiRequests.itemId, a.id));
+  expect(rows.map((r) => r.status).sort()).toEqual([
+    "applied",
+    "failed",
+    "failed",
+  ]);
+  expect((await getItem(s.db, b.id)).title).toBe("Beta");
+  await s.close();
+});
+
+test("tools for a runner with no effects refuse every mutation", async () => {
+  const s = await setup();
+  const a = await s.mk("Alpha");
+  const runner = defineAiRunner(
+    describeAiAction({
+      id: "askOnly",
+      label: "Ask only",
+      description: "Answers.",
+      appliesTo: ["test"],
+      kinds: ["ask"],
+      effects: [],
+    }),
+    { context: itemContext, system: "", output: {} },
+  );
+  const op = testModule.operations.rename;
+  if (op.kind !== "mutation") throw new Error("no rename");
+  const err = await caught(
+    writeItems(s.deps, (w) =>
+      toolsFor(w, s.deps, runner, a.id).mutate(op, {
+        id: a.id,
+        expectedUpdatedAt: a.updatedAt,
+        title: "Renamed",
+      }),
+    ),
+  );
+  expect(err.code).toBe("FORBIDDEN");
+  expect((await getItem(s.db, a.id)).title).toBe("Alpha");
+  await s.close();
+});
+
+test("an operation's subject must be the item on screen or one it names by title", async () => {
+  const s = await setup();
+  const a = await s.mk("Alpha");
+  const b = await s.mk("Beta");
+  // `otherId` is a plain id, not an item named by title: refused.
+  s.fake.queue(JSON.stringify({ otherId: b.id }));
+  const err = await caught(
+    prepare(s.deps, {
+      text: "poke beta",
+      itemId: a.id,
+      actionId: "test.poke",
+      kind: "do",
+    }),
+  );
+  expect(err.cause).toMatchObject({ code: "bad_output" });
+  expect((await getItem(s.db, b.id)).title).toBe("Beta");
   await s.close();
 });

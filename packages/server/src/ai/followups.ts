@@ -7,7 +7,7 @@ import { deleteCreated, revertMutation } from "../operations/undo";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
 import { AiError, aiErrorMessage, firstLine } from "./errors";
-import { operationUndo } from "./operation-runner";
+import { operationUndo, subjectAllowed } from "./operation-runner";
 import {
   aiFailure,
   badRequest,
@@ -27,14 +27,39 @@ import {
 import type { AiRunner, RunnerTools } from "./runners";
 import { scopedWriter } from "./scoped";
 
-/** Core's tools for a runner; items its mutations create are pushed to `created`. */
-function toolsFor(
+function forbidden(message: string): never {
+  throw new TRPCError({ code: "FORBIDDEN", message });
+}
+
+/**
+ * Core's tools for `runner` on the request's item `itemId`; items its
+ * mutations create are pushed to `created`. A mutation may have only effects
+ * the runner declares, and act on the item on screen, none, or an item it
+ * names, unless the runner declares `writeOtherItems`.
+ */
+export function toolsFor(
   w: ItemWriter,
   deps: CoreDeps,
+  runner: AiRunner,
+  itemId: string | null,
   created?: string[],
 ): RunnerTools {
+  const effects = runner.action.effects;
   return {
     async mutate(op, input) {
+      if (!op.desc.effects.every((e) => effects.includes(e))) {
+        forbidden(
+          `"${op.desc.id}" has effects AI action "${runner.action.id}" doesn't declare`,
+        );
+      }
+      if (
+        !effects.includes("writeOtherItems") &&
+        !subjectAllowed(op.desc, input, itemId)
+      ) {
+        forbidden(
+          `"${op.desc.id}" would change another item than the one open`,
+        );
+      }
       const done = await runMutationIn(w, deps, op, input);
       created?.push(...done.undo.created);
       return done;
@@ -135,7 +160,7 @@ export async function runApply(
         scoped,
         out,
         ctx,
-        toolsFor(w, deps, created),
+        toolsFor(w, deps, runner, row.itemId, created),
       );
       const stored = storedUndo(created, record);
       if (stored !== null) {
@@ -269,7 +294,7 @@ export async function undo(
         runner,
         scopedWriter(w, { effects: runner.action.effects, itemId: row.itemId }),
         record,
-        toolsFor(w, deps),
+        toolsFor(w, deps, runner, row.itemId),
       );
     });
   } catch (e) {

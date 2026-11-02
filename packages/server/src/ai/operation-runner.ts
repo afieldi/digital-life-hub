@@ -3,6 +3,7 @@ import {
   dueFromLocal,
   ITEM_KEYS,
   localDueValue,
+  type OperationDescription,
   operationList,
   toAiAction,
 } from "@dlh/core";
@@ -42,6 +43,31 @@ function itemTypesOf(field: z.ZodType): string[] | null {
 }
 
 const isDueField = (field: z.ZodType) => metaOf(field).dlhField === "due";
+
+/** The input keys that name items (`fields.item`). */
+function itemFieldKeys(desc: OperationDescription): string[] {
+  const shape = desc.input.shape as Record<string, z.ZodType>;
+  return Object.keys(shape).filter((k) => {
+    const f = shape[k];
+    return f !== undefined && itemTypesOf(f) !== null;
+  });
+}
+
+/**
+ * Whether an AI request on `onScreen` may run `desc` with `input`: its
+ * subject is the item on screen, none, or an item one of its item fields
+ * names (AI fills those by title, resolved by search: addParent's parent).
+ * `writeOtherItems` is the caller's to check.
+ */
+export function subjectAllowed(
+  desc: OperationDescription,
+  input: Record<string, unknown>,
+  onScreen: string | null,
+): boolean {
+  const subject = desc.subject(input);
+  if (subject === null || subject === onScreen) return true;
+  return itemFieldKeys(desc).some((k) => input[k] === subject);
+}
 
 /** `field` with its inner schema replaced by `inner`, keeping optional and nullable. */
 function rewrap(field: z.ZodType, inner: z.ZodType): z.ZodType {
@@ -235,15 +261,9 @@ function mutationRunner(
     if ("expectedUpdatedAt" in shape) keys.expectedUpdatedAt = ctx.version;
     const parsed = desc.input.safeParse({ ...fields, ...keys });
     if (!parsed.success) throw badOutput("The answer didn't fit the request");
-    // The item on screen is the subject, or the task `id` names (addParent's
-    // subject is the parent); null is no item (create without a parent).
-    const onScreen = ctx.item?.id ?? null;
-    const subject = desc.subject(parsed.data);
     if (
-      subject !== null &&
-      subject !== onScreen &&
-      !(onScreen !== null && parsed.data.id === onScreen) &&
-      !desc.effects.includes("writeOtherItems")
+      !desc.effects.includes("writeOtherItems") &&
+      !subjectAllowed(desc, parsed.data, ctx.item?.id ?? null)
     ) {
       throw badOutput("The answer changes another item than the one open");
     }
