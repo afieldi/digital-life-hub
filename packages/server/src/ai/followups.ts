@@ -1,6 +1,8 @@
 import type { AiCancelInput, AiProviderId, AiResult } from "@dlh/core";
 import { TRPCError } from "@trpc/server";
-import { writeItems } from "../items/writer";
+import { type ItemWriter, writeItems } from "../items/writer";
+import { runMutationIn } from "../operations/implement";
+import { deleteCreated, revertMutation } from "../operations/undo";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
 import { AiError, aiErrorMessage, firstLine } from "./errors";
@@ -20,8 +22,24 @@ import {
   timing,
   writeFailure,
 } from "./requests";
-import type { AiRunner } from "./runners";
+import type { AiRunner, RunnerTools } from "./runners";
 import { scopedWriter } from "./scoped";
+
+function toolsFor(w: ItemWriter, deps: CoreDeps): RunnerTools {
+  return {
+    mutate: (op, input) => runMutationIn(w, deps, op, input),
+    revert: (op, record) => revertMutation(w, deps, op, record),
+  };
+}
+
+/** The ids an undo record says were created (an `UndoToken`'s `created`). */
+function createdIn(record: unknown): string[] {
+  if (typeof record !== "object" || record === null) return [];
+  const { created } = record as { created?: unknown };
+  return Array.isArray(created)
+    ? created.filter((id): id is string => typeof id === "string")
+    : [];
+}
 
 /** An unpicked suggestion may be applied for this long after prepare. */
 const SUGGESTION_TTL_MS = 30 * 60_000;
@@ -64,7 +82,13 @@ export async function runApply(
         effects: runner.action.effects,
         itemId: row.itemId,
       });
-      const record = await apply.call(runner, scoped, out, ctx);
+      const record = await apply.call(
+        runner,
+        scoped,
+        out,
+        ctx,
+        toolsFor(w, deps),
+      );
       if (record !== undefined && record !== null) {
         await claim(w.tx, row.id, "applied", { undo: record });
       }
@@ -144,7 +168,8 @@ export async function cancel(
 }
 
 /**
- * Reverts an applied request with its stored undo record, once. Refused as
+ * Reverts an applied request with its stored undo record, once: items it
+ * created are soft-deleted, then the runner's `undo` runs. Refused as
  * `stale` (and left applied) if the item changed since.
  */
 export async function undo(
@@ -161,10 +186,13 @@ export async function undo(
   try {
     await writeItems(deps, async (w) => {
       await claim(w.tx, row.id, "applied", { status: "undone", undo: null });
+      // Core removes what the action created; the runner's writer can't delete.
+      await deleteCreated(w, createdIn(row.undo));
       await revert.call(
         runner,
         scopedWriter(w, { effects: runner.action.effects, itemId: row.itemId }),
         row.undo,
+        toolsFor(w, deps),
       );
     });
   } catch (e) {

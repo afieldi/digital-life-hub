@@ -5,7 +5,8 @@ import { and, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { scopedWriter } from "../ai/scoped";
 import { type ItemWriter, writeItems } from "../items/writer";
-import { protectedProcedure, router } from "../trpc";
+import { type CoreDeps, protectedProcedure, router } from "../trpc";
+import type { ImplementedMutation } from "./implement";
 
 /**
  * An `UndoToken` as clients send it back. `record` may be missing: JSON drops an
@@ -44,6 +45,35 @@ export async function deleteCreated(
   }
 }
 
+/**
+ * Reverts a mutation with its own `undo` in `w`'s transaction. The record, not
+ * an input, names what to revert, so the writer has no subject. Created items
+ * are not touched: callers soft-delete them first with `deleteCreated`.
+ */
+export async function revertMutation(
+  w: ItemWriter,
+  deps: CoreDeps,
+  op: ImplementedMutation,
+  record: unknown,
+): Promise<void> {
+  const parsed = op.impl.undoRecord.safeParse(record);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `invalid undo record for ${op.desc.id}`,
+    });
+  }
+  const undoEffects = op.desc.effects.flatMap((e) => {
+    const inverse = INVERSE[e];
+    return inverse ? [e, inverse] : [e];
+  });
+  const scoped = scopedWriter(w, {
+    effects: [...undoEffects, "writeOtherItems"],
+    itemId: null,
+  });
+  await op.impl.undo(scoped, parsed.data, deps);
+}
+
 export const opsRouter = router({
   /**
    * Reverts a mutation from its `UndoToken`, in one transaction: created items
@@ -67,27 +97,10 @@ export const opsRouter = router({
           message: `operation ${input.id} can't be undone`,
         });
       }
-      const record = op.impl.undoRecord.safeParse(input.token.record);
-      if (!record.success) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `invalid undo record for ${input.id}`,
-        });
-      }
-      const { effects } = op.desc;
-      const undoEffects = effects.flatMap((e) => {
-        const inverse = INVERSE[e];
-        return inverse ? [e, inverse] : [e];
-      });
       try {
         await writeItems(ctx.deps, async (w) => {
           await deleteCreated(w, input.token.created);
-          // The record, not an input, names what to revert, so there is no subject.
-          const scoped = scopedWriter(w, {
-            effects: [...undoEffects, "writeOtherItems"],
-            itemId: null,
-          });
-          await op.impl.undo(scoped, record.data, ctx.deps);
+          await revertMutation(w, ctx.deps, op, input.token.record);
         });
       } catch (e) {
         if (e instanceof TRPCError && e.code === "CONFLICT") {

@@ -8,6 +8,7 @@ import {
 } from "../packages/core/src/ai/suite";
 import { coreAiActions, keywordInterpreter } from "../packages/core/src/index";
 import { corePhrasings } from "../packages/core/test/ai-phrasings";
+import { moduleAiActions } from "../packages/server/src/modules";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const PASS_THRESHOLD = 0.9;
@@ -54,12 +55,10 @@ async function main(): Promise<void> {
     console.error(`Unknown interpreter "${which}". Supported: keywords`);
     process.exit(2);
   }
-  // Actions: Core's plus every server module's `aiActions`.
+  // Actions: Core's plus every server module's, operations included.
   const actions = [
     ...Object.values(coreAiActions),
-    ...serverModules.flatMap((m) =>
-      "aiActions" in m && m.aiActions ? m.aiActions : [],
-    ),
+    ...serverModules.flatMap((m) => moduleAiActions(m)),
   ];
   const phrasings = await loadPhrasings(collectPhrasingFiles());
 

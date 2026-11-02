@@ -16,6 +16,7 @@ export {
   undo,
 } from "./ai/gateway";
 export { listLog } from "./ai/log";
+export { operationAiRunner } from "./ai/operation-runner";
 export {
   type AiCompleteRequest,
   type AiCompleteResult,
@@ -27,6 +28,8 @@ export {
   type AiRunner,
   collectAiRunners,
   defineAiRunner,
+  type Resolved,
+  type RunnerTools,
 } from "./ai/runners";
 export { type ScopedWriter, scopedWriter } from "./ai/scoped";
 export { getSettings } from "./ai/settings";
@@ -39,6 +42,7 @@ export {
   CORE_ROUTER_IDS,
   collectServerModules,
   defineServerModule,
+  moduleAiActions,
   moduleRouter,
   type ServerModule,
   ServerModuleError,
@@ -52,6 +56,7 @@ export {
   type Operations,
   type QueryImpl,
   runMutation,
+  runMutationIn,
   type UndoToken,
 } from "./operations/implement";
 export {
@@ -59,7 +64,11 @@ export {
   type OperationsRouter,
   operationsRouter,
 } from "./operations/router";
-export { deleteCreated, undoToken } from "./operations/undo";
+export {
+  deleteCreated,
+  revertMutation,
+  undoToken,
+} from "./operations/undo";
 export { type CoreRouter, coreRouters } from "./routers";
 export {
   type ApiDeps,

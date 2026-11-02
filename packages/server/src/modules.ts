@@ -1,5 +1,6 @@
-import type { AiActionDescription } from "@dlh/core";
+import { type AiActionDescription, toAiAction } from "@dlh/core";
 import type { AnyRouter } from "@trpc/server";
+import { operationAiRunner } from "./ai/operation-runner";
 import {
   type AiRunner,
   checkModuleAction,
@@ -70,6 +71,19 @@ export function moduleRouter(m: ServerModule): AnyRouter {
   );
 }
 
+/** Operations that are also AI actions (all but those with `ai: false`). */
+function aiOperations(m: ServerModule): ImplementedOperation[] {
+  return Object.values(m.operations ?? {}).filter((op) => op.desc.ai !== false);
+}
+
+/** The module's AI actions: its hand-written `aiActions`, then its operations'. */
+export function moduleAiActions(m: ServerModule): AiActionDescription[] {
+  return [
+    ...(m.aiActions ?? []),
+    ...aiOperations(m).map((op) => toAiAction(op.desc)),
+  ];
+}
+
 export function collectServerModules(
   mods: ServerModule[],
   reservedIds: string[],
@@ -102,11 +116,14 @@ export function collectServerModules(
         `Module "${m.id}" has neither a router nor operations`,
       );
     }
-    for (const a of m.aiActions ?? []) {
+    for (const a of moduleAiActions(m)) {
       moduleOf.set(a.id, m.id);
       descriptions.push(a);
     }
-    runners.push(...(m.aiRunners ?? []));
+    runners.push(
+      ...(m.aiRunners ?? []),
+      ...aiOperations(m).map(operationAiRunner),
+    );
     for (const type of m.itemTypes) {
       const owner = owners.get(type);
       if (owner !== undefined && owner !== m.id) {
@@ -118,7 +135,7 @@ export function collectServerModules(
       if (m.deleteWith) deleteWith.set(type, m.deleteWith);
     }
   }
-  const aiRunners = collectAiRunners(descriptions, runners, moduleOf, owners);
+  // Operations first, so a bad one is reported as an operation, not as the AI action it derives.
   // Ids are `<module>.<key>`, so with unique module ids none can repeat.
   const operations = new Map<string, ImplementedOperation>();
   for (const m of mods) {
@@ -132,6 +149,7 @@ export function collectServerModules(
       operations.set(op.desc.id, op);
     }
   }
+  const aiRunners = collectAiRunners(descriptions, runners, moduleOf, owners);
   return {
     modules: mods,
     itemTypes: new Set(owners.keys()),

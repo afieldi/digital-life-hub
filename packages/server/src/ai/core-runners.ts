@@ -3,7 +3,7 @@ import { z } from "zod";
 import { itemContext } from "./context";
 import { type AiRunner, defineAiRunner } from "./runners";
 
-const PREAMBLE =
+export const PREAMBLE =
   "You work inside a personal tasks-and-notes app. The person's request is your instruction. " +
   "The item they are working on, if any, is given between <item> tags. " +
   "Return only JSON matching the schema, with no other text.";

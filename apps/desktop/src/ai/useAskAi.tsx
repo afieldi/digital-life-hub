@@ -233,11 +233,26 @@ export function useAskAi({
       closeToast(key);
       if (done.result?.status === "applied") {
         showApplied(done.result.requestId, done.result.summary, req);
+      } else if (done.result?.status === "suggested") {
+        // An item it named matched several: the bar offers them to pick from.
+        setChoice({ text: req.text, actionId: req.actionId, kind: req.kind });
+        setQuery(req.text);
+        setOpen(true);
+        bar.show(done);
       } else if (done.phase === "error") {
         showError(done);
       }
     },
-    [closeBar, defaultProvider, client, showApplied, showError],
+    [
+      closeBar,
+      defaultProvider,
+      client,
+      showApplied,
+      showError,
+      bar,
+      setQuery,
+      setOpen,
+    ],
   );
 
   const runRequest = useCallback(
@@ -374,6 +389,10 @@ export function useAskAi({
       onNone={closeBar}
       onCancel={bar.cancel}
       onClose={closeBar}
+      onOpen={(href) => {
+        closeBar();
+        navigate(href);
+      }}
     />
   ) : undefined;
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { itemTitle } from "../items";
+import { itemSummary, itemTitle } from "../items";
 import { aiKind, aiProviderId } from "./kinds";
 
 export { aiKind, aiProviderId };
@@ -11,6 +11,8 @@ export const aiPrepareInput = z.object({
   kind: aiKind,
   interpretedBy: z.string().optional(),
   provider: aiProviderId.optional(),
+  /** The device's IANA zone: today's date in the prompt, and a query's `timeZone`. */
+  timeZone: z.string().max(100).optional(),
 });
 export type AiPrepareInput = z.infer<typeof aiPrepareInput>;
 
@@ -33,6 +35,12 @@ export const aiResult = z.discriminatedUnion("status", [
     options: z.array(
       z.object({ label: z.string(), reason: z.string().optional() }),
     ),
+  }),
+  z.object({
+    requestId: z.string(),
+    status: z.literal("listed"),
+    heading: z.string(),
+    items: z.array(itemSummary),
   }),
   z.object({
     requestId: z.string(),

@@ -1,7 +1,7 @@
 import { type OperationDescription, OperationError } from "@dlh/core";
 import type { z } from "zod";
 import { type ScopedWriter, scopedWriter } from "../ai/scoped";
-import { writeItems } from "../items/writer";
+import { type ItemWriter, writeItems } from "../items/writer";
 import type { CoreDeps } from "../trpc";
 
 /** What `ops.undo` needs to revert a mutation: its record and the items it created. */
@@ -75,22 +75,31 @@ export function implementOperation(
 }
 
 /**
- * Runs a mutation in one transaction with Core's scoped writer: only the methods
- * its effects allow, on `subject(input)` unless it declares `writeOtherItems`.
+ * Runs a mutation in `w`'s transaction with Core's scoped writer: only the
+ * methods its effects allow, on `subject(input)` unless it declares
+ * `writeOtherItems`. The token lists the items it created.
  */
-export async function runMutation<D extends OperationDescription, O>(
+export async function runMutationIn<D extends OperationDescription, O>(
+  w: ItemWriter,
   deps: CoreDeps,
   op: ImplementedMutation<D, O>,
   input: InputOf<D>,
 ): Promise<{ result: O; undo: UndoToken }> {
   const created: string[] = [];
-  return writeItems(deps, async (w) => {
-    const scoped = scopedWriter(w, {
-      effects: op.desc.effects,
-      itemId: op.desc.subject(input),
-      created,
-    });
-    const { result, undo } = await op.impl.run(scoped, input, deps);
-    return { result, undo: { record: undo, created } };
+  const scoped = scopedWriter(w, {
+    effects: op.desc.effects,
+    itemId: op.desc.subject(input),
+    created,
   });
+  const { result, undo } = await op.impl.run(scoped, input, deps);
+  return { result, undo: { record: undo, created } };
+}
+
+/** `runMutationIn`, in a transaction of its own. */
+export async function runMutation<D extends OperationDescription, O>(
+  deps: CoreDeps,
+  op: ImplementedMutation<D, O>,
+  input: InputOf<D>,
+): Promise<{ result: O; undo: UndoToken }> {
+  return writeItems(deps, (w) => runMutationIn(w, deps, op, input));
 }

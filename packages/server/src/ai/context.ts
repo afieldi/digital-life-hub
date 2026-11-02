@@ -6,6 +6,8 @@ export type AiContext = {
   item: Item | null;
   text: string;
   version: string | null;
+  /** The device's IANA zone, when the app sent one. */
+  timeZone?: string;
 };
 
 /** Upper bound on the characters of item context handed to a model. */

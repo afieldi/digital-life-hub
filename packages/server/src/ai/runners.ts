@@ -1,18 +1,55 @@
-import type { AiActionDescription, AiKind } from "@dlh/core";
+import type { AiActionDescription, AiKind, ItemSummary } from "@dlh/core";
 import type { z } from "zod";
 import { ServerModuleError } from "../modules";
+import type { ImplementedMutation, UndoToken } from "../operations/implement";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
 import type { ScopedWriter } from "./scoped";
+
+/**
+ * Core's operation plumbing, bound to the request's transaction, for runners
+ * that run a module operation rather than writing through `w` themselves.
+ */
+export type RunnerTools = {
+  /** Runs a mutation as `ops` does: its own scoped writer, created items tracked. */
+  mutate(
+    op: ImplementedMutation,
+    input: Record<string, unknown>,
+  ): Promise<{ result: unknown; undo: UndoToken }>;
+  /** Reverts with the operation's own `undo`, as `ops.undo` does. */
+  revert(op: ImplementedMutation, record: unknown): Promise<void>;
+};
+
+/** A title the model gave, replaced by an item id or offered as options. */
+export type Resolved =
+  | { out: unknown }
+  | { options: { label: string; out: unknown }[] };
 
 export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   action: D;
   context(deps: CoreDeps, itemId: string | null): Promise<AiContext>;
   system: string;
   output: Partial<Record<AiKind, z.ZodType>>;
-  apply?(w: ScopedWriter, out: unknown, ctx: AiContext): Promise<unknown>;
-  undo?(w: ScopedWriter, record: unknown): Promise<void>;
+  /**
+   * The undo record it returns is stored; one with `created` (an `UndoToken`)
+   * has those items soft-deleted by Core before `undo` runs.
+   */
+  apply?(
+    w: ScopedWriter,
+    out: unknown,
+    ctx: AiContext,
+    tools?: RunnerTools,
+  ): Promise<unknown>;
+  undo?(w: ScopedWriter, record: unknown, tools?: RunnerTools): Promise<void>;
   summary?(out: unknown, ctx: AiContext): string;
+  /** Ask only: answers with rows from the model's output, with no second call. */
+  list?(
+    deps: CoreDeps,
+    out: unknown,
+    ctx: AiContext,
+  ): Promise<{ heading: string; items: ItemSummary[] }>;
+  /** Before suggesting or applying: turns what the model named into ids. */
+  resolve?(deps: CoreDeps, out: unknown): Promise<Resolved>;
 };
 
 export function defineAiRunner<D extends AiActionDescription>(

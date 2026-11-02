@@ -3,6 +3,7 @@ import { useQueries } from "@tanstack/react-query";
 import { Link } from "react-aria-components";
 import { useTRPC } from "../api/client";
 import { registry } from "../modules";
+import { ListResult } from "../operations/ListResult";
 import type { AiAction } from "./errorActions";
 import type { AiUiState } from "./useAiRequest";
 
@@ -40,7 +41,7 @@ function UsedItems({ ids, onOpen }: { ids: string[]; onOpen: () => void }) {
 
 /**
  * The command bar's result slot for an AI request: progress, an answer,
- * options to pick from, or an error with what it offers.
+ * rows a query listed, options to pick from, or an error with what it offers.
  */
 export function AiResult({
   state,
@@ -50,6 +51,7 @@ export function AiResult({
   onNone,
   onCancel,
   onClose,
+  onOpen,
 }: {
   state: AiUiState;
   providerName: string;
@@ -59,6 +61,8 @@ export function AiResult({
   onCancel: () => void;
   /** Called when a link leaves the bar. */
   onClose: () => void;
+  /** Opens a listed row's page. */
+  onOpen: (href: string) => void;
 }) {
   const { result } = state;
   if (state.phase === "working") {
@@ -108,6 +112,15 @@ export function AiResult({
           </Button>
         </div>
       </div>
+    );
+  }
+  if (result?.status === "listed") {
+    return (
+      <ListResult
+        list={result}
+        itemTypes={registry.itemTypes}
+        onOpen={onOpen}
+      />
     );
   }
   if (result?.status === "suggested") {
