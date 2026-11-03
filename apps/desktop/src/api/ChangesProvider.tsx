@@ -13,6 +13,9 @@ function isAuthOrDevicesKey(queryKey: readonly unknown[]): boolean {
 /**
  * Keeps on-screen data fresh from the API's `/changes` stream. Render it only
  * while signed in: it holds a connection open for as long as it is mounted.
+ * Once the stream has opened, `<html data-changes="live">` says so (e2e tests
+ * wait for it before writing from outside the app); a later drop doesn't clear
+ * it, as the stream reconnects and refetches on its own.
  */
 export function ChangesProvider({
   subscribe,
@@ -31,11 +34,19 @@ export function ChangesProvider({
       void queryClient.invalidateQueries({
         predicate: (q) => !isAuthOrDevicesKey(q.queryKey),
       });
-    return subscribe({
+    const root = document.documentElement;
+    const stop = subscribe({
       onIds: refresh,
-      onReconnect: refresh,
+      onReconnect: () => {
+        root.dataset.changes = "live";
+        refresh();
+      },
       onUnauthorized: () => void signOutRef.current(),
     });
+    return () => {
+      stop();
+      delete root.dataset.changes;
+    };
   }, [subscribe, queryClient]);
 
   return children;

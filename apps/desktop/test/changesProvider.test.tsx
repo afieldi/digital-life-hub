@@ -59,3 +59,13 @@ test("unauthorized signs out; unmount stops the stream", () => {
   t.view.unmount();
   expect(t.stop).toHaveBeenCalledTimes(1);
 });
+
+test("the root says data-changes=live once the stream opens, until unmount", () => {
+  const t = setup();
+  const root = document.documentElement;
+  expect(root.dataset.changes).toBeUndefined();
+  t.handlers().onReconnect();
+  expect(root.dataset.changes).toBe("live");
+  t.view.unmount();
+  expect(root.dataset.changes).toBeUndefined();
+});

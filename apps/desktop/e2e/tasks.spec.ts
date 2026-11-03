@@ -5,7 +5,7 @@ import { parseDue } from "../../../modules/tasks/src/capture";
 import { E2E_API_URL } from "./apiUrl";
 import { modEnter } from "./keys";
 import { openPalette } from "./palette";
-import { signIn } from "./signIn";
+import { changesLive, signIn } from "./signIn";
 
 // Both browser projects share one database that is never wiped between them,
 // so every title carries a stamp unique to this run.
@@ -285,6 +285,7 @@ test("a task completed elsewhere updates the open screen within 2 seconds", asyn
   await page.goto("/tasks");
   const box = page.locator(`[data-task-id="${task.id}"]`).getByRole("checkbox");
   await expect(box).not.toBeChecked();
+  await changesLive(page);
 
   await api.tasks.complete.mutate({
     id: task.id,

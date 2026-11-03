@@ -3,7 +3,7 @@ import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import { createTRPCClient, httpLink } from "@trpc/client";
 import { E2E_API_URL } from "./apiUrl";
 import { openPalette } from "./palette";
-import { signIn } from "./signIn";
+import { changesLive, signIn } from "./signIn";
 
 // Both browser projects share one database that is never wiped between them,
 // so every title carries a stamp unique to this run.
@@ -137,6 +137,7 @@ test("a script files a request through the API and Open shows it within 2 second
   await expect(
     page.getByRole("region", { name: "Open requests" }),
   ).toBeVisible();
+  await changesLive(page);
 
   await api.requests.file.mutate({
     title,
