@@ -83,7 +83,8 @@ export function moduleFiles(m: NewModule): Record<string, string> {
     "vitest.config.ts": `import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  test: { globals: true, environment: "node", fileParallelism: false },
+  // A test's first fresh database may wait for its template's migrations.
+  test: { globals: true, environment: "node", testTimeout: 30_000 },
 });
 `,
     "src/operations.ts": `import { describeOperation, itemTitle } from "@dlh/core";
