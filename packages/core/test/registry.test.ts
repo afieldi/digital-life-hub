@@ -90,3 +90,47 @@ test("duplicate palette action ids across modules throw", () =>
   expect(() =>
     collectModules([act("a", "same.id"), act("b", "same.id")]),
   ).toThrow(/same\.id/));
+
+const Widget = () => null;
+
+describe("Home widgets", () => {
+  const w = (id: string, order?: number) => ({
+    id,
+    label: id,
+    component: Widget,
+    ...(order === undefined ? {} : { order }),
+  });
+  const withWidgets = (id: string, homeWidgets: ReturnType<typeof w>[]) =>
+    defineModule({ id, routes: () => [], homeWidgets });
+
+  test("are gathered across modules, ids prefixed, in order then registry order", () => {
+    const { homeWidgets } = collectModules([
+      withWidgets("tasks", [w("later"), w("today", 1)]),
+      withWidgets("requests", [w("needsYou", 2), w("other")]),
+    ]);
+    expect(homeWidgets.map((x) => x.id)).toEqual([
+      "tasks.today",
+      "requests.needsYou",
+      "tasks.later",
+      "requests.other",
+    ]);
+  });
+
+  test("a duplicate id within a module throws", () =>
+    expect(() =>
+      collectModules([withWidgets("tasks", [w("a"), w("a")])]),
+    ).toThrow(ModuleRegistryError));
+
+  test("the same id in two modules is fine", () =>
+    expect(
+      collectModules([withWidgets("a", [w("x")]), withWidgets("b", [w("x")])])
+        .homeWidgets,
+    ).toHaveLength(2));
+});
+
+test("a module may own / when the shell doesn't reserve it", () =>
+  expect(
+    collectModules([m("home", { path: "/", key: "h" })], {
+      paths: ["/settings"],
+    }).nav.map((n) => n.path),
+  ).toEqual(["/"]));

@@ -13,7 +13,7 @@ import {
 } from "@dlh/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useRouter, useRouterState } from "@tanstack/react-router";
-import { House, Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RouterProvider } from "react-aria-components";
 import { useAskAi } from "../ai/useAskAi";
@@ -42,17 +42,15 @@ const GROUP_LABELS: Record<PaletteAction["group"], string> = {
   ai: "AI",
 };
 
-/** `g` + letter targets: Home is `g h`; modules declare their own `nav.key`. */
+/** `g` + letter targets: each module's `nav.key` (Home's is `h`). */
 function goTargetsOf(nav: ModuleRegistry["nav"]): Map<string, string> {
-  return new Map<string, string>([
-    ["h", "/"],
-    ...nav.flatMap((n) => (n.key ? [[n.key, n.path] as [string, string]] : [])),
-  ]);
+  return new Map<string, string>(
+    nav.flatMap((n) => (n.key ? [[n.key, n.path] as [string, string]] : [])),
+  );
 }
 
 function dockItemsOf(nav: ModuleRegistry["nav"]): DockItem[] {
   return [
-    { id: "home", label: "Home", icon: House, href: "/" },
     ...nav.map((n) => ({
       id: n.path,
       label: n.label,
@@ -126,6 +124,7 @@ export function Shell() {
       itemsChanged,
       openExternal,
       goChordPending: () => hotkeys.current?.goPending() ?? false,
+      homeWidgets: registry.homeWidgets,
     }),
     [openCommandBar, itemsChanged, registry],
   );

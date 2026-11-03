@@ -194,7 +194,7 @@ export interface ModuleManifest {
   routes: RouteDefinition[];      // TanStack Router subtree
   paletteActions?: PaletteAction[]; // 'Add task', 'New note'
   shortcuts?: Shortcut[];         // 'g t' -> Tasks
-  homeWidgets?: HomeWidget[];     // panels Home can place later
+  homeWidgets?: HomeWidget[];     // panels for Home: { id, label, component, order? }
 }
 ```
 
@@ -210,7 +210,7 @@ The shell reads manifests at build time from `modules/*`. A module with no `nav`
 **Nav and routing**
 
 - Floating bottom nav built from module `nav` entries, plus a fixed ⌘K button at the end.
-- Routes: `/` (Home, a placeholder until the Home module), `/settings`, and each module's subtree.
+- Routes: `/settings`, `/dev/ui`, and each module's subtree. Home is `modules/home`: it owns `/` and `g h`, and lays out every module's `homeWidgets` (gathered by the registry, sorted by `order`) through the shell's `useHomeWidgets()`.
 - Global keys: ⌘K (Ctrl+K on Windows) opens the palette; Esc closes it; `g` then a letter jumps to a module.
 
 **Palette in Core**: an empty state with Recents and Go to; typing shows search results as Jump to plus matching registered actions. Natural-language parsing comes in a follow-up; see the [capture design doc](command-bar-capture.md).

@@ -52,6 +52,7 @@ export {
 } from "./items";
 export type {
   CommandContext,
+  HomeWidget,
   ModuleManifest,
   PaletteAction,
 } from "./module";

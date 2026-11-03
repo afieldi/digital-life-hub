@@ -1,5 +1,5 @@
 import type { AiActionDescription } from "./ai/actions";
-import type { ModuleManifest, PaletteAction } from "./module";
+import type { HomeWidget, ModuleManifest, PaletteAction } from "./module";
 import { toAiAction } from "./operations/ai";
 import type { OperationDescription } from "./operations/describe";
 
@@ -17,6 +17,8 @@ export interface ModuleRegistry {
   actions: PaletteAction[];
   aiActions: AiActionDescription[];
   operations: OperationDescription[];
+  /** Every module's Home widgets, in `order`; `id` is `<module>.<widget>`. */
+  homeWidgets: HomeWidget[];
 }
 
 export interface ReservedShell {
@@ -39,6 +41,7 @@ export function collectModules(
   const aiActions: AiActionDescription[] = [];
   const aiActionOwners = new Map<string, string>();
   const operations: OperationDescription[] = [];
+  const homeWidgets: HomeWidget[] = [];
   const operationOwners = new Map<string, string>();
 
   for (const m of manifests) {
@@ -116,6 +119,17 @@ export function collectModules(
       aiActions.push(a);
     }
 
+    const widgetIds = new Set<string>();
+    for (const w of m.homeWidgets ?? []) {
+      if (widgetIds.has(w.id)) {
+        throw new ModuleRegistryError(
+          `Duplicate Home widget id "${w.id}" in module "${m.id}"`,
+        );
+      }
+      widgetIds.add(w.id);
+      homeWidgets.push({ ...w, id: `${m.id}.${w.id}` });
+    }
+
     for (const o of m.operations ?? []) {
       const owner = operationOwners.get(o.id);
       if (owner) {
@@ -138,6 +152,9 @@ export function collectModules(
   }
 
   nav.sort((a, b) => a.order - b.order);
+  // Stable: widgets with the same order keep registry order.
+  const last = Number.MAX_SAFE_INTEGER;
+  homeWidgets.sort((a, b) => (a.order ?? last) - (b.order ?? last));
   return {
     modules: manifests,
     nav,
@@ -145,5 +162,6 @@ export function collectModules(
     actions,
     aiActions,
     operations,
+    homeWidgets,
   };
 }

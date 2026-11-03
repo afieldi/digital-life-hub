@@ -21,6 +21,16 @@ export interface PaletteAction {
   run: (ctx: CommandContext) => void | Promise<void>;
 }
 
+/** A panel a module puts on Home. It runs inside the API and query providers. */
+export interface HomeWidget {
+  /** Unique within its module. */
+  id: string;
+  label: string;
+  component: ComponentType;
+  /** Lower comes first; modules' widgets without one follow, in registry order. */
+  order?: number;
+}
+
 export interface ModuleManifest {
   id: string;
   itemType?: {
@@ -39,8 +49,8 @@ export interface ModuleManifest {
     /** Rendered after the label in the Dock, e.g. an open count. It runs inside the API and query providers, so it may call hooks that need them. */
     badge?: ComponentType;
   };
-  /** Widgets for the Home screen. Provisional until the Home spec: nothing renders these yet. */
-  homeWidgets?: { id: string; label: string; component: ComponentType }[];
+  /** Panels for the Home screen, which the Home module lays out in `order`. */
+  homeWidgets?: HomeWidget[];
   routes: (parent: AnyRoute) => AnyRoute[];
   paletteActions?: PaletteAction[];
   aiActions?: AiActionDescription[];

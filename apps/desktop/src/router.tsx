@@ -8,7 +8,6 @@ import {
 import { createElement } from "react";
 import { registry as appRegistry, RegistryContext } from "./modules";
 import { DevUi } from "./routes/DevUi";
-import { Home } from "./routes/Home";
 import { Settings } from "./routes/Settings";
 import { Shell } from "./shell/Shell";
 
@@ -26,11 +25,6 @@ export function createAppRouter(
       ),
   });
   const routeTree = rootRoute.addChildren([
-    createRoute({
-      getParentRoute: () => rootRoute,
-      path: "/",
-      component: Home,
-    }),
     createRoute({
       getParentRoute: () => rootRoute,
       path: "/settings",
