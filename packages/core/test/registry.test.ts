@@ -5,6 +5,7 @@ import {
   ModuleDescriptionError,
   type ModuleManifest,
   ModuleRegistryError,
+  modulesShowing,
 } from "../src";
 
 const m = (id: string, nav?: Partial<ModuleManifest["nav"]>) =>
@@ -166,4 +167,20 @@ test("a manifest from a description takes its id and operations, and must show a
       },
     }),
   ).toThrow(ModuleDescriptionError);
+});
+
+test("modulesShowing: each type's owner and the modules that refresh on it", () => {
+  const registry = {
+    modules: [
+      it("tasks", "task"),
+      { ...it("requests", "request"), refreshOn: ["task"] },
+      m("home"),
+    ],
+  };
+  expect(modulesShowing(registry, ["request"])).toEqual(new Set(["requests"]));
+  expect(modulesShowing(registry, ["task"])).toEqual(
+    new Set(["tasks", "requests"]),
+  );
+  // A type no module owns: the caller can't tell, so null.
+  expect(modulesShowing(registry, ["task", "ghost"])).toBeNull();
 });

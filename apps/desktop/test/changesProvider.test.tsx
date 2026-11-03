@@ -8,6 +8,9 @@ const keys = {
   me: [["auth", "me"], { type: "query" }],
   devices: [["devices", "list"], { type: "query" }],
   item: [["items", "get"], { input: { id: "a" }, type: "query" }],
+  // The app's modules: Tasks owns `task`; Requests owns `request` and shows tasks.
+  tasks: ["tasks", "list"],
+  requests: ["requests", "open"],
 };
 
 function setup() {
@@ -68,4 +71,26 @@ test("the root says data-changes=live once the stream opens, until unmount", () 
   expect(root.dataset.changes).toBe("live");
   t.view.unmount();
   expect(root.dataset.changes).toBeUndefined();
+});
+
+test("an event with types refreshes only the modules that show them, and Core's", async () => {
+  const t = setup();
+  t.handlers().onIds(["r"], ["request"]);
+  await waitFor(() => expect(t.invalidated(keys.requests)).toBe(true));
+  expect(t.invalidated(keys.item)).toBe(true);
+  expect(t.invalidated(keys.tasks)).toBe(false);
+
+  const u = setup();
+  // Requests shows the task a request became (refreshOn), so a task change reaches it.
+  u.handlers().onIds(["t"], ["task"]);
+  await waitFor(() => expect(u.invalidated(keys.tasks)).toBe(true));
+  expect(u.invalidated(keys.requests)).toBe(true);
+});
+
+test("a type no module owns refreshes everything", async () => {
+  const t = setup();
+  t.handlers().onIds(["x"], ["mystery"]);
+  await waitFor(() => expect(t.invalidated(keys.tasks)).toBe(true));
+  expect(t.invalidated(keys.requests)).toBe(true);
+  expect(t.invalidated(keys.me)).toBe(false);
 });

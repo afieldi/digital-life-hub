@@ -1,5 +1,7 @@
+import { changeEvent } from "@dlh/api-contract";
 export type ChangesHandlers = {
-  onIds: (ids: string[]) => void;
+  /** Items written elsewhere, and their types when the server knows them. */
+  onIds: (ids: string[], types?: string[]) => void;
   /** Called each time the stream opens, the first time included: refetch what was loaded before it was live. */
   onReconnect: () => void;
   onUnauthorized: () => void;
@@ -100,15 +102,16 @@ export function subscribeChanges(
         // missed while disconnected, or before the stream first connected.
         opts.onReconnect();
         const parse = createSseParser((data) => {
-          let ids: unknown;
+          let json: unknown;
           try {
-            ids = (JSON.parse(data) as { ids?: unknown }).ids;
+            json = JSON.parse(data);
           } catch {
             return; // A malformed event is skipped; the stream stays up.
           }
-          if (!Array.isArray(ids)) return;
+          const event = changeEvent.safeParse(json);
+          if (!event.success) return;
           try {
-            opts.onIds(ids as string[]);
+            opts.onIds(event.data.ids, event.data.types);
           } catch (err) {
             // Surface a handler bug without tearing down the stream.
             queueMicrotask(() => {

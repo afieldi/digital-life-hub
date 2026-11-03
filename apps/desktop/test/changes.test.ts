@@ -69,7 +69,14 @@ describe("subscribeChanges", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer t");
     s.push('data: {"ids":["a","b"]}\n\n');
     await flush();
-    expect(handlers.onIds).toHaveBeenCalledWith(["a", "b"]);
+    expect(handlers.onIds).toHaveBeenCalledWith(["a", "b"], undefined);
+    s.push('data: {"ids":["c"],"types":["task"]}\n\n');
+    await flush();
+    expect(handlers.onIds).toHaveBeenLastCalledWith(["c"], ["task"]);
+    // Not a change event: skipped.
+    s.push('data: {"ids":[1]}\n\n');
+    await flush();
+    expect(handlers.onIds).toHaveBeenCalledTimes(2);
     expect(handlers.onReconnect).toHaveBeenCalledTimes(1); // first open
     stop();
   });

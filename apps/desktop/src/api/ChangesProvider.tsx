@@ -1,13 +1,17 @@
+import { modulesShowing } from "@dlh/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { useRegistry } from "../modules";
 import type { SubscribeChanges } from "./changes";
 
-/** tRPC query keys start with the procedure path, e.g. `["auth","me"]`. */
-function isAuthOrDevicesKey(queryKey: readonly unknown[]): boolean {
-  const path = queryKey[0];
-  const root = Array.isArray(path) ? path[0] : undefined;
-  return root === "auth" || root === "devices";
+/**
+ * A query key's first segment: tRPC keys start with the procedure path
+ * (`[["auth","me"], …]`), a module's own with its id (`["tasks", …]`).
+ */
+function rootOf(queryKey: readonly unknown[]): unknown {
+  const first = queryKey[0];
+  return Array.isArray(first) ? first[0] : first;
 }
 
 /**
@@ -29,14 +33,30 @@ export function ChangesProvider({
   const signOutRef = useRef(signOut);
   signOutRef.current = signOut;
 
+  const registry = useRegistry();
+
   useEffect(() => {
-    const refresh = () =>
+    const moduleIds = new Set(registry.modules.map((m) => m.id));
+    /**
+     * Refetches what's on screen, but not auth or devices. With `types`, a
+     * module's queries refresh only when it shows one of them; Core's always.
+     */
+    const refresh = (types?: readonly string[]) => {
+      const showing = types ? modulesShowing(registry, types) : null;
       void queryClient.invalidateQueries({
-        predicate: (q) => !isAuthOrDevicesKey(q.queryKey),
+        predicate: (q) => {
+          const key = rootOf(q.queryKey);
+          if (key === "auth" || key === "devices") return false;
+          if (!showing || typeof key !== "string" || !moduleIds.has(key)) {
+            return true;
+          }
+          return showing.has(key);
+        },
       });
+    };
     const root = document.documentElement;
     const stop = subscribe({
-      onIds: refresh,
+      onIds: (_ids, types) => refresh(types),
       onReconnect: () => {
         root.dataset.changes = "live";
         refresh();
@@ -47,7 +67,7 @@ export function ChangesProvider({
       stop();
       delete root.dataset.changes;
     };
-  }, [subscribe, queryClient]);
+  }, [subscribe, queryClient, registry]);
 
   return children;
 }

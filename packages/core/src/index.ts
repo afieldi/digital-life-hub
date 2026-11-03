@@ -82,7 +82,11 @@ export { dueFromLocal, dueValue, localDueValue } from "./operations/due";
 export type { FieldSpec } from "./operations/fields";
 export { fields, formFields, OperationError } from "./operations/fields";
 export type { ModuleRegistry, ReservedShell } from "./registry";
-export { collectModules, ModuleRegistryError } from "./registry";
+export {
+  collectModules,
+  ModuleRegistryError,
+  modulesShowing,
+} from "./registry";
 export type { Day } from "./time";
 export {
   addDays,
