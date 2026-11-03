@@ -2,20 +2,19 @@ import { describeOperation, fields } from "@dlh/core";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { coreAiRunners } from "../src/ai/core-runners";
-import {
-  devFakeAi,
-  promptToday,
-  scriptedFakeProvider,
-} from "../src/ai/devFake";
+import { createScriptedFake, devFakeAi, promptToday } from "../src/ai/devFake";
 import { operationAiRunner } from "../src/ai/operation-runner";
 import { implementOperation } from "../src/operations/implement";
 
 test("devFakeAi answers as OpenRouter with the fake model", () => {
-  expect(devFakeAi).toMatchObject({
+  expect(devFakeAi([])).toMatchObject({
     defaultModel: "fake-model",
-    providers: { openrouter: scriptedFakeProvider },
+    providers: { openrouter: { id: "openrouter" } },
   });
 });
+
+/** The fake with no runner of its own: answers by the schema's shape. */
+const scriptedFakeProvider = createScriptedFake([]);
 
 describe("scriptedFakeProvider", () => {
   const signal = new AbortController().signal;

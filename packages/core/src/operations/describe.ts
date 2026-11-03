@@ -106,6 +106,12 @@ export type OperationDescription<
   /** Defaults to `true`. */
   ai?: boolean;
   /**
+   * What the scripted dev and e2e fake answers as AI with (the input without
+   * the item keys), when guessing from field names would break a rule the
+   * schema can't show, e.g. a field that must go with another.
+   */
+  devFake?: Record<string, unknown>;
+  /**
    * Operations of other modules this mutation's `run` may call with `w.call`.
    * They must be registered, not this operation, and make no calls of their own.
    */

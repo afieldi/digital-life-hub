@@ -36,6 +36,12 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   system: string;
   output: Partial<Record<AiKind, z.ZodType>>;
   /**
+   * What the scripted dev and e2e fake answers, for an output it can't guess
+   * from the schema's shape (a hand-written action's own). `suggest` is true
+   * for the suggest kind's `{ options }`.
+   */
+  devFake?(req: { prompt: string; suggest: boolean }): unknown;
+  /**
    * The undo record it returns is stored for `undo`. Items it creates, through
    * `w` or `tools.mutate`, are soft-deleted by Core before `undo` runs.
    */

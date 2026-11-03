@@ -31,6 +31,9 @@ async function topLevelTaskContext(deps: CoreDeps, itemId: string | null) {
   return itemContext(deps, itemId);
 }
 
+/** The dev fake's subtasks (see `AiRunner.devFake`). */
+const FAKE_STEPS = ["One", "Two", "Three"].map((n) => `Fake subtask ${n}`);
+
 const breakDown = defineAiRunner(tasksAiActions.breakDown, {
   context: (deps, itemId) => topLevelTaskContext(deps, itemId),
   system: `${PREAMBLE}
@@ -57,6 +60,10 @@ Break the task into 3 to 7 concrete subtasks, each a short title that starts wit
     return null;
   },
   async undo() {},
+  devFake: ({ suggest }) =>
+    suggest
+      ? { options: FAKE_STEPS.map((label) => ({ label })) }
+      : { subtasks: FAKE_STEPS },
   summary(out) {
     const titles = titlesOf(out);
     return titles.length === 1
@@ -103,6 +110,15 @@ Rewrite the task's notes (the item's body) so they are clearer and easier to sca
   async undo(_w, record, tools) {
     await tools.revert(update, rewriteUndo.parse(record).record);
   },
+  devFake: ({ suggest }) =>
+    suggest
+      ? {
+          options: ["Shorter", "Clearer"].map((label) => ({
+            label,
+            notes: `Fake ${label.toLowerCase()} notes.`,
+          })),
+        }
+      : { notes: "Fake rewritten notes." },
   // Each version's text, so the person reads both before picking.
   preview: (option) =>
     typeof option.notes === "string" ? option.notes : undefined,
@@ -193,6 +209,13 @@ const planToday = defineAiRunner(tasksAiActions.planToday, {
   system: `${PREAMBLE}
 The <item> section lists the person's open tasks that are overdue or due today or in the next two days, each with when it is due, its priority, its subtask progress and its id. Put the ones worth doing today in a sensible order, each with a one-sentence reason, and give one line of advice. Use only ids from the list.`,
   output: { ask: planOutput },
+  // The first three tasks the prompt lists.
+  devFake: ({ prompt }) => ({
+    order: [...prompt.matchAll(/\(id ([0-9a-f-]{36})\)/g)]
+      .slice(0, 3)
+      .map((m) => ({ taskId: m[1], reason: "Fake reason." })),
+    advice: "Fake advice.",
+  }),
   async list(deps, out, ctx) {
     const { order, advice } = planOutput.parse(out);
     const timeZone = ctx.timeZone ?? "UTC";

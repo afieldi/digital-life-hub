@@ -61,6 +61,8 @@ const resolve = describeOperation({
     "mark",
     "resolve",
   ],
+  // Handled needs no task: a guessed outcome of task would want a taskId too.
+  devFake: { outcome: "handled" },
   input: resolveInput,
   subject: (input) => input.id,
   effects: ["updateItem", "addLinks"],
