@@ -193,6 +193,16 @@ describe("Open", () => {
     );
   });
 
+  test("g then h on a focused row goes Home and leaves the request open", async () => {
+    const { renderApp, router, client } = await setup("/queue");
+    const request = await file(client, { title: "Join the book club" });
+    renderApp();
+    (await screen.findByRole("link", { name: "Join the book club" })).focus();
+    await userEvent.keyboard("gh");
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect((await read(client, request.id)).outcome).toBeNull();
+  });
+
   test("Make task opens the form prefilled and creates a linked task", async () => {
     const { renderApp, client } = await setup("/queue");
     const request = await file(client, {

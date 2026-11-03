@@ -359,6 +359,12 @@ importers:
       '@dlh/server':
         specifier: workspace:*
         version: link:../server
+      '@dlh/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@tanstack/react-query':
+        specifier: ^5.105.0
+        version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
       '@trpc/client':
         specifier: ^11.22.1
         version: 11.22.1(@trpc/server@11.22.1(typescript@5.9.3))(typescript@5.9.3)

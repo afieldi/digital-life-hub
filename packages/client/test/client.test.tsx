@@ -5,6 +5,7 @@ import {
   OpenItemProvider,
   ShellProvider,
   useCommandBar,
+  useGoChordPending,
   useItemHref,
   useItemsChanged,
   useModuleApi,
@@ -116,7 +117,7 @@ test("useOpenItem is null without a provider", () => {
   expect(result.current).toBeNull();
 });
 
-test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do nothing without one", () => {
+test("useCommandBar, useItemHref, useItemsChanged and useGoChordPending use the shell's, and do nothing without one", () => {
   const openCommandBar = vi.fn();
   const itemsChanged = vi.fn();
   const itemHref = (item: { id: string; type: string }) =>
@@ -126,6 +127,7 @@ test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do not
       bar: useCommandBar(),
       href: useItemHref(),
       changed: useItemsChanged(),
+      goPending: useGoChordPending(),
     }),
     {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -135,6 +137,7 @@ test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do not
             itemHref,
             itemsChanged,
             openExternal: async () => {},
+            goChordPending: () => true,
           }}
         >
           {children}
@@ -147,14 +150,17 @@ test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do not
   expect(result.current.href({ id: "1", type: "task" })).toBe("/tasks/1");
   result.current.changed();
   expect(itemsChanged).toHaveBeenCalledOnce();
+  expect(result.current.goPending()).toBe(true);
 
   const bare = renderHook(() => ({
     bar: useCommandBar(),
     href: useItemHref(),
     changed: useItemsChanged(),
+    goPending: useGoChordPending(),
   }));
   expect(() => bare.result.current.bar.open()).not.toThrow();
   expect(() => bare.result.current.changed()).not.toThrow();
+  expect(bare.result.current.goPending()).toBe(false);
   expect(bare.result.current.href({ id: "1", type: "task" })).toBeUndefined();
 });
 
@@ -168,6 +174,7 @@ test("useOpenExternal uses the shell's, and opens a new window without one", asy
           itemHref: () => undefined,
           itemsChanged: () => {},
           openExternal,
+          goChordPending: () => false,
         }}
       >
         {children}

@@ -1,14 +1,13 @@
-import { useCoreApi, useItemsChanged, useModuleApi } from "@dlh/client";
-import { toast } from "@dlh/ui";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type ModuleWriteOptions,
+  useCoreApi,
+  useModuleApi,
+  useModuleWrite,
+} from "@dlh/client";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type { Outcome, RequestAction } from "../schema";
 import type { RequestsRouter } from "../server";
-
-/** What a mutation hands back to undo it, as `ops.undo` takes it. */
-type UndoToken = Parameters<
-  ReturnType<typeof useCoreApi>["ops"]["undo"]["mutate"]
->[0]["token"];
 
 /** The `requests` module router, typed. */
 export function useRequestsApi() {
@@ -28,9 +27,6 @@ export const requestKeys = {
   get: (id: string) => [...REQUESTS_KEY, "get", id] as const,
 };
 
-/** How long a write's toast keeps its Undo. */
-export const UNDO_TOAST_MS = 10_000;
-
 /** A request's page: the Detail panel. */
 export const requestHref = (id: string) => `/queue/${id}`;
 
@@ -46,42 +42,10 @@ export function useOpenRequests() {
   });
 }
 
-/** A write refused because the request changed since it was read. */
-export function isConflict(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { data?: { code?: string } }).data?.code === "CONFLICT"
-  );
-}
-
-/**
- * The undo token of a write's result, when it has one and the write changed
- * something. A request's action runs another module's operation, whose result
- * may not carry one.
- */
-export function undoOf(res: unknown): UndoToken | null {
-  if (typeof res !== "object" || res === null) return null;
-  const undo = (res as { undo?: unknown }).undo;
-  if (typeof undo !== "object" || undo === null) return null;
-  const { record, created } = undo as { record?: unknown; created?: unknown };
-  if (!Array.isArray(created) || !created.every((c) => typeof c === "string")) {
-    return null;
-  }
-  // A write that changed nothing has nothing to undo.
-  if (record == null && created.length === 0) return null;
-  return { record, created };
-}
-
-export type RequestWrite<T> = {
-  /** The operation's id, as `ops.undo` takes it. */
-  op: string;
-  /** What the toast says, e.g. the operation's summary. */
-  summary: string;
-  /** What to call it in an error ("Couldn't resolve the request"). */
-  verb: string;
-  /** Its result; `undo` is checked before Undo is offered. */
-  call: () => Promise<{ result: T; undo?: unknown }>;
+/** What a Queue write refreshes, and what a conflict says. */
+const REQUEST_WRITE: ModuleWriteOptions = {
+  queryKeys: [REQUESTS_KEY, TASKS_KEY],
+  conflictMessage: "It changed elsewhere; try again",
 };
 
 /**
@@ -91,66 +55,7 @@ export type RequestWrite<T> = {
  * result, or null when the write failed.
  */
 export function useRequestWrite() {
-  const core = useCoreApi();
-  const queryClient = useQueryClient();
-  const itemsChanged = useItemsChanged();
-  const refresh = useCallback(() => {
-    // The shell's reads too: ⌘K's next write needs the version this one made.
-    itemsChanged();
-    return Promise.all([
-      queryClient.invalidateQueries({ queryKey: REQUESTS_KEY }),
-      queryClient.invalidateQueries({ queryKey: TASKS_KEY }),
-    ]);
-  }, [queryClient, itemsChanged]);
-  const failed = useCallback(
-    (err: unknown, verb: string) => {
-      if (isConflict(err)) toast("It changed elsewhere; try again");
-      else toast(`Couldn't ${verb}`, { tone: "error" });
-      void refresh();
-    },
-    [refresh],
-  );
-
-  return useCallback(
-    async <T>({
-      op,
-      summary,
-      verb,
-      call,
-    }: RequestWrite<T>): Promise<T | null> => {
-      let res: { result: T; undo?: unknown };
-      try {
-        res = await call();
-      } catch (err) {
-        failed(err, verb);
-        return null;
-      }
-      void refresh();
-      const token = undoOf(res);
-      toast(summary, {
-        tone: "success",
-        timeout: UNDO_TOAST_MS,
-        actions: !token
-          ? []
-          : [
-              {
-                label: "Undo",
-                onAction: () => {
-                  core.ops.undo.mutate({ id: op, token }).then(
-                    ({ summary: undone }) => {
-                      toast(undone);
-                      void refresh();
-                    },
-                    (err: unknown) => failed(err, "undo"),
-                  );
-                },
-              },
-            ],
-      });
-      return res.result;
-    },
-    [core, refresh, failed],
-  );
+  return useModuleWrite(REQUEST_WRITE);
 }
 
 /** A module router as `runRequestAction` reaches it: mutations by name. */

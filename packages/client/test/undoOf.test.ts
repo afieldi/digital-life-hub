@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { undoOf } from "../src/screens/api";
+import { undoOf } from "../src/index";
 
 test("undoOf finds the undo token only when the write changed something", () => {
   const created = {

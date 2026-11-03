@@ -1,4 +1,4 @@
-import { useItemHref } from "@dlh/client";
+import { useGoChordPending, useItemHref } from "@dlh/client";
 import { Button, Chip, ItemRow } from "@dlh/ui";
 import {
   Bot,
@@ -33,10 +33,6 @@ export function SourceGlyph({ source }: { source: Source }) {
   const { icon: Icon, label } = SOURCES[source];
   return <Icon role="img" aria-label={label} size={18} strokeWidth={1.75} />;
 }
-
-/** `g` starts the shell's "go to" chord; the key after it is the shell's. */
-const GO_CHORD_MS = 1000;
-let gAt = 0;
 
 export type OpenRowHandlers = {
   /** `refocus`: where focus goes once the task is made and the row leaves. */
@@ -133,6 +129,7 @@ export function OpenRequestRow({
   handlers: OpenRowHandlers;
 }) {
   const hasActions = row.actions !== null && row.actions.length > 0;
+  const goChordPending = useGoChordPending();
   const ref = useRef<HTMLDivElement>(null);
   // Resolving drops the row: focus in it moves on first, so the next key acts
   // on the next row rather than falling to the page.
@@ -153,10 +150,9 @@ export function OpenRequestRow({
   };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    // The key after `g` is the shell's "go to" chord.
+    if (goChordPending() || hasActions) return;
     const key = e.key.toLowerCase();
-    const afterG = Date.now() - gAt <= GO_CHORD_MS;
-    gAt = key === "g" ? Date.now() : 0;
-    if (afterG || hasActions) return;
     if (key === "t") leaving.onMakeTask(row);
     else if (key === "h") leaving.onResolve(row, "handled");
     else if (key === "n") leaving.onResolve(row, "not_for_me");

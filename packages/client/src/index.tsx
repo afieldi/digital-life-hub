@@ -101,10 +101,15 @@ export type ShellApi = {
    */
   itemsChanged: () => void;
   /**
-   * Opens a web link outside the app, in the system browser (or Slack's app
-   * for its links). Rejects when the link can't be opened.
+   * Opens a web link outside the app, in the system browser. Rejects when the
+   * link can't be opened.
    */
   openExternal: (url: string) => Promise<void>;
+  /**
+   * Whether the key being handled follows `g`, so it is the shell's "go to"
+   * chord rather than a screen's own shortcut.
+   */
+  goChordPending: () => boolean;
 };
 
 /** Outside a desktop shell (tests, the browser): a new window. */
@@ -117,6 +122,7 @@ const ShellContext = createContext<ShellApi>({
   itemHref: () => undefined,
   itemsChanged: () => {},
   openExternal: openInNewWindow,
+  goChordPending: () => false,
 });
 
 /** Given by the shell around every module screen. */
@@ -150,3 +156,18 @@ export function useItemHref(): ShellApi["itemHref"] {
 export function useOpenExternal(): ShellApi["openExternal"] {
   return useContext(ShellContext).openExternal;
 }
+
+/** Whether the key being handled is part of a "go to" chord (see `ShellApi.goChordPending`). */
+export function useGoChordPending(): ShellApi["goChordPending"] {
+  return useContext(ShellContext).goChordPending;
+}
+
+export {
+  isConflict,
+  type ModuleWrite,
+  type ModuleWriteOptions,
+  UNDO_TOAST_MS,
+  type UndoToken,
+  undoOf,
+  useModuleWrite,
+} from "./moduleWrite";

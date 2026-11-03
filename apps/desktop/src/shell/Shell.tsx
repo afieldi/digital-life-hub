@@ -14,7 +14,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useRouter, useRouterState } from "@tanstack/react-router";
 import { House, Settings as SettingsIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RouterProvider } from "react-aria-components";
 import { useAskAi } from "../ai/useAskAi";
 import { useTRPC } from "../api/client";
@@ -23,7 +23,7 @@ import {
   useOperationStep,
   useRefreshItems,
 } from "../operations/useOperationStep";
-import { createHotkeys } from "./hotkeys";
+import { createHotkeys, type Hotkeys } from "./hotkeys";
 import { iconFor } from "./icons";
 import { openExternal } from "./openExternal";
 import { goToRows, itemRows, jumpGroup, matchesQuery } from "./palette";
@@ -106,12 +106,15 @@ export function Shell() {
     setCommandOpen(true);
   }, []);
   const itemsChanged = useRefreshItems();
+  // The mounted hotkeys, so screens can ask whether a key follows `g`.
+  const hotkeys = useRef<Hotkeys | null>(null);
   const shellApi = useMemo<ShellApi>(
     () => ({
       openCommandBar,
       itemHref: (item) => registry.itemTypes.get(item.type)?.href(item.id),
       itemsChanged,
       openExternal,
+      goChordPending: () => hotkeys.current?.goPending() ?? false,
     }),
     [openCommandBar, itemsChanged],
   );
@@ -124,7 +127,7 @@ export function Shell() {
   );
 
   useEffect(() => {
-    const onKeyDown = createHotkeys({
+    const keys = createHotkeys({
       platform: platform(),
       onCommandBar: () => openCommandBar(),
       onGo: (key) => {
@@ -132,8 +135,12 @@ export function Shell() {
         if (to) navigate(to);
       },
     });
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    hotkeys.current = keys;
+    window.addEventListener("keydown", keys.onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", keys.onKeyDown);
+      if (hotkeys.current === keys) hotkeys.current = null;
+    };
   }, [navigate, openCommandBar]);
 
   const trpc = useTRPC();
