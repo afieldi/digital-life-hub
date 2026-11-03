@@ -29,11 +29,12 @@ export function createApp(deps: AppDeps): Hono {
       endpoint: "/trpc",
       router: appRouter,
       onError: ({ error, path }) => {
-        if (
-          error.code === "INTERNAL_SERVER_ERROR" ||
-          error.code === "BAD_GATEWAY"
-        ) {
-          console.error(`tRPC ${error.code} on ${path ?? "<unknown>"}`, error);
+        const at = `tRPC ${error.code} on ${path ?? "<unknown>"}`;
+        // A bug: the whole error, with its cause chain and stack.
+        if (error.code === "INTERNAL_SERVER_ERROR") console.error(at, error);
+        // An upstream failure (Google, a model): its message is enough.
+        else if (error.code === "BAD_GATEWAY") {
+          console.error(`${at}: ${error.message}`);
         }
       },
       createContext: (_opts, c) =>
