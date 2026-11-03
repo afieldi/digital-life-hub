@@ -1,4 +1,5 @@
 import type { AnyRoute } from "@tanstack/react-router";
+import type { ComponentType } from "react";
 import type { AiActionDescription } from "./ai/actions";
 import type { OperationDescription } from "./operations/describe";
 
@@ -34,7 +35,11 @@ export interface ModuleManifest {
     path: string;
     order: number;
     key?: string;
+    /** Rendered after the label in the Dock, e.g. an open count. It runs inside the API and query providers, so it may call hooks that need them. */
+    badge?: ComponentType;
   };
+  /** Widgets for the Home screen. Provisional until the Home spec: nothing renders these yet. */
+  homeWidgets?: { id: string; label: string; component: ComponentType }[];
   routes: (parent: AnyRoute) => AnyRoute[];
   paletteActions?: PaletteAction[];
   aiActions?: AiActionDescription[];

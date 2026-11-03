@@ -9,6 +9,8 @@ export type DockItem = {
   label: string;
   icon: LucideIcon;
   href: string;
+  /** Quiet extra after the label, e.g. a count. Part of the link's accessible name. */
+  badge?: ReactNode;
 };
 
 export function Dock({
@@ -33,7 +35,7 @@ export function Dock({
       // WebKit paints every empty block in between as selected.
       className={`${className ?? "fixed"} bottom-6 left-1/2 flex -translate-x-1/2 select-none items-center gap-1 p-1.5 font-ui`}
     >
-      {items.map(({ id, label, icon: Icon, href }) => {
+      {items.map(({ id, label, icon: Icon, href, badge }) => {
         const current = href === currentHref;
         return (
           <Link
@@ -46,6 +48,11 @@ export function Dock({
           >
             <Icon aria-hidden="true" size={20} />
             <span>{label}</span>
+            {/* A space keeps the name "Queue 3" rather than "Queue3". */}
+            {badge ? " " : null}
+            {badge ? (
+              <span className="text-[11px] text-ink-tertiary">{badge}</span>
+            ) : null}
           </Link>
         );
       })}

@@ -248,6 +248,21 @@ registerStories("dusk", [
     render: () => <DockBox>{dock}</DockBox>,
   },
   {
+    id: "dusk/dock-count",
+    title: "Dock with a count",
+    render: () => (
+      <DockBox>
+        <Dock
+          className="absolute"
+          currentHref="/tasks"
+          items={dockItems.map((i) =>
+            i.id === "tasks" ? { ...i, badge: "3" } : i,
+          )}
+        />
+      </DockBox>
+    ),
+  },
+  {
     id: "dusk/dock-focus",
     title: "Dock focus",
     render: () => (

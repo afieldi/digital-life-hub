@@ -56,6 +56,7 @@ const dockItems: DockItem[] = [
     label: n.label,
     icon: iconFor(n.icon),
     href: n.path,
+    badge: n.badge ? <n.badge /> : undefined,
   })),
   { id: "settings", label: "Settings", icon: SettingsIcon, href: "/settings" },
 ];
