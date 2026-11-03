@@ -1,0 +1,29 @@
+{
+  "name": "@dlh/module-requests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/manifest.tsx"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
+    "test:db": "vitest run --passWithNoTests '.db.test.ts'",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@dlh/core": "workspace:*",
+    "@dlh/module-tasks": "workspace:*",
+    "@dlh/server": "workspace:*",
+    "@trpc/server": "^11.22.1",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "drizzle-kit": "^0.31.11",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
