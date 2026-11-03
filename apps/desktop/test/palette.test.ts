@@ -1,4 +1,10 @@
 import type { ItemSummary, ModuleRegistry } from "@dlh/core";
+import { requestOps } from "../../../modules/requests/src/operations";
+import {
+  operationRows,
+  operationText,
+  planOperation,
+} from "../src/operations/rows";
 import {
   goToRows,
   itemRows,
@@ -91,4 +97,45 @@ test("jumpGroup reflects the search state", () => {
   );
   expect(jumpGroup({ status: "ok", items })).toMatchObject({ items });
   expect(jumpGroup({ status: "ok", items })?.message).toBeUndefined();
+});
+
+const { resolve } = requestOps;
+const onRequest = {
+  item: { id: "r1", type: "request", updatedAt: "2026-11-02T09:00:00.000Z" },
+  now: new Date(),
+  timeZone: "UTC",
+};
+
+test("operationText names the label or word it matched, lowercased", () => {
+  expect(operationText(resolve, "NOT FOR ME please")).toEqual({
+    text: "please",
+    by: "word",
+    name: "not for me",
+  });
+  expect(operationText(resolve, "Resolve request as handled")).toEqual({
+    text: "as handled",
+    by: "label",
+    name: "resolve request",
+  });
+  // The start of the label names the label.
+  expect(operationText(resolve, "reso")).toEqual({
+    text: "",
+    by: "label",
+    name: "resolve request",
+  });
+  expect(operationText(resolve, "unrelated")).toBeNull();
+});
+
+test("a form sees the word ⌘K matched, which the text no longer holds", () => {
+  const onChoose = vi.fn();
+  const rows = operationRows([resolve], onRequest, "not for me", onChoose);
+  const row = rows.actions[0];
+  expect(row?.label).toBe("Not for me");
+  row?.onAction();
+  const ctx = onChoose.mock.calls[0]?.[1];
+  expect(ctx).toMatchObject({ text: "", name: "not for me" });
+  expect(planOperation(resolve, ctx)).toMatchObject({
+    status: "ready",
+    input: { id: "r1", outcome: "not_for_me" },
+  });
 });

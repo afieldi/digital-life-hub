@@ -13,19 +13,21 @@ const key = (
 test("Ctrl+K opens on Windows, Cmd+K on macOS", () => {
   const win = vi.fn();
   const mac = vi.fn();
-  createHotkeys({ platform: "Win32", onCommandBar: win, onGo() {} })(
+  createHotkeys({ platform: "Win32", onCommandBar: win, onGo() {} }).onKeyDown(
     key("k", { ctrlKey: true }),
   );
-  createHotkeys({ platform: "MacIntel", onCommandBar: mac, onGo() {} })(
-    key("k", { metaKey: true }),
-  );
+  createHotkeys({
+    platform: "MacIntel",
+    onCommandBar: mac,
+    onGo() {},
+  }).onKeyDown(key("k", { metaKey: true }));
   expect(win).toHaveBeenCalledOnce();
   expect(mac).toHaveBeenCalledOnce();
 });
 
 test("g then t navigates", () => {
   const go = vi.fn();
-  const h = createHotkeys({
+  const { onKeyDown: h } = createHotkeys({
     platform: "MacIntel",
     onCommandBar() {},
     onGo: go,
@@ -38,7 +40,7 @@ test("g then t navigates", () => {
 test("g t is ignored while typing in an input", () => {
   const go = vi.fn();
   const input = document.createElement("input");
-  const h = createHotkeys({
+  const { onKeyDown: h } = createHotkeys({
     platform: "MacIntel",
     onCommandBar() {},
     onGo: go,
@@ -50,8 +52,31 @@ test("g t is ignored while typing in an input", () => {
 
 test("mod+K still opens from inside an input", () => {
   const open = vi.fn();
-  createHotkeys({ platform: "MacIntel", onCommandBar: open, onGo() {} })(
-    key("k", { metaKey: true }, document.createElement("input")),
-  );
+  createHotkeys({
+    platform: "MacIntel",
+    onCommandBar: open,
+    onGo() {},
+  }).onKeyDown(key("k", { metaKey: true }, document.createElement("input")));
   expect(open).toHaveBeenCalled();
+});
+
+test("goPending says a key follows g, within 1 s and until the chord's key", () => {
+  vi.useFakeTimers();
+  try {
+    const { onKeyDown: h, goPending } = createHotkeys({
+      platform: "MacIntel",
+      onCommandBar() {},
+      onGo() {},
+    });
+    expect(goPending()).toBe(false);
+    h(key("g"));
+    expect(goPending()).toBe(true);
+    h(key("t"));
+    expect(goPending()).toBe(false);
+    h(key("g"));
+    vi.advanceTimersByTime(1001);
+    expect(goPending()).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });

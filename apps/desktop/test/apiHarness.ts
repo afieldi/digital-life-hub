@@ -36,6 +36,10 @@ export async function signedInApp(
     noOpenRouter?: boolean;
     /** Wraps the API fetch, e.g. to delay or fail a request. */
     wrapFetch?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch;
+    /** Builds the router in place of the app's own, e.g. to mount one component. */
+    createRouter?: (
+      history: ReturnType<typeof createMemoryHistory>,
+    ) => ReturnType<typeof createAppRouter>;
   } = {},
 ): Promise<{
   api: ReturnType<typeof createTestApi>;
@@ -54,9 +58,8 @@ export async function signedInApp(
   });
   const apiFetch = opts.wrapFetch ? opts.wrapFetch(api.fetch) : api.fetch;
   const tokenStore = memoryTokenStore(token);
-  const router = createAppRouter(
-    createMemoryHistory({ initialEntries: [path] }),
-  );
+  const history = createMemoryHistory({ initialEntries: [path] });
+  const router = (opts.createRouter ?? createAppRouter)(history);
   const renderApp = (opts: { sessionCheckMs?: number } = {}) =>
     render(
       createElement(App, {

@@ -1,4 +1,4 @@
-import { useOpenItem } from "@dlh/client";
+import { UNDO_TOAST_MS, useOpenItem } from "@dlh/client";
 import {
   formFields,
   type ItemSummary,
@@ -45,8 +45,6 @@ import {
   operationText,
   planOperation,
 } from "./rows";
-
-const UNDO_TOAST_MS = 10_000;
 
 /** Query keys for palette `load`s; every write refreshes them. */
 const LOAD_KEY = ["palette-load"] as const;
@@ -374,9 +372,11 @@ export function useOperationStep({
 
   let groups: CommandGroup[] | undefined;
   if (active) {
-    const ctx = {
+    const match = operationText(active, query);
+    const ctx: PaletteContext = {
       ...baseCtx(),
-      text: operationText(active, query)?.text ?? query.trim(),
+      text: match?.text ?? query.trim(),
+      ...(match ? { name: match.name } : {}),
     };
     const plan = planOperation(active, ctx, loaded[active.id]);
     const group = active.group ?? "actions";

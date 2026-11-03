@@ -100,12 +100,29 @@ export type ShellApi = {
    * its version) refetch now, rather than when the change stream says so.
    */
   itemsChanged: () => void;
+  /**
+   * Opens a web link outside the app, in the system browser. Rejects when the
+   * link can't be opened.
+   */
+  openExternal: (url: string) => Promise<void>;
+  /**
+   * Whether the key being handled follows `g`, so it is the shell's "go to"
+   * chord rather than a screen's own shortcut.
+   */
+  goChordPending: () => boolean;
 };
+
+/** Outside a desktop shell (tests, the browser): a new window. */
+async function openInNewWindow(url: string): Promise<void> {
+  window.open(url, "_blank", "noopener");
+}
 
 const ShellContext = createContext<ShellApi>({
   openCommandBar: () => {},
   itemHref: () => undefined,
   itemsChanged: () => {},
+  openExternal: openInNewWindow,
+  goChordPending: () => false,
 });
 
 /** Given by the shell around every module screen. */
@@ -134,3 +151,23 @@ export function useItemsChanged(): () => void {
 export function useItemHref(): ShellApi["itemHref"] {
   return useContext(ShellContext).itemHref;
 }
+
+/** Opens a web link outside the app (see `ShellApi.openExternal`). */
+export function useOpenExternal(): ShellApi["openExternal"] {
+  return useContext(ShellContext).openExternal;
+}
+
+/** Whether the key being handled is part of a "go to" chord (see `ShellApi.goChordPending`). */
+export function useGoChordPending(): ShellApi["goChordPending"] {
+  return useContext(ShellContext).goChordPending;
+}
+
+export {
+  isConflict,
+  type ModuleWrite,
+  type ModuleWriteOptions,
+  UNDO_TOAST_MS,
+  type UndoToken,
+  undoOf,
+  useModuleWrite,
+} from "./moduleWrite";

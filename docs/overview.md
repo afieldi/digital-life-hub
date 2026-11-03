@@ -36,7 +36,7 @@ Shared shell: a floating bottom nav (Home, Tasks, Notes, Projects, Saved, ⌘K) 
 
 ## Modules
 
-Eight modules cover what the designs show. Each owns its own screens and item type, and gets a deep-dive spec before it is built.
+Eight modules cover what the designs show, and four more bring in work: a review queue and Slack. Each owns its own screens and item type, and gets a deep-dive spec before it is built.
 
 | Module | Purpose | Key features from the designs | Depends on |
 | --- | --- | --- | --- |
@@ -48,6 +48,11 @@ Eight modules cover what the designs show. Each owns its own screens and item ty
 | Events / Calendar | Time-bound items | "Block time on the calendar" (marked Soon), week strip in Sunroom | Core, Google Calendar |
 | Saved | Bookmarks and clippings | A nav slot exists in every design; no screen yet | Core |
 | AI assistant | Help in context | Ask AI tile, "Turn the priorities into tasks", "What's still unresolved?", "What else is open in Q4 planning?" | All modules' data, OpenRouter or a local CLI |
+| Queue | Things that need you, reviewed once | File a request, then Make task, Handled or Not for me; sender and link back to the source | Core, Tasks |
+| Slack intake | Find what involves you | Watches DMs, mentions and chosen channels; files requests through Queue; rules first, AI for unclear cases | Queue, server-side AI |
+| Notifications | Tell you eventually | Immediate notices for what matters, a digest for the rest; desktop while the app is open, a Slack DM when it isn't | Queue, Slack intake |
+| Agent hub | AI that does whole tasks on its own | Picks up tasks marked for the agent and runs them to the end, for minutes or hours, each run in its own container; full write access inside the container; asks through the queue only for the few actions that leave it unchecked | Queue, Tasks, its own service |
+| Slack bot | Talk to the hub from Slack | You ask it about tasks and the queue and capture through it; others can leave you requests and get an acknowledgement; a short allowlist of things it does alone, and anything sent as you is drafted into the queue for approval | Queue, AI gateway |
 
 Events, Saved and AI have no full screen yet, so their deep dives start with design work.
 
@@ -64,6 +69,7 @@ A task inside a note, or a project's linked notes, works through the shared item
 - **Search.** One full-text index over all items. It feeds the palette's Jump to results and Recents.
 - **Storage and sync.** One database behind a thin data layer, so a module can be added without schema changes to the others. Server-first: a hosted database the desktop app reaches through an API.
 - **AI gateway.** One place that builds context from items and calls the LLM through a provider: OpenRouter over HTTP, or the Claude Code or Codex CLI run in non-interactive mode on your machine. Modules ask it for actions ("turn this note into tasks"); it returns items to create, which you confirm.
+- **Two kinds of AI.** The gateway is the light kind: short help on what is in front of you (Ask, Summarise, Plan today), seconds long, started by you. The Agent hub is the heavy kind: it picks up work by itself, runs long and works alone. It is a separate service, `apps/agent`, next to the API. It reaches hub data only by calling operations through the API with a service token, so its writes get the same checks, Undo and live refresh as yours, and it runs each task in a container we host.
 - **App shell.** Bottom nav, ⌘K, routing, keyboard shortcuts, and the theme with its time-of-day scene. A module registers its nav slot, palette actions and item colour.
 
 ## Approach
@@ -77,7 +83,7 @@ We build one module at a time. Each one goes through the same steps, and nothing
 
 This doc stays the map. Each deep dive links back here, and the Modules table gets updated when scope changes.
 
-**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
+**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (implemented; Done check pending) · [Agent Hub](specs/agent-hub.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
 
 ## Suggested build order
 
@@ -89,7 +95,8 @@ Start with the core and Tasks. Tasks is the smallest useful module, and it tests
 4. **Notes.** Editor, `[[wiki links]]`, backlinks, inline tasks. The biggest module, built on a tested core.
 5. **Command palette.** Basic ⌘K jump and create early on; natural-language parsing lands here, once there are three item types to parse into.
 6. **Home.** Mostly views of modules 2–4, so it comes after them.
-7. **Events, Saved, AI assistant.** Each needs design work first. AI goes last because it is most useful once the other modules hold real data.
+7. **Queue, then the Agent hub and Slack.** Paused Home for this: the queue first, so the agent and Slack have somewhere to land and Home v1 can show "Needs you". The Agent hub and Slack intake with notifications both build on it; their order is still open. The Slack bot for others comes after both.
+8. **Events, Saved, AI assistant.** Each needs design work first. AI goes last because it is most useful once the other modules hold real data.
 
 The order can bend: Notes could come before Projects if writing matters more to you day to day.
 
@@ -101,17 +108,23 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 | --- | --- | --- |
 | Platform | Desktop app | macOS and Windows. React UI inside a Tauri shell |
 | Data | Server-first | Hosted database behind an API; the desktop app is a client of it |
-| Users | Just you | One account, no sharing or permissions model |
+| Users | Just you | One account. Others reach the hub only through the Slack bot, and may only leave requests and get a reply; they never read your data |
 | Stack | TypeScript + React | TypeScript on both sides: React UI, Node API |
 | Look | Dusk only | Glass panels over a background, always. Time of day stays; backgrounds become swappable scenes within that look |
 | Calendar | Two-way Google Calendar sync | Events needs Google sign-in and a sync job on the server |
 | AI provider | OpenRouter, or a local CLI (Claude Code, Codex) | The AI gateway has swappable providers: OpenRouter (pay per use, any model) or a CLI on your machine, so a Claude or ChatGPT subscription can cover the usage. The Tauri app runs the CLI locally when you ask; background jobs on the server use OpenRouter |
 | AI access | Anything, on request | The gateway may search all items to build context |
 | Import | None for now | Start fresh; revisit later |
+| AI billing | Vercel AI Gateway, one key | The light AI gateway's server provider moves from OpenRouter to Vercel AI Gateway (its OpenAI-compatible API), a separate small change. The Agent hub uses the same Gateway |
+| Agent harness | Claude Agent SDK through Vercel AI Gateway | The container gets the Gateway's Claude Code endpoint and key in its environment. A throwaway check that the Agent SDK runs through it comes first; the Claude Code CLI run headless on the same endpoint is the fallback |
+| Agent runs | Containers we host | One container per run, started by `apps/agent` on the same host. Needs an always-on host |
+| Agent autonomy | Marking a task for the agent is the approval | The agent picks it up and runs it with no further check, with full write access inside its container. Only a few actions that leave the container ask first, through the queue |
 
 **Still open**
 
-- [ ] Hosting: where the API and database run.
+- [ ] Hosting: where the API and database run. Now blocks Slack intake, which needs an always-on process (Socket Mode avoids a public URL).
+- [ ] Slack at work: admin approval for an app that reads channels and posts as you, and whether work messages may go to a third-party model through OpenRouter.
+- [ ] Server-side AI cost: sorting Slack messages and agent runs happen with the app closed, so they bill through Vercel AI Gateway, not a CLI subscription. Set a budget on the key.
 - [ ] Saved: what it holds. Decide in its deep dive.
 
 **Tauri or Electron**

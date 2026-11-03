@@ -6,6 +6,7 @@ import {
   collectServerModules,
   defineServerModule,
   implementOperation,
+  type Operations,
 } from "../src";
 
 const router = initTRPC.create().router({});
@@ -133,6 +134,95 @@ describe("collectServerModules operations", () => {
     ).toThrow(
       'Operation "a.peek" applies to item type "task" that its module does not own',
     );
+  });
+
+  describe("calls", () => {
+    const desc = (
+      id: string,
+      kind: "query" | "mutation",
+      calls?: ReturnType<typeof describeOperation>[],
+    ) =>
+      describeOperation({
+        id,
+        kind,
+        label: "Op",
+        description: "Op.",
+        appliesTo: "none",
+        input: z.object({}),
+        subject: () => null,
+        effects: kind === "mutation" ? ["createItems"] : [],
+        summary: () => "Op",
+        ...(calls ? { calls } : {}),
+      });
+    const mutation = (d: ReturnType<typeof desc>) =>
+      implementOperation(d, {
+        run: async () => ({ result: null, undo: null }),
+        undo: async () => {},
+        undoRecord: z.null(),
+      });
+    const query = (d: ReturnType<typeof desc>) =>
+      implementOperation(d, { run: async () => null });
+
+    const owned = (id: string, operations: Operations) =>
+      defineServerModule({ id, itemTypes: [], operations });
+
+    const callee = desc("b.make", "mutation");
+
+    it("registration refuses a call to an unregistered operation", () => {
+      const caller = desc("a.wrap", "mutation", [callee]);
+      expect(() =>
+        collectServerModules(
+          [owned("a", { wrap: mutation(caller) })],
+          reserved,
+          core,
+        ),
+      ).toThrow('Operation "a.wrap" calls "b.make", which is not registered');
+    });
+
+    it("registration refuses a self-call", () => {
+      const self: ReturnType<typeof desc> = desc("a.wrap", "mutation");
+      self.calls = [self];
+      expect(() =>
+        collectServerModules(
+          [owned("a", { wrap: mutation(self) })],
+          reserved,
+          core,
+        ),
+      ).toThrow('Operation "a.wrap" calls itself');
+    });
+
+    it("registration refuses a nested call", () => {
+      const inner = desc("c.deep", "mutation");
+      const middle = desc("b.make", "mutation", [inner]);
+      const outer = desc("a.wrap", "mutation", [middle]);
+      expect(() =>
+        collectServerModules(
+          [
+            owned("a", { wrap: mutation(outer) }),
+            owned("b", { make: mutation(middle) }),
+            owned("c", { deep: mutation(inner) }),
+          ],
+          reserved,
+          core,
+        ),
+      ).toThrow(
+        'Operation "a.wrap" calls "b.make", which makes calls of its own',
+      );
+    });
+
+    it("registration accepts a call to a query", () => {
+      const read = desc("b.read", "query");
+      const caller = desc("a.wrap", "mutation", [read]);
+      const { operations } = collectServerModules(
+        [
+          owned("a", { wrap: mutation(caller) }),
+          owned("b", { read: query(read) }),
+        ],
+        reserved,
+        core,
+      );
+      expect([...operations.keys()].sort()).toEqual(["a.wrap", "b.read"]);
+    });
   });
 
   it("rejects a module with neither router nor operations", () => {

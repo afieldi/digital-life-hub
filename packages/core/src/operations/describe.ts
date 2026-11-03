@@ -9,6 +9,11 @@ export type PaletteContext = {
   item?: { id: string; type: string; updatedAt: string };
   /** What was typed after the action's name. */
   text: string;
+  /**
+   * The action's name as ⌘K matched it, lowercased: its label or one of its
+   * `words` ("not for me"), which `text` no longer holds.
+   */
+  name?: string;
   now: Date;
   /** The device's IANA zone. */
   timeZone: string;
@@ -82,6 +87,11 @@ export type OperationDescription<
   palette?: PaletteSpec<z.infer<S>, P>;
   /** Defaults to `true`. */
   ai?: boolean;
+  /**
+   * Operations of other modules this mutation's `run` may call with `w.call`.
+   * They must be registered, not this operation, and make no calls of their own.
+   */
+  calls?: OperationDescription[];
 };
 
 /** Input keys ⌘K fills from the item on screen rather than a form. */
@@ -96,6 +106,9 @@ export function describeOperation<
   }
   if (d.kind === "query" && d.effects.length > 0) {
     throw new OperationError(`Operation "${d.id}" is a query with effects`);
+  }
+  if (d.kind === "query" && d.calls?.length) {
+    throw new OperationError(`Operation "${d.id}" is a query with calls`);
   }
   try {
     if (d.palette === undefined || d.palette === true) {

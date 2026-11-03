@@ -9,7 +9,10 @@
     "os:allow-hostname",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://accounts.google.com/*" }]
+      "allow": [
+        { "url": "https://accounts.google.com/*" },
+        { "url": "https://*" }
+      ]
     }
   ]
 }

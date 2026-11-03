@@ -208,6 +208,33 @@ describe("describeOperation", () => {
         summary: () => "Peek",
       }),
     ).toThrow(/query/));
+  test("a query with calls is refused", () =>
+    expect(() =>
+      describeOperation({
+        id: "tasks.peek",
+        kind: "query",
+        label: "Peek",
+        description: "x",
+        appliesTo: ["task"],
+        input,
+        subject: (i) => i.id,
+        effects: [],
+        summary: () => "Peek",
+        calls: [
+          describeOperation({
+            id: "tasks.look",
+            kind: "query",
+            label: "Look",
+            description: "x",
+            appliesTo: ["task"],
+            input,
+            subject: (i) => i.id,
+            effects: [],
+            summary: () => "Look",
+          }),
+        ],
+      }),
+    ).toThrow('Operation "tasks.peek" is a query with calls'));
   test("palette true over an unsupported input field throws", () =>
     expect(() =>
       describeOperation({

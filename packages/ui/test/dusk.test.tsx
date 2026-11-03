@@ -45,6 +45,46 @@ test("Dock marks the current item", () => {
   );
 });
 
+test("Dock renders an item's badge as part of the link name", () => {
+  render(
+    <Dock
+      currentHref="/"
+      items={[
+        { id: "home", label: "Home", icon: Home, href: "/" },
+        {
+          id: "queue",
+          label: "Queue",
+          icon: ListChecks,
+          href: "/queue",
+          badge: <span>3</span>,
+        },
+      ]}
+    />,
+  );
+  expect(screen.getByRole("link", { name: "Queue 3" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
+});
+
+const Empty = () => null;
+
+test("Dock: a badge that renders nothing leaves the link name as the label", () => {
+  render(
+    <Dock
+      currentHref="/"
+      items={[
+        {
+          id: "queue",
+          label: "Queue",
+          icon: ListChecks,
+          href: "/queue",
+          badge: <Empty />,
+        },
+      ]}
+    />,
+  );
+  expect(screen.getByRole("link", { name: "Queue" })).toBeInTheDocument();
+});
+
 test("status Chip labels its status", () => {
   render(<Chip kind="status" status="review" />);
   expect(screen.getByText("Review")).toBeInTheDocument();

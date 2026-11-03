@@ -15,11 +15,13 @@
     "zod": "^4.6.7"
   },
   "peerDependencies": {
-    "@tanstack/react-router": "*"
+    "@tanstack/react-router": "*",
+    "react": "^19"
   },
   "devDependencies": {
     "@tanstack/react-router": "^1",
     "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
     "vitest": "^5.0.5"
   }
 }
