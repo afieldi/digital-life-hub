@@ -163,19 +163,14 @@ export const scriptedFakeProvider: AiProvider = {
 };
 
 /**
- * The scripted fake as `ai.providers` plus a default model, only when
- * `AI_FAKE_PROVIDER=1` and `NODE_ENV=development`; null otherwise, so it can
- * never stand in for a real provider elsewhere.
+ * The scripted fake as `ai.providers` plus a default model. The API uses it
+ * only when its config allows (`AI_FAKE_PROVIDER=1` in development), so it
+ * can never stand in for a real provider elsewhere.
  */
-export function devFakeAi(env: Record<string, string | undefined>): {
+export const devFakeAi: {
   providers: { openrouter: AiProvider };
   defaultModel: string;
-} | null {
-  if (env.AI_FAKE_PROVIDER !== "1" || env.NODE_ENV !== "development") {
-    return null;
-  }
-  return {
-    providers: { openrouter: scriptedFakeProvider },
-    defaultModel: DEV_FAKE_MODEL,
-  };
-}
+} = {
+  providers: { openrouter: scriptedFakeProvider },
+  defaultModel: DEV_FAKE_MODEL,
+};

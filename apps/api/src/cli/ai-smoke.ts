@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createDb, databaseUrlFrom, items } from "@dlh/db";
+import { createDb, items } from "@dlh/db";
 import {
   type AiProvider,
   type CoreDeps,
@@ -17,6 +17,7 @@ import {
   writeItems,
 } from "@dlh/server";
 import { eq } from "drizzle-orm";
+import { databaseSection, must, openrouterSection } from "../config";
 import { composed } from "../router";
 
 type PrepareInput = Parameters<typeof prepare>[1];
@@ -138,7 +139,7 @@ function targets(): Target[] {
     {
       id: "openrouter",
       label: "OpenRouter",
-      skip: process.env.OPENROUTER_API_KEY
+      skip: must(openrouterSection(process.env)).apiKey
         ? null
         : "OPENROUTER_API_KEY not set",
     },
@@ -239,21 +240,14 @@ async function softDelete(deps: CoreDeps, id: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { db, close } = createDb(databaseUrlFrom(process.env));
-  const providers: Partial<Record<"openrouter", AiProvider>> = process.env
-    .OPENROUTER_API_KEY
-    ? {
-        openrouter: createOpenRouter({
-          apiKey: process.env.OPENROUTER_API_KEY,
-        }),
-      }
+  const { db, close } = createDb(must(databaseSection(process.env)).url);
+  const { apiKey, defaultModel } = must(openrouterSection(process.env));
+  const providers: Partial<Record<"openrouter", AiProvider>> = apiKey
+    ? { openrouter: createOpenRouter({ apiKey }) }
     : {};
   const deps = createCoreDeps(composed, {
     db,
-    ai: {
-      providers,
-      defaultModel: process.env.OPENROUTER_DEFAULT_MODEL ?? null,
-    },
+    ai: { providers, defaultModel },
   });
   const cleanup: string[] = [];
   try {
