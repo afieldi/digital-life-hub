@@ -13,8 +13,12 @@ const CLI_COMMANDS: Partial<Record<AiProviderId, string>> = {
 
 export class AiError extends Error {
   readonly code: AiErrorData["code"];
-  constructor(code: AiErrorData["code"], message: string) {
-    super(message);
+  constructor(
+    code: AiErrorData["code"],
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
     this.name = "AiError";
     this.code = code;
   }
@@ -52,6 +56,8 @@ export function aiErrorMessage(
       return "This suggestion expired.";
     case "not_found":
       return "This item was deleted.";
+    case "internal":
+      return "The action failed on the server.";
   }
 }
 

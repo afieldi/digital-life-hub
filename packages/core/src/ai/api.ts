@@ -100,6 +100,7 @@ export const aiErrorCode = z.enum([
   "stale",
   "expired",
   "not_found",
+  "internal",
 ]);
 
 export const aiErrorData = z.object({

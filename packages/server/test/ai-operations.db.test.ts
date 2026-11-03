@@ -708,12 +708,14 @@ test("a query that throws ends the request failed", async () => {
   const broken = await caught(
     prepare(s.deps, { text: "x", actionId: "broken.list", kind: "ask" }),
   );
-  expect((broken.cause as AiError).code).toBe("provider_error");
+  expect((broken.cause as AiError).code).toBe("internal");
+  // The original error is kept for the server log.
+  expect((broken.cause as AiError).cause).toBeInstanceOf(Error);
   expect(broken.message).toBe("The action failed on the server.");
   const rows = await s.db.select().from(aiRequests);
   expect(rows.map((r) => [r.status, r.errorCode])).toEqual([
     ["failed", "not_found"],
-    ["failed", "provider_error"],
+    ["failed", "internal"],
   ]);
   await s.close();
 });

@@ -20,6 +20,7 @@ import {
   conflict,
   expired,
   fail,
+  failRequest,
   loadRow,
   type RequestRow,
   RequestUsedError,
@@ -363,10 +364,7 @@ async function finish(
   } catch (e) {
     if (e instanceof RequestUsedError) throw e;
     // Listing or resolving failed: end the request rather than leave it pending.
-    const err =
-      writeFailure(e, provider) ??
-      new AiError("provider_error", "The action failed on the server.");
-    return fail(deps, row.id, "pending", err, done);
+    return failRequest(deps, row.id, "pending", e, provider, done);
   }
   const summary = await runApply(deps, runner, row, "pending", out, done);
   return { requestId: row.id, status: "applied", summary };

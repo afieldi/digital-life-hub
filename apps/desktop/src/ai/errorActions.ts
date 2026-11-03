@@ -38,6 +38,7 @@ export function errorActions(
         { label: "Open Settings", onAction: handlers.openSettings },
       ];
     case "provider_error":
+    case "internal":
       return [tryAgain];
     case "stale":
     case "expired":
