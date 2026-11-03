@@ -1,20 +1,11 @@
 import { operationList } from "@dlh/core";
-import {
-  CORE_ROUTER_IDS,
-  type CoreDeps,
-  collectServerModules,
-  coreRouters,
-  operationsRouter,
-  router,
-  writeItems,
-} from "@dlh/server";
-import { freshModuleDb, testDeps } from "@dlh/server/testing";
+import { type CoreDeps, writeItems } from "@dlh/server";
+import { freshModuleDb, testServer } from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import tasksServer from "../../tasks/src/server";
 import requestsServer from "../src/server";
 
-const session = { id: "s", email: "arek@example.com" };
 /** The server's clock for these tests. */
 const NOW = new Date("2026-11-02T17:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -22,23 +13,10 @@ const ago = (days: number) => new Date(NOW.getTime() - days * DAY);
 
 async function setup() {
   const t = await freshModuleDb([requestsServer, tasksServer]);
-  const collected = collectServerModules(
-    [requestsServer, tasksServer],
-    [...CORE_ROUTER_IDS],
-    { actions: [], runners: [] },
-  );
-  const deps = testDeps(t.db, {
-    itemTypes: ["request", "task", "note"],
+  const { deps, caller } = testServer(t.db, [requestsServer, tasksServer], {
+    itemTypes: ["note"],
     now: () => NOW,
-    deleteWith: Object.fromEntries(collected.deleteWith),
-    operations: collected.operations,
   });
-  const app = router({
-    ...coreRouters,
-    requests: operationsRouter(requestsServer.operations),
-    tasks: operationsRouter(tasksServer.operations),
-  });
-  const caller = app.createCaller({ deps, session });
   const file = async (title: string, receivedAt?: Date) =>
     (
       await caller.requests.file({

@@ -1,17 +1,9 @@
-import {
-  CORE_ROUTER_IDS,
-  type CoreDeps,
-  collectServerModules,
-  coreRouters,
-  operationsRouter,
-  router,
-  writeItems,
-} from "@dlh/server";
+import { type CoreDeps, writeItems } from "@dlh/server";
 import {
   expectModuleWrites,
   expectTracked,
   freshModuleDb,
-  testDeps,
+  testServer,
 } from "@dlh/server/testing";
 import { asc, eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
@@ -19,24 +11,11 @@ import { tasks } from "../src/db/schema";
 import tasksServer from "../src/server";
 import { seed } from "../src/server/seed";
 
-const session = { id: "s", email: "arek@example.com" };
-
 async function setup() {
   const t = await freshModuleDb([tasksServer]);
-  const collected = collectServerModules([tasksServer], [...CORE_ROUTER_IDS], {
-    actions: [],
-    runners: [],
+  const { deps, caller } = testServer(t.db, [tasksServer], {
+    itemTypes: ["note"],
   });
-  const deps = testDeps(t.db, {
-    itemTypes: ["task", "note"],
-    deleteWith: Object.fromEntries(collected.deleteWith),
-    operations: collected.operations,
-  });
-  const app = router({
-    ...coreRouters,
-    tasks: operationsRouter(tasksServer.operations),
-  });
-  const caller = app.createCaller({ deps, session });
   const mk = async (title: string, extra: { parentId?: string } = {}) =>
     (await caller.tasks.create({ title, ...extra })).result;
   return { ...t, deps, caller, mk };

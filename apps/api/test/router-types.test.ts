@@ -3,12 +3,13 @@ import {
   coreRouters,
   defineServerModule,
   implementOperation,
+  mountModules,
   router,
   type UndoToken,
 } from "@dlh/server";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
-import { type AppRouter, appRouter, mountModules } from "../src/router";
+import { type AppRouter, appRouter } from "../src/router";
 
 const renameInput = z.object({
   id: z.uuid(),

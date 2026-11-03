@@ -1,13 +1,5 @@
-import { coreAiActions } from "@dlh/core";
-import {
-  CORE_ROUTER_IDS,
-  collectServerModules,
-  coreAiRunners,
-  prepare,
-  runMutation,
-  undo,
-} from "@dlh/server";
-import { freshModuleDb, testDeps } from "@dlh/server/testing";
+import { prepare, runMutation, undo } from "@dlh/server";
+import { freshModuleDb, testServer } from "@dlh/server/testing";
 import { eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import tasksServer from "../../tasks/src/server";
@@ -17,18 +9,10 @@ import requestsServer from "../src/server";
 /** Tasks and Requests registered, with Core's AI actions, through the gateway's fake provider. */
 async function setup() {
   const t = await freshModuleDb([requestsServer, tasksServer]);
-  const collected = collectServerModules(
-    [requestsServer, tasksServer],
-    [...CORE_ROUTER_IDS],
-    { actions: Object.values(coreAiActions), runners: coreAiRunners },
-  );
-  const deps = testDeps(t.db, {
-    itemTypes: ["request", "task", "note"],
-    deleteWith: Object.fromEntries(collected.deleteWith),
-    operations: collected.operations,
-    ai: { runners: collected.aiRunners },
+  const { deps, operations } = testServer(t.db, [requestsServer, tasksServer], {
+    itemTypes: ["note"],
   });
-  const fileOp = collected.operations.get("requests.file");
+  const fileOp = operations.get("requests.file");
   if (fileOp?.kind !== "mutation") throw new Error("no requests.file");
   const file = async (title: string, body?: string) =>
     (

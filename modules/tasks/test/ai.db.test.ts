@@ -1,34 +1,24 @@
-import { addDays, coreAiActions } from "@dlh/core";
+import { addDays } from "@dlh/core";
 import {
   apply,
-  CORE_ROUTER_IDS,
-  collectServerModules,
   complete,
-  coreAiRunners,
   devFakeAi,
   MAX_CONTEXT_CHARS,
   prepare,
   runMutation,
   undo,
 } from "@dlh/server";
-import { freshModuleDb, testDeps } from "@dlh/server/testing";
+import { freshModuleDb, testServer } from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import tasksServer from "../src/server";
 
 async function setup() {
   const t = await freshModuleDb([tasksServer]);
-  const collected = collectServerModules([tasksServer], [...CORE_ROUTER_IDS], {
-    actions: Object.values(coreAiActions),
-    runners: coreAiRunners,
+  const { deps, operations } = testServer(t.db, [tasksServer], {
+    itemTypes: ["note"],
   });
-  const deps = testDeps(t.db, {
-    itemTypes: ["task", "note"],
-    deleteWith: Object.fromEntries(collected.deleteWith),
-    operations: collected.operations,
-    ai: { runners: collected.aiRunners },
-  });
-  const create = collected.operations.get("tasks.create");
+  const create = operations.get("tasks.create");
   if (create?.kind !== "mutation") throw new Error("no tasks.create");
   const mk = async (input: {
     title: string;
@@ -43,7 +33,7 @@ async function setup() {
     };
   /** Moves the frozen clock on, so a later write gets a later version. */
   const tick = () => deps.setNow(new Date(deps.now().getTime() + 1000));
-  return { ...t, deps, collected, create, mk, tick };
+  return { ...t, deps, operations, create, mk, tick };
 }
 
 type Db = Awaited<ReturnType<typeof setup>>["db"];
@@ -405,7 +395,7 @@ test("planToday checks the answer against what the model saw: a task ticked sinc
 
   // While the CLI runs: one task is ticked, one deleted.
   s.tick();
-  const complete_ = s.collected.operations.get("tasks.complete");
+  const complete_ = s.operations.get("tasks.complete");
   if (complete_?.kind !== "mutation") throw new Error("no tasks.complete");
   await runMutation(s.deps, complete_, {
     id: ticked.id,

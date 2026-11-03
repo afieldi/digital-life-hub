@@ -13,10 +13,11 @@ import type {
   AiProvider,
 } from "./ai/providers";
 import { createChangeBus } from "./changes";
+import { composeServer } from "./compose";
 import { migrationsRoot, moduleMigrations } from "./migrations";
 import type { ServerModule } from "./modules";
 import type { ImplementedOperation } from "./operations/implement";
-import type { CoreDeps, DeleteWith } from "./trpc";
+import { type Context, type CoreDeps, type DeleteWith, router } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
 
@@ -71,7 +72,7 @@ export function testDeps(
     itemTypes?: string[];
     now?: () => Date;
     ai?: Partial<AiDeps>;
-    deleteWith?: Record<string, DeleteWith>;
+    deleteWith?: Record<string, DeleteWith> | ReadonlyMap<string, DeleteWith>;
     operations?: ReadonlyMap<string, ImplementedOperation>;
   } = {},
 ): TestDeps {
@@ -84,13 +85,48 @@ export function testDeps(
     now: () => clock,
     devErrors: true,
     ai: testAiDeps(opts.ai, fakeProvider),
-    deleteWith: new Map(Object.entries(opts.deleteWith ?? {})),
+    deleteWith: new Map(
+      opts.deleteWith instanceof Map
+        ? opts.deleteWith
+        : Object.entries(opts.deleteWith ?? {}),
+    ),
     operations: opts.operations ?? new Map(),
     fakeProvider,
     setNow(date) {
       clock = date;
     },
   };
+}
+
+/** The session `testServer`'s caller is signed in as. */
+export const TEST_SESSION = { id: "s", email: "arek@example.com" };
+
+/**
+ * `testDeps` wired to `modules` as the API composes them (their item types,
+ * operations, deleteWith and AI runners, with Core's), and a caller over
+ * Core's and the modules' routers, signed in. `itemTypes` adds more types,
+ * e.g. one a test links to.
+ */
+export function testServer<const Mods extends readonly ServerModule[]>(
+  db: Db,
+  modules: Mods,
+  opts: { itemTypes?: string[]; now?: () => Date } = {},
+) {
+  const composed = composeServer(modules);
+  const deps = testDeps(db, {
+    itemTypes: [...composed.itemTypes, ...(opts.itemTypes ?? [])],
+    ...(opts.now ? { now: opts.now } : {}),
+    deleteWith: composed.deleteWith,
+    operations: composed.operations,
+    ai: { runners: composed.aiRunners },
+  });
+  const caller = router(composed.routers).createCaller({
+    // Where the API augments ApiDeps with its own deps (auth, config), this
+    // has none of them; Core's and the modules' routers never read them.
+    deps: deps as unknown as Context["deps"],
+    session: TEST_SESSION,
+  });
+  return { deps, caller, operations: composed.operations };
 }
 
 /**
