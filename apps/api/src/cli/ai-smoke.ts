@@ -24,12 +24,10 @@ type AiResult = Awaited<ReturnType<typeof prepare>>;
 type AiProviderId = NonNullable<PrepareInput["provider"]>;
 
 const TIMEOUT_MS = 120_000;
-const ITEM_TITLE = "AI smoke test item";
 const TASK_TITLE = "AI smoke test: plan a weekend trip to Lisbon";
-const ITEM_TEXT =
-  "The quarterly report covers revenue, hiring and the new office. " +
-  "Revenue grew eight percent. Two engineers joined in March. " +
-  "The office move is planned for June.";
+const TASK_NOTES =
+  "Fly in Friday evening, back Sunday night. Two of us, mid-range budget. " +
+  "Want one day in Alfama and Belém, one day trip to Sintra.";
 
 type CliRun = { system: string; prompt: string; schema: unknown };
 
@@ -177,16 +175,11 @@ async function printLog(deps: CoreDeps, requestId: string): Promise<void> {
   console.log("  log:", row ? JSON.stringify(row) : "(row not found)");
 }
 
-async function smoke(
-  deps: CoreDeps,
-  t: Target,
-  itemId: string,
-  taskId: string,
-) {
+async function smoke(deps: CoreDeps, t: Target, taskId: string) {
   console.log(`\n${t.label}`);
   const answer = await call(deps, t.id, {
     text: "summarise this item",
-    itemId,
+    itemId: taskId,
     actionId: "answer",
     kind: "ask",
   });
@@ -195,7 +188,7 @@ async function smoke(
 
   const retitle = await call(deps, t.id, {
     text: "give this a better title",
-    itemId,
+    itemId: taskId,
     actionId: "retitle",
     kind: "do",
   });
@@ -224,7 +217,10 @@ async function smoke(
 async function createTask(deps: CoreDeps): Promise<string> {
   const create = deps.operations.get("tasks.create");
   if (create?.kind !== "mutation") throw new Error("tasks.create is missing");
-  const { result } = await runMutation(deps, create, { title: TASK_TITLE });
+  const { result } = await runMutation(deps, create, {
+    title: TASK_TITLE,
+    notes: TASK_NOTES,
+  });
   return (result as { id: string }).id;
 }
 
@@ -267,19 +263,11 @@ async function main(): Promise<void> {
     }
     const active = all.filter((t) => !t.skip);
     if (active.length === 0) return;
-    const item = await writeItems(deps, (w) =>
-      w.createItem({
-        type: "sample",
-        title: ITEM_TITLE,
-        searchText: ITEM_TEXT,
-      }),
-    );
-    cleanup.push(item.id);
     const taskId = await createTask(deps);
     cleanup.push(taskId);
     for (const t of active) {
       try {
-        await smoke(deps, t, item.id, taskId);
+        await smoke(deps, t, taskId);
       } catch (e) {
         console.log(`  failed: ${e instanceof Error ? e.message : String(e)}`);
       }

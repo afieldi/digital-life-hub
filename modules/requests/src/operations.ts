@@ -1,10 +1,4 @@
-import {
-  describeOperation,
-  fields,
-  itemOnScreen,
-  itemTitle,
-  type PaletteContext,
-} from "@dlh/core";
+import { describeOperation, fields, itemOnScreen, itemTitle } from "@dlh/core";
 import { taskOps } from "@dlh/module-tasks/operations";
 import { z } from "zod";
 import { fileInput, outcome, requestRow, resolveInput } from "./schema";

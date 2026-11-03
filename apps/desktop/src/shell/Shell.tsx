@@ -1,5 +1,5 @@
-import { type ShellApi, ShellProvider } from "@dlh/client";
-import type { CommandContext, PaletteAction } from "@dlh/core";
+import { type ShellApi, ShellProvider, useOpenItem } from "@dlh/client";
+import type { CommandContext, ModuleRegistry, PaletteAction } from "@dlh/core";
 import {
   Button,
   CommandBar,
@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RouterProvider } from "react-aria-components";
 import { useAskAi } from "../ai/useAskAi";
 import { useTRPC } from "../api/client";
-import { registry } from "../modules";
+import { useRegistry } from "../modules";
 import {
   useOperationStep,
   useRefreshItems,
@@ -43,27 +43,34 @@ const GROUP_LABELS: Record<PaletteAction["group"], string> = {
 };
 
 /** `g` + letter targets: Home is `g h`; modules declare their own `nav.key`. */
-const goTargets = new Map<string, string>([
-  ["h", "/"],
-  ...registry.nav.flatMap((n) =>
-    n.key ? [[n.key, n.path] as [string, string]] : [],
-  ),
-]);
+function goTargetsOf(nav: ModuleRegistry["nav"]): Map<string, string> {
+  return new Map<string, string>([
+    ["h", "/"],
+    ...nav.flatMap((n) => (n.key ? [[n.key, n.path] as [string, string]] : [])),
+  ]);
+}
 
-const dockItems: DockItem[] = [
-  { id: "home", label: "Home", icon: House, href: "/" },
-  ...registry.nav.map((n) => ({
-    id: n.path,
-    label: n.label,
-    icon: iconFor(n.icon),
-    href: n.path,
-    badge: n.badge ? <n.badge /> : undefined,
-  })),
-  { id: "settings", label: "Settings", icon: SettingsIcon, href: "/settings" },
-];
+function dockItemsOf(nav: ModuleRegistry["nav"]): DockItem[] {
+  return [
+    { id: "home", label: "Home", icon: House, href: "/" },
+    ...nav.map((n) => ({
+      id: n.path,
+      label: n.label,
+      icon: iconFor(n.icon),
+      href: n.path,
+      badge: n.badge ? <n.badge /> : undefined,
+    })),
+    {
+      id: "settings",
+      label: "Settings",
+      icon: SettingsIcon,
+      href: "/settings",
+    },
+  ];
+}
 
 /** The dock item that owns the current path (longest matching prefix). */
-function currentDockHref(pathname: string): string {
+function currentDockHref(dockItems: DockItem[], pathname: string): string {
   let best = "";
   for (const { href } of dockItems) {
     const owns =
@@ -84,6 +91,10 @@ function platform(): string {
 }
 
 export function Shell() {
+  const registry = useRegistry();
+  const openItemId = useOpenItem();
+  const goTargets = useMemo(() => goTargetsOf(registry.nav), [registry]);
+  const dockItems = useMemo(() => dockItemsOf(registry.nav), [registry]);
   const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -116,7 +127,7 @@ export function Shell() {
       openExternal,
       goChordPending: () => hotkeys.current?.goPending() ?? false,
     }),
-    [openCommandBar, itemsChanged],
+    [openCommandBar, itemsChanged, registry],
   );
 
   const navigate = useCallback(
@@ -141,7 +152,7 @@ export function Shell() {
       window.removeEventListener("keydown", keys.onKeyDown);
       if (hotkeys.current === keys) hotkeys.current = null;
     };
-  }, [navigate, openCommandBar]);
+  }, [navigate, openCommandBar, goTargets]);
 
   const trpc = useTRPC();
   const emptyQuery = query.trim() === "";
@@ -174,7 +185,11 @@ export function Shell() {
 
   const groups = useMemo<CommandGroup[]>(() => {
     if (!commandOpen) return [];
-    const ctx: CommandContext = { pathname, navigate };
+    const ctx: CommandContext = {
+      pathname,
+      navigate,
+      ...(openItemId ? { itemId: openItemId } : {}),
+    };
     const available = registry.actions.filter(
       (a) =>
         (!a.when || a.when(ctx)) &&
@@ -240,6 +255,8 @@ export function Shell() {
     search.data,
     recents.data,
     step.rows,
+    registry,
+    openItemId,
   ]);
   // In an operation's step the bar lists only that operation.
   const shownGroups = step.groups ?? groups;
@@ -269,7 +286,7 @@ export function Shell() {
         </main>
         <Dock
           items={dockItems}
-          currentHref={currentDockHref(pathname)}
+          currentHref={currentDockHref(dockItems, pathname)}
           className="fixed z-40"
           trailing={
             <Button

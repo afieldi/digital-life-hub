@@ -1,9 +1,11 @@
 import { join } from "node:path";
 import type { AiProviderId } from "@dlh/core";
+import { fixtureOps } from "@dlh/core/fixture";
 import { type Db, items, migrate } from "@dlh/db";
 import { freshTestDb } from "@dlh/db/testing";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
+import { z } from "zod";
 import { coreAiRunners } from "./ai/core-runners";
 import { AiError, aiErrorMessage } from "./ai/errors";
 import type { AiDeps } from "./ai/gateway";
@@ -15,8 +17,11 @@ import type {
 import { createChangeBus } from "./changes";
 import { composeServer } from "./compose";
 import { migrationsRoot, moduleMigrations } from "./migrations";
-import type { ServerModule } from "./modules";
-import type { ImplementedOperation } from "./operations/implement";
+import { defineServerModule, type ServerModule } from "./modules";
+import {
+  type ImplementedOperation,
+  implementOperation,
+} from "./operations/implement";
 import { type Context, type CoreDeps, type DeleteWith, router } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
@@ -233,3 +238,28 @@ export class FakeProvider implements AiProvider {
     return { raw: next.raw };
   }
 }
+
+/**
+ * `fixtureOps` implemented: a test-only module with item type `fixture`, for
+ * tests of Core features that need some item and some module. Register it
+ * with `testServer(db, [fixtureServer])` or `createTestApi({ modules })`.
+ */
+export const fixtureServer = defineServerModule({
+  id: "fixture",
+  itemTypes: ["fixture"],
+  operations: {
+    create: implementOperation(fixtureOps.create, {
+      async run(w, input) {
+        if (!w.createItem) throw new Error("fixture.create can't create");
+        const item = await w.createItem({
+          type: "fixture",
+          title: input.title,
+        });
+        return { result: item, undo: null };
+      },
+      // Core removes the item it created; nothing else to revert.
+      async undo() {},
+      undoRecord: z.null(),
+    }),
+  },
+});

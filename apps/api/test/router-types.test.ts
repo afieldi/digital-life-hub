@@ -4,6 +4,7 @@ import {
   defineServerModule,
   implementOperation,
   mountModules,
+  protectedProcedure,
   router,
   type UndoToken,
 } from "@dlh/server";
@@ -62,8 +63,22 @@ const demo = defineServerModule({
   },
 });
 
-// Built like AppRouter, with a module that has operations.
-const local = router({ ...coreRouters, ...mountModules([demo] as const) });
+// A module that hands over its own router in place of operations.
+const raw = defineServerModule({
+  id: "raw",
+  itemTypes: [],
+  router: router({
+    echo: protectedProcedure
+      .input(z.object({ title: z.string() }))
+      .query(({ input }) => input.title),
+  }),
+});
+
+// Built like AppRouter, with a module that has operations and one with a router.
+const local = router({
+  ...coreRouters,
+  ...mountModules([demo, raw] as const),
+});
 type LocalIn = inferRouterInputs<typeof local>;
 type LocalOut = inferRouterOutputs<typeof local>;
 type AppIn = inferRouterInputs<AppRouter>;
@@ -92,6 +107,12 @@ test("a module operation keeps its input and output types", () => {
   );
 });
 
+test("a module's own router keeps its types", () => {
+  expectTypeOf<LocalIn["raw"]["echo"]>().toEqualTypeOf<{ title: string }>();
+  expectTypeOf<LocalOut["raw"]["echo"]>().toEqualTypeOf<string>();
+  expect(Object.keys(local._def.procedures)).toContain("raw.echo");
+});
+
 test("existing AppRouter procedures keep their types", () => {
   expectTypeOf<AppIn["items"]["rename"]>().toEqualTypeOf<{
     id: string;
@@ -99,7 +120,6 @@ test("existing AppRouter procedures keep their types", () => {
     title: string;
   }>();
   expectTypeOf<AppOut["items"]["rename"]>().toEqualTypeOf<Item>();
-  expectTypeOf<AppIn["sample"]["create"]>().toEqualTypeOf<{ title: string }>();
   expectTypeOf<AppIn["ops"]["undo"]>().toEqualTypeOf<{
     id: string;
     token: { record?: unknown; created: string[] };

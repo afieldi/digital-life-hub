@@ -1,4 +1,5 @@
 import { trpcServer } from "@hono/trpc-server";
+import type { AnyRouter } from "@trpc/server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { changesHandler } from "./changes";
@@ -11,7 +12,8 @@ export const ALLOWED_ORIGINS = [
   "http://tauri.localhost",
 ];
 
-export function createApp(deps: AppDeps): Hono {
+/** `router` is the API's own unless a test mounts more modules (`createTestApi`). */
+export function createApp(deps: AppDeps, router: AnyRouter = appRouter): Hono {
   const app = new Hono();
   app.use(
     "*",
@@ -27,7 +29,7 @@ export function createApp(deps: AppDeps): Hono {
     "/trpc/*",
     trpcServer({
       endpoint: "/trpc",
-      router: appRouter,
+      router,
       onError: ({ error, path }) => {
         const at = `tRPC ${error.code} on ${path ?? "<unknown>"}`;
         // A bug: the whole error, with its cause chain and stack.

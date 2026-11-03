@@ -3,10 +3,11 @@ import type { ComponentType } from "react";
 import type { AiActionDescription } from "./ai/actions";
 import type { OperationDescription } from "./operations/describe";
 
+/** What a palette action knows when ⌘K shows or runs it. */
 export interface CommandContext {
   pathname: string;
+  /** The item whose page is on screen, if any. */
   itemId?: string;
-  selectedText?: string;
   navigate: (to: string) => void;
 }
 

@@ -1,7 +1,12 @@
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach } from "vitest";
-import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
+import {
+  createFixture,
+  dismissToasts,
+  freshApiDb,
+  signedInApp,
+} from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -14,11 +19,9 @@ afterEach(async () => {
 async function setup(opts: Parameters<typeof signedInApp>[1] = {}) {
   const t = await freshApiDb();
   closers.push(t.close);
-  const app = await signedInApp("/", { ...opts, db: t.db });
-  const sample = await app.api
-    .client(app.token)
-    .sample.create.mutate({ title: "Hello item" });
-  return { ...app, sample };
+  const app = await signedInApp("/", { ...opts, db: t.db, fixture: true });
+  const item = await createFixture(app.fixture, { title: "Hello item" });
+  return { ...app, item };
 }
 
 async function openPalette() {
@@ -32,8 +35,8 @@ const option = (name: string) =>
   screen.findByRole("option", { name: new RegExp(name) });
 
 test("an empty query shows Recents and Go to", async () => {
-  const { renderApp, api, token, sample } = await setup();
-  await api.client(token).recents.record.mutate({ id: sample.id });
+  const { renderApp, api, token, item } = await setup();
+  await api.client(token).recents.record.mutate({ id: item.id });
   renderApp();
   await openPalette();
   const recent = await screen.findByRole("group", { name: "Recents" });
@@ -50,7 +53,7 @@ test("typing shows matching items under Jump to and matching actions", async () 
   const jump = await screen.findByRole("group", { name: "Jump to" });
   expect(await within(jump).findByText("Hello item")).toBeInTheDocument();
   const actions = screen.getByRole("group", { name: "Actions" });
-  expect(within(actions).getByText("Hello from Sample")).toBeInTheDocument();
+  expect(within(actions).getByText("Hello from Fixture")).toBeInTheDocument();
   expect(screen.queryByRole("group", { name: "Recents" })).toBeNull();
   expect(screen.queryByRole("group", { name: "Go to" })).toBeNull();
 });
@@ -63,18 +66,18 @@ test("a typo still finds the item", async () => {
 });
 
 test("choosing a result navigates to the type's href", async () => {
-  const { renderApp, router, sample } = await setup();
+  const { renderApp, router, item } = await setup();
   renderApp();
   await userEvent.type(await openPalette(), "hello");
   await userEvent.click(await option("Hello item"));
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe(`/sample/${sample.id}`),
+    expect(router.state.location.pathname).toBe(`/fixture/${item.id}`),
   );
 });
 
 test("only the latest query's results show when responses arrive out of order", async () => {
   let releaseH: (() => void) | undefined;
-  const { renderApp, api, token } = await setup({
+  const { renderApp, fixture } = await setup({
     wrapFetch: (inner) => (input, init) => {
       const url = decodeURIComponent(
         String(input instanceof Request ? input.url : input),
@@ -87,7 +90,7 @@ test("only the latest query's results show when responses arrive out of order", 
       return inner(input, init);
     },
   });
-  await api.client(token).sample.create.mutate({ title: "Hat" });
+  await createFixture(fixture, { title: "Hat" });
   renderApp();
   const input = await openPalette();
   await userEvent.type(input, "h");
@@ -114,7 +117,7 @@ test("a failing search shows 'Search unavailable' and actions still show", async
   renderApp();
   await userEvent.type(await openPalette(), "hel");
   expect(await screen.findByText("Search unavailable")).toBeInTheDocument();
-  expect(screen.getByText("Hello from Sample")).toBeInTheDocument();
+  expect(screen.getByText("Hello from Fixture")).toBeInTheDocument();
 });
 
 /** Waits for the search for the typed text, so ↵ goes to the rows. */
@@ -241,4 +244,22 @@ test("Reopen on an open request says Not resolved", async () => {
   await settled();
   await userEvent.keyboard("{Enter}");
   expect(await screen.findByText("Not resolved")).toBeInTheDocument();
+});
+
+test("a palette action sees the item on screen", async () => {
+  const { renderApp, router, item } = await setup();
+  renderApp();
+  // Not on an item: the action that needs one isn't offered.
+  await userEvent.type(await openPalette(), "which item");
+  await screen.findByRole("group", { name: "Actions" }).catch(() => null);
+  expect(
+    screen.queryByRole("option", { name: /Which item is this/ }),
+  ).toBeNull();
+  await userEvent.keyboard("{Escape}");
+
+  await router.navigate({ to: `/fixture/${item.id}` });
+  await screen.findByRole("heading", { name: "Hello item", level: 1 });
+  await userEvent.type(await openPalette(), "which item");
+  await userEvent.click(await option("Which item is this"));
+  expect(await screen.findByText(`On item ${item.id}`)).toBeInTheDocument();
 });

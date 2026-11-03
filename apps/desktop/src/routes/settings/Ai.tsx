@@ -15,7 +15,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { type Key, useRef, useState } from "react";
-import { ALL_ACTIONS } from "../../ai/actions";
+import { useAllActions } from "../../ai/actions";
 import {
   type CliProviderId,
   cliPathKey,
@@ -161,6 +161,7 @@ function entryMeta(e: AiLogEntry, now: Date): string {
 }
 
 function RecentRequests() {
+  const allActions = useAllActions();
   const trpc = useTRPC();
   const client = useTRPCClient();
   const log = useInfiniteQuery(
@@ -201,7 +202,7 @@ function RecentRequests() {
           <ItemRow
             key={e.id}
             title={
-              ALL_ACTIONS.find((a) => a.id === e.actionId)?.label ?? e.actionId
+              allActions.find((a) => a.id === e.actionId)?.label ?? e.actionId
             }
             meta={entryMeta(e, now)}
             chips={<Chip kind="type">{formatResult(e)}</Chip>}
