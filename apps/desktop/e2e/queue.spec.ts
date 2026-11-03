@@ -69,6 +69,12 @@ test("⌘K files a request; Make task makes a linked task and resolves it", asyn
   await openPalette(page);
   await bar(page).fill("File a request");
   const option = page.getByRole("option", { name: /^File a request/ });
+  // Search results arrive after the actions and can move the selection:
+  // choose only once they are in.
+  const jump = page.getByRole("group", { name: "Jump to" });
+  await expect(
+    jump.getByRole("option").first().or(jump.getByText("No items match")),
+  ).toBeVisible();
   await expect(option).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("Enter");
   const form = page.getByRole("dialog", { name: "File a request" });
