@@ -7,7 +7,7 @@ import {
   PenLine,
   Sparkles,
 } from "lucide-react";
-import type { KeyboardEvent, ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode, useRef } from "react";
 import { ageLabel } from "../age";
 import type { Outcome, RequestAction, RequestRow, Source } from "../schema";
 import { requestHref } from "./api";
@@ -39,7 +39,8 @@ const GO_CHORD_MS = 1000;
 let gAt = 0;
 
 export type OpenRowHandlers = {
-  onMakeTask: (row: RequestRow) => void;
+  /** `refocus`: where focus goes once the task is made and the row leaves. */
+  onMakeTask: (row: RequestRow, refocus?: HTMLElement | null) => void;
   onResolve: (row: RequestRow, outcome: "handled" | "not_for_me") => void;
   onAction: (row: RequestRow, action: RequestAction) => void;
 };
@@ -104,6 +105,20 @@ function Meta({ row }: { row: RequestRow }) {
 }
 
 /**
+ * Where focus goes when `row` leaves its list: the next row's link, else the
+ * previous row's, else the list itself (`data-request-list`, focusable).
+ */
+function focusAfter(row: HTMLElement): HTMLElement | null {
+  const list = row.closest<HTMLElement>("[data-request-list]");
+  const rows = [
+    ...(list ?? document).querySelectorAll<HTMLElement>("[data-request-id]"),
+  ];
+  const i = rows.indexOf(row);
+  const next = rows[i + 1] ?? rows[i - 1];
+  return next?.querySelector<HTMLElement>("a[href]") ?? list;
+}
+
+/**
  * An open request: source glyph, sender, title, a line of the body and its
  * age. Its outcomes (or own actions) show on hover or focus; with focus in
  * the row, `t` makes a task, `h` marks it handled and `n` not for me.
@@ -118,21 +133,44 @@ export function OpenRequestRow({
   handlers: OpenRowHandlers;
 }) {
   const hasActions = row.actions !== null && row.actions.length > 0;
+  const ref = useRef<HTMLDivElement>(null);
+  // Resolving drops the row: focus in it moves on first, so the next key acts
+  // on the next row rather than falling to the page.
+  const refocus = () => {
+    const el = ref.current;
+    return el?.contains(document.activeElement) ? focusAfter(el) : null;
+  };
+  const leaving: OpenRowHandlers = {
+    onMakeTask: (r) => handlers.onMakeTask(r, refocus()),
+    onResolve: (r, outcome) => {
+      refocus()?.focus();
+      handlers.onResolve(r, outcome);
+    },
+    onAction: (r, action) => {
+      refocus()?.focus();
+      handlers.onAction(r, action);
+    },
+  };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     const key = e.key.toLowerCase();
     const afterG = Date.now() - gAt <= GO_CHORD_MS;
     gAt = key === "g" ? Date.now() : 0;
     if (afterG || hasActions) return;
-    if (key === "t") handlers.onMakeTask(row);
-    else if (key === "h") handlers.onResolve(row, "handled");
-    else if (key === "n") handlers.onResolve(row, "not_for_me");
+    if (key === "t") leaving.onMakeTask(row);
+    else if (key === "h") leaving.onResolve(row, "handled");
+    else if (key === "n") leaving.onResolve(row, "not_for_me");
     else return;
     e.preventDefault();
   };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: keys from the row's own link and buttons bubble here
-    <div data-request-id={row.id} className="group" onKeyDown={onKeyDown}>
+    <div
+      ref={ref}
+      data-request-id={row.id}
+      className="group"
+      onKeyDown={onKeyDown}
+    >
       <ItemRow
         leading={<SourceGlyph source={row.source} />}
         title={row.title}
@@ -143,7 +181,7 @@ export function OpenRequestRow({
             <span className="invisible flex items-center gap-1 group-focus-within:visible group-hover:visible">
               <OutcomeButtons
                 row={row}
-                handlers={handlers}
+                handlers={leaving}
                 label={(text) => `${text}: ${row.title}`}
               />
             </span>

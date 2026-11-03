@@ -1,8 +1,6 @@
 import { Caption, GlassPanel, ListGroup } from "@dlh/ui";
-import { useState } from "react";
-import type { RequestRow } from "../schema";
 import { useOpenRequests } from "./api";
-import { MakeTaskForm } from "./MakeTaskForm";
+import { useMakeTaskForm } from "./MakeTaskForm";
 import { useOutcomes } from "./outcomes";
 import { OpenRequestRow, type OpenRowHandlers } from "./RequestRowView";
 
@@ -17,20 +15,25 @@ const SHOWN = 3;
 export function NeedsYou() {
   const list = useOpenRequests();
   const outcomes = useOutcomes();
-  const [making, setMaking] = useState<RequestRow | null>(null);
+  const makeTask = useMakeTaskForm(outcomes);
   const items = list.data?.items ?? [];
   if (items.length === 0) return null;
 
   const now = new Date();
   const handlers: OpenRowHandlers = {
-    onMakeTask: setMaking,
+    onMakeTask: makeTask.start,
     onResolve: (row, outcome) => void outcomes.resolve(row, outcome),
     onAction: (row, action) => void outcomes.act(row, action),
   };
 
   return (
     <>
-      <GlassPanel level="panel" className="flex flex-col gap-0.5 p-2.5">
+      <GlassPanel
+        level="panel"
+        className="flex flex-col gap-0.5 p-2.5"
+        data-request-list
+        tabIndex={-1}
+      >
         <ListGroup
           label="Needs you"
           action={<Caption>{items.length} open</Caption>}
@@ -45,16 +48,7 @@ export function NeedsYou() {
           ))}
         </ListGroup>
       </GlassPanel>
-      {making ? (
-        <MakeTaskForm
-          request={making}
-          onCancel={() => setMaking(null)}
-          onSubmit={(params) => {
-            setMaking(null);
-            void outcomes.makeTask(making, params);
-          }}
-        />
-      ) : null}
+      {makeTask.form}
     </>
   );
 }

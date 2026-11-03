@@ -7,10 +7,9 @@ import {
   Skeleton,
 } from "@dlh/ui";
 import { CircleAlert, Inbox } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import type { RequestRow } from "../schema";
+import type { ReactNode } from "react";
 import { useOpenRequests } from "./api";
-import { MakeTaskForm } from "./MakeTaskForm";
+import { useMakeTaskForm } from "./MakeTaskForm";
 import { useOutcomes } from "./outcomes";
 import { QueueHeader } from "./QueueHeader";
 import { OpenRequestRow, type OpenRowHandlers } from "./RequestRowView";
@@ -22,10 +21,10 @@ import { OpenRequestRow, type OpenRowHandlers } from "./RequestRowView";
 export function OpenPage() {
   const list = useOpenRequests();
   const outcomes = useOutcomes();
-  const [making, setMaking] = useState<RequestRow | null>(null);
+  const makeTask = useMakeTaskForm(outcomes);
   const now = new Date();
   const handlers: OpenRowHandlers = {
-    onMakeTask: setMaking,
+    onMakeTask: makeTask.start,
     onResolve: (row, outcome) => void outcomes.resolve(row, outcome),
     onAction: (row, action) => void outcomes.act(row, action),
   };
@@ -69,6 +68,8 @@ export function OpenPage() {
       <div className="flex flex-wrap items-start gap-6">
         <section
           aria-label="Open requests"
+          data-request-list
+          tabIndex={-1}
           className="flex min-w-0 flex-[999_1_560px] flex-col gap-4"
         >
           <GlassPanel level="panel" className="flex flex-col gap-0.5 p-2.5">
@@ -85,16 +86,7 @@ export function OpenPage() {
           />
         </aside>
       </div>
-      {making ? (
-        <MakeTaskForm
-          request={making}
-          onCancel={() => setMaking(null)}
-          onSubmit={(params) => {
-            setMaking(null);
-            void outcomes.makeTask(making, params);
-          }}
-        />
-      ) : null}
+      {makeTask.form}
     </div>
   );
 }

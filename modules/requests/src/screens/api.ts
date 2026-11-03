@@ -55,6 +55,24 @@ export function isConflict(err: unknown): boolean {
   );
 }
 
+/**
+ * The undo token of a write's result, when it has one and the write changed
+ * something. A request's action runs another module's operation, whose result
+ * may not carry one.
+ */
+export function undoOf(res: unknown): UndoToken | null {
+  if (typeof res !== "object" || res === null) return null;
+  const undo = (res as { undo?: unknown }).undo;
+  if (typeof undo !== "object" || undo === null) return null;
+  const { record, created } = undo as { record?: unknown; created?: unknown };
+  if (!Array.isArray(created) || !created.every((c) => typeof c === "string")) {
+    return null;
+  }
+  // A write that changed nothing has nothing to undo.
+  if (record == null && created.length === 0) return null;
+  return { record, created };
+}
+
 export type RequestWrite<T> = {
   /** The operation's id, as `ops.undo` takes it. */
   op: string;
@@ -62,7 +80,8 @@ export type RequestWrite<T> = {
   summary: string;
   /** What to call it in an error ("Couldn't resolve the request"). */
   verb: string;
-  call: () => Promise<{ result: T; undo: UndoToken }>;
+  /** Its result; `undo` is checked before Undo is offered. */
+  call: () => Promise<{ result: T; undo?: unknown }>;
 };
 
 /**
@@ -99,7 +118,7 @@ export function useRequestWrite() {
       verb,
       call,
     }: RequestWrite<T>): Promise<T | null> => {
-      let res: { result: T; undo: UndoToken };
+      let res: { result: T; undo?: unknown };
       try {
         res = await call();
       } catch (err) {
@@ -107,18 +126,17 @@ export function useRequestWrite() {
         return null;
       }
       void refresh();
-      // A write that changed nothing has nothing to undo.
-      const changed = res.undo.record != null || res.undo.created.length > 0;
+      const token = undoOf(res);
       toast(summary, {
         tone: "success",
         timeout: UNDO_TOAST_MS,
-        actions: !changed
+        actions: !token
           ? []
           : [
               {
                 label: "Undo",
                 onAction: () => {
-                  core.ops.undo.mutate({ id: op, token: res.undo }).then(
+                  core.ops.undo.mutate({ id: op, token }).then(
                     ({ summary: undone }) => {
                       toast(undone);
                       void refresh();
@@ -138,7 +156,7 @@ export function useRequestWrite() {
 /** A module router as `runRequestAction` reaches it: mutations by name. */
 type AnyModuleRouter = Record<
   string,
-  { mutate?: (input: unknown) => Promise<{ result: unknown; undo: UndoToken }> }
+  { mutate?: (input: unknown) => Promise<{ result: unknown; undo?: unknown }> }
 >;
 
 /**

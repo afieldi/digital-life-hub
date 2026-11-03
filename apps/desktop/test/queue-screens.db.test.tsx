@@ -142,6 +142,46 @@ describe("Open", () => {
     expect((await read(client, request.id)).outcome).toBeNull();
   });
 
+  test("after h the next row has focus, so h again resolves it too", async () => {
+    const { renderApp, client } = await setup("/queue");
+    for (const [title, h] of [
+      ["First", 3],
+      ["Second", 2],
+      ["Third", 1],
+    ] as const) {
+      await file(client, { title, receivedAt: hoursAgo(h) });
+    }
+    renderApp();
+    (await screen.findByRole("link", { name: "First" })).focus();
+    await userEvent.keyboard("h");
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(screen.getByRole("link", { name: "Second" })).toHaveFocus();
+    await userEvent.keyboard("h");
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    // The last row left: focus goes to the one before it.
+    const third = screen.getByRole("link", { name: "Third" });
+    expect(third).toHaveFocus();
+    await userEvent.keyboard("n");
+    await waitFor(() => expect(rows()).toHaveLength(0));
+    // None left: the list itself, not the page body.
+    expect(screen.getByRole("region", { name: "Open requests" })).toHaveFocus();
+  });
+
+  test("after Make task from the keyboard the next row has focus", async () => {
+    const { renderApp, client } = await setup("/queue");
+    await file(client, { title: "Older", receivedAt: hoursAgo(2) });
+    await file(client, { title: "Newer", receivedAt: hoursAgo(1) });
+    renderApp();
+    (await screen.findByRole("link", { name: "Older" })).focus();
+    await userEvent.keyboard("t");
+    const form = await screen.findByRole("dialog", { name: "Make task" });
+    await userEvent.click(within(form).getByRole("button", { name: "Run" }));
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "Newer" })).toHaveFocus(),
+    );
+  });
+
   test("n on a focused row resolves it as not for me", async () => {
     const { renderApp, client } = await setup("/queue");
     const request = await file(client, { title: "Join the book club" });
@@ -181,6 +221,26 @@ describe("Open", () => {
     });
     expect(after.outcome).toBe("task");
     expect(task).toMatchObject({ title: "Call Maya", deleted: false });
+  });
+
+  test("clearing Notes in Make task makes a task with no notes", async () => {
+    const { renderApp, client, db } = await setup("/queue");
+    const request = await file(client, {
+      title: "Send the contract",
+      body: "To legal.",
+    });
+    renderApp();
+    (await screen.findByRole("link", { name: "Send the contract" })).focus();
+    await userEvent.keyboard("t");
+    const form = await screen.findByRole("dialog", { name: "Make task" });
+    await userEvent.clear(within(form).getByRole("textbox", { name: "Notes" }));
+    await userEvent.click(within(form).getByRole("button", { name: "Run" }));
+    await screen.findByRole("button", { name: "Undo" });
+    const { task } = await client.requests.get.query({ id: request.id });
+    if (!task) throw new Error("no task");
+    const [row] = await db.$client<{ notes: string | null }[]>`
+      select notes from tasks where item_id = ${task.id}`;
+    expect(row).toEqual({ notes: null });
   });
 
   test("the Make task button opens the same form", async () => {
@@ -399,14 +459,59 @@ describe("Detail", () => {
     expect(p).toHaveTextContent("Mostly the hiring section.");
     expect(p).toHaveTextContent("Before Thursday.");
     expect(within(p).getByText("Maya Chen")).toBeInTheDocument();
-    expect(
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    await userEvent.click(
       within(p).getByRole("button", { name: "Open in Slack" }),
-    ).toBeInTheDocument();
+    );
+    // Through the shell's openExternal: a new window outside the desktop app.
+    expect(open).toHaveBeenCalledWith(
+      "https://example.slack.com/archives/C1/p1",
+      "_blank",
+      "noopener",
+    );
+    open.mockRestore();
     for (const name of ["Make task", "Handled", "Not for me"]) {
       expect(within(p).getByRole("button", { name })).toBeInTheDocument();
     }
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(router.state.location.pathname).toBe("/queue"));
+  });
+
+  test("a link that won't open toasts Couldn't open the link", async () => {
+    const { renderApp, client, router } = await setup("/queue");
+    const request = await file(client, {
+      title: "Read the doc",
+      source: "ai",
+      sourceUrl: "https://docs.example.com/d/1",
+    });
+    router.history.push(`/queue/${request.id}`);
+    renderApp();
+    const p = await panel("Read the doc");
+    const open = vi.spyOn(window, "open").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    await userEvent.click(
+      within(p).getByRole("button", { name: "Open original" }),
+    );
+    expect(
+      await screen.findByText("Couldn't open the link"),
+    ).toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  test("Detail offers no link for a source URL that isn't http or https", async () => {
+    const { renderApp, client, router, db } = await setup("/queue");
+    const request = await file(client, { title: "Odd link", source: "ai" });
+    // `file` refuses it now; a row written before that could still hold one.
+    await db.$client`update requests set source_url = 'javascript:alert(1)'
+      where item_id = ${request.id}`;
+    router.history.push(`/queue/${request.id}`);
+    renderApp();
+    const p = await panel("Odd link");
+    expect(within(p).getByRole("button", { name: "Handled" })).toBeVisible();
+    expect(
+      within(p).queryByRole("button", { name: "Open original" }),
+    ).toBeNull();
   });
 
   test("Detail of a resolved request whose task was deleted says Task deleted, and Reopen works", async () => {
