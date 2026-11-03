@@ -1,8 +1,6 @@
-import type { AppRouter } from "@dlh/api/router";
 import { parseDue } from "@dlh/core/capture";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
-import { createTRPCClient, httpLink } from "@trpc/client";
-import { E2E_API_URL } from "./apiUrl";
+import { apiFor, openNewTask } from "./api";
 import { modEnter } from "./keys";
 import { openPalette } from "./palette";
 import { changesLive, signIn } from "./signIn";
@@ -18,22 +16,6 @@ test.beforeEach(async ({ page }) => {
 /** Unique to this test run, even for repeats started in the same millisecond. */
 const stamp = (testInfo: TestInfo) =>
   `${testInfo.project.name}-${testInfo.repeatEachIndex}-${Date.now()}`;
-
-/** The API as the signed-in page, for setting up tasks and acting elsewhere. */
-async function apiFor(page: Page) {
-  const token = await page.evaluate(() =>
-    localStorage.getItem("dlh.devSessionToken"),
-  );
-  if (!token) throw new Error("no dev session token in localStorage");
-  return createTRPCClient<AppRouter>({
-    links: [
-      httpLink({
-        url: `${E2E_API_URL}/trpc`,
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ],
-  });
-}
 
 /** The browser's zone: the device zone the app reads days in. */
 const browserZone = (page: Page) =>
@@ -77,15 +59,6 @@ const toastWith = (page: Page, text: string | RegExp) =>
   page.getByRole("alertdialog").filter({
     has: page.getByRole("status").getByText(text, { exact: true }),
   });
-
-/** Makes a task through the API and opens its Detail panel. */
-async function openNewTask(page: Page, title: string) {
-  const api = await apiFor(page);
-  const { result: task } = await api.tasks.create.mutate({ title });
-  await page.goto(`/tasks/${task.id}`);
-  await expect(page.getByRole("complementary", { name: title })).toBeVisible();
-  return { api, task };
-}
 
 test("quick add lands under Today with High; tick and Undo", async ({
   page,
