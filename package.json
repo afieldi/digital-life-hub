@@ -13,7 +13,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "biome check . && tsx scripts/check-module-classes.ts && tsx scripts/gen-modules.ts --check",
     "test:scripts": "vitest run scripts",
-    "test:db": "turbo run test:db --concurrency=1",
+    "test:db": "turbo run test:db && turbo run test:perf",
     "dev:down": "docker compose down",
     "db:migrate": "pnpm --filter @dlh/api migrate",
     "db:reset": "pnpm --filter @dlh/db reset && pnpm --filter @dlh/api migrate && pnpm --filter @dlh/api seed",

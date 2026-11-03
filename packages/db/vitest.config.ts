@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  test: { globals: true, environment: "node", fileParallelism: false },
+  // A test's first fresh database may wait for its template's migrations.
+  test: { globals: true, environment: "node", testTimeout: 30_000 },
 });

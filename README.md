@@ -31,8 +31,8 @@ pnpm dev
 | `pnpm db:reset`                       | Wipes the dev database and reseeds sample items                      |
 | `pnpm gen:modules`                    | Regenerates the module registry (`pnpm lint` fails if it is stale)   |
 | `pnpm test`                           | Unit tests                                                           |
-| `pnpm test:db`                        | Database tests (needs Postgres)                                      |
-| `pnpm --filter @dlh/desktop test:e2e` | End-to-end tests (Playwright, needs Postgres)                        |
+| `pnpm test:db`                        | Database tests (needs Postgres; each test gets its own database)     |
+| `pnpm --filter @dlh/desktop test:e2e` | End-to-end tests (Playwright, needs Postgres; runs beside `pnpm dev`) |
 | `pnpm typecheck` / `pnpm lint`        | Type and lint checks                                                 |
 | `pnpm ai:eval-interpreter`            | Scores the request interpreter against its example phrases           |
 | `pnpm ai:smoke`                       | Runs an answer, a rename and an undo through each signed-in provider |

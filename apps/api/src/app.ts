@@ -12,13 +12,19 @@ export const ALLOWED_ORIGINS = [
   "http://tauri.localhost",
 ];
 
+/** The e2e web server's origin, allowed only in development (dev auth). */
+export const E2E_ORIGIN = "http://localhost:1430";
+
 /** `router` is the API's own unless a test mounts more modules (`createTestApi`). */
 export function createApp(deps: AppDeps, router: AnyRouter = appRouter): Hono {
+  const origins = deps.config.devAuth
+    ? [...ALLOWED_ORIGINS, E2E_ORIGIN]
+    : ALLOWED_ORIGINS;
   const app = new Hono();
   app.use(
     "*",
     cors({
-      origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
+      origin: (origin) => (origins.includes(origin) ? origin : null),
       allowHeaders: ["Authorization", "Content-Type"],
       allowMethods: ["GET", "POST", "OPTIONS"],
     }),

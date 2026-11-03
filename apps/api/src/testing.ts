@@ -7,7 +7,11 @@ import {
 } from "@dlh/server";
 import { FakeProvider, type fixtureServer } from "@dlh/server/testing";
 
-export { fixtureServer, freshModuleDb } from "@dlh/server/testing";
+export {
+  fixtureServer,
+  freshModuleDb,
+  resetModuleDb,
+} from "@dlh/server/testing";
 export { serverModules };
 
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";

@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import type { AiProviderId } from "@dlh/core";
 import { fixtureOps } from "@dlh/core/fixture";
-import { type Db, items, migrate } from "@dlh/db";
-import { freshTestDb } from "@dlh/db/testing";
+import { type Db, items } from "@dlh/db";
+import { freshDbFrom, type MigrationStep, resetDbAt } from "@dlh/db/testing";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
 import { z } from "zod";
@@ -27,26 +27,40 @@ import { type Context, type CoreDeps, type DeleteWith, router } from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
 
-/**
- * `freshTestDb()`, then each module's migrations. `root` holds `packages/db/drizzle`
- * and `modules/<id>/drizzle` (default `MIGRATIONS_ROOT`, else the repo root); jsdom
- * tests pass it because `import.meta.url` is no file URL there.
- */
-export async function freshModuleDb(
+/** Core's migrations, then each module's with its own journal, under `root`. */
+function migrationSteps(
   modules: readonly ServerModule[],
-  root?: string,
+  root: string,
+): MigrationStep[] {
+  return [
+    { folder: join(root, "packages", "db", "drizzle") },
+    ...moduleMigrations(modules, root).map((m) => ({
+      folder: m.folder,
+      table: m.table,
+    })),
+  ];
+}
+
+/**
+ * A test database of its own with Core's and each module's migrations (see
+ * `freshDbFrom`). `root` holds `packages/db/drizzle` and `modules/<id>/drizzle`
+ * (default: the repo root); jsdom tests pass it because `import.meta.url` is
+ * no file URL there.
+ */
+export function freshModuleDb(
+  modules: readonly ServerModule[],
+  root: string = migrationsRoot(),
 ): Promise<{ db: Db; url: string; close: () => Promise<void> }> {
-  const base = root ?? migrationsRoot();
-  const t = await freshTestDb(join(base, "packages", "db", "drizzle"));
-  try {
-    for (const m of moduleMigrations(modules, base)) {
-      await migrate(t.url, m.folder, { table: m.table });
-    }
-  } catch (e) {
-    await t.close();
-    throw e;
-  }
-  return t;
+  return freshDbFrom(migrationSteps(modules, root));
+}
+
+/** Wipes the database at `url` and migrates Core and `modules`, in place (e2e's). */
+export function resetModuleDb(
+  url: string,
+  modules: readonly ServerModule[],
+  root: string = migrationsRoot(),
+): Promise<void> {
+  return resetDbAt(url, migrationSteps(modules, root));
 }
 
 export type TestDeps = CoreDeps & {
