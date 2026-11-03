@@ -26,6 +26,12 @@ export {
 } from "./ai/api";
 export type { Interpretation, RequestInterpreter } from "./ai/interpreter";
 export { applicableActions, NOT_SURE_BELOW } from "./ai/interpreter";
+export {
+  type InterpreterId,
+  interpreterFor,
+  interpreterId,
+  interpreters,
+} from "./ai/interpreters";
 export { keywordInterpreter } from "./ai/keywords";
 export type { AiEffect, AiKind, AiProviderId } from "./ai/kinds";
 export {

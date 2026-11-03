@@ -2,6 +2,7 @@ import {
   type AiProviderId,
   type AiSettings,
   aiSettings as aiSettingsShape,
+  interpreterId,
 } from "@dlh/core";
 import { aiSettings, type Db } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
@@ -26,7 +27,8 @@ export async function getSettings(db: Db): Promise<AiSettings> {
   return aiSettingsShape.parse({
     defaultProvider: row.defaultProvider,
     openrouterModel: row.openrouterModel,
-    interpreter: row.interpreter,
+    // An interpreter this build doesn't have (one later removed) reads as keywords.
+    interpreter: interpreterId.safeParse(row.interpreter).data ?? "keywords",
   });
 }
 

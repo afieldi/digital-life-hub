@@ -1,4 +1,9 @@
-import type { AiLogEntry, AiProviderId } from "@dlh/core";
+import {
+  type AiLogEntry,
+  type AiProviderId,
+  interpreterId,
+  interpreters,
+} from "@dlh/core";
 import {
   Button,
   Chip,
@@ -320,12 +325,15 @@ export function Ai() {
               <div className="flex flex-col gap-4 pt-2">
                 <ComboBox
                   label="Interpreter"
-                  items={[{ id: "keywords", name: "Keywords" }]}
+                  items={Object.entries(interpreters).map(([id, i]) => ({
+                    id,
+                    name: i.label,
+                  }))}
                   selectedKey={data.interpreter}
                   onSelectionChange={(key: Key | null) => {
-                    if (key === "keywords" && key !== data.interpreter) {
-                      save.mutate({ interpreter: "keywords" });
-                    }
+                    // Called only when the pick changes.
+                    const id = interpreterId.safeParse(key);
+                    if (id.success) save.mutate({ interpreter: id.data });
                   }}
                 >
                   {(i) => <ComboBoxItem id={i.id}>{i.name}</ComboBoxItem>}
