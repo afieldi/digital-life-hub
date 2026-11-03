@@ -58,6 +58,7 @@ const TRPC_CODE: Record<AiErrorData["code"], TRPCError["code"]> = {
   stale: "CONFLICT",
   expired: "PRECONDITION_FAILED",
   not_found: "NOT_FOUND",
+  internal: "INTERNAL_SERVER_ERROR",
 };
 
 /** The tRPC error sent for an AI failure; the formatter copies `cause` to `data.ai`. */
@@ -168,4 +169,35 @@ export async function fail(
     status,
   );
   throw aiFailure(err);
+}
+
+/**
+ * Ends the request failed for an error thrown while resolving or applying.
+ * The writer's version and existence errors become `stale` / `not_found`; a
+ * deliberate refusal (FORBIDDEN, BAD_REQUEST, ...) keeps its own code; anything
+ * else (a bug, a failed query) is `internal`, with the original as its cause so
+ * the API log shows it.
+ */
+export async function failRequest(
+  deps: CoreDeps,
+  id: string,
+  from: string,
+  e: unknown,
+  provider: AiProviderId,
+  patch: RequestPatch,
+): Promise<never> {
+  const err = writeFailure(e, provider);
+  if (err) return fail(deps, id, from, err, patch);
+  if (e instanceof TRPCError && e.code !== "INTERNAL_SERVER_ERROR") {
+    await markFailed(deps, id, from, { ...patch, errorMessage: e.message });
+    throw e;
+  }
+  const internal = new AiError(
+    "internal",
+    aiErrorMessage("internal", provider),
+    {
+      cause: e,
+    },
+  );
+  return fail(deps, id, from, internal, patch);
 }

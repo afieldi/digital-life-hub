@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { itemSummary, itemTitle } from "../items";
+import { timeZoneValue } from "../time";
 import { aiKind, aiProviderId } from "./kinds";
 
 export { aiKind, aiProviderId };
@@ -12,7 +13,7 @@ export const aiPrepareInput = z.object({
   interpretedBy: z.string().optional(),
   provider: aiProviderId.optional(),
   /** The device's IANA zone: today's date in the prompt, and a query's `timeZone`. */
-  timeZone: z.string().max(100).optional(),
+  timeZone: timeZoneValue.optional(),
 });
 export type AiPrepareInput = z.infer<typeof aiPrepareInput>;
 
@@ -100,6 +101,7 @@ export const aiErrorCode = z.enum([
   "stale",
   "expired",
   "not_found",
+  "internal",
 ]);
 
 export const aiErrorData = z.object({

@@ -270,6 +270,7 @@ Every failure ends the request as `failed` (or `stale`, `expired`) and writes no
 | `stale` | Item edited meanwhile | "This item changed while \<provider> was working, so nothing was changed." | Run again |
 | `expired` | Past its expiry | "This suggestion expired." | Run again |
 | `not_found` | Item deleted meanwhile | "This item was deleted." | — |
+| `internal` | A bug or failed query on the server while resolving or applying; the cause is logged | "The action failed on the server." | Try again |
 
 ## Testing
 

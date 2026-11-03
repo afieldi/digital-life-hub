@@ -30,9 +30,6 @@ export const requestKeys = {
 /** A request's page: the Detail panel. */
 export const requestHref = (id: string) => `/queue/${id}`;
 
-export const deviceTimeZone = () =>
-  Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 /** The open requests, oldest first: Open and the nav count share this read. */
 export function useOpenRequests() {
   const requests = useRequestsApi();

@@ -1,6 +1,7 @@
 import {
   describeOperation,
   fields,
+  itemOnScreen,
   itemTitle,
   type PaletteContext,
 } from "@dlh/core";
@@ -10,15 +11,6 @@ import { fileInput, outcome, requestRow, resolveInput } from "./schema";
 
 const id = z.uuid();
 const expectedUpdatedAt = z.iso.datetime();
-
-/** ⌘K builds versioned inputs from the request on screen. */
-function onScreen(ctx: PaletteContext): {
-  id: string;
-  expectedUpdatedAt: string;
-} {
-  if (!ctx.item) throw new Error("No request on screen");
-  return { id: ctx.item.id, expectedUpdatedAt: ctx.item.updatedAt };
-}
 
 /** The outcome named in typed text ("handled", "not for me"), if any. */
 function outcomeIn(text: string): "handled" | "not_for_me" | undefined {
@@ -92,7 +84,10 @@ const resolve = describeOperation({
     prefill: (ctx) => ({
       outcome: outcomeIn(ctx.name ?? "") ?? outcomeIn(ctx.text),
     }),
-    toInput: (ctx, params) => ({ ...onScreen(ctx), outcome: params.outcome }),
+    toInput: (ctx, params) => ({
+      ...itemOnScreen(ctx),
+      outcome: params.outcome,
+    }),
   },
 });
 
@@ -140,12 +135,12 @@ const makeTask = describeOperation({
     // The form starts from the request: its title, and its details as notes.
     load: async (ctx, read) => {
       const { request } = requestView.parse(
-        await read("requests.get", { id: onScreen(ctx).id }),
+        await read("requests.get", { id: itemOnScreen(ctx).id }),
       );
       return { title: request.title, notes: request.body ?? undefined };
     },
     review: true,
-    toInput: (ctx, params) => ({ ...onScreen(ctx), ...params }),
+    toInput: (ctx, params) => ({ ...itemOnScreen(ctx), ...params }),
   },
 });
 
@@ -162,7 +157,7 @@ const reopen = describeOperation({
   effects: ["updateItem", "removeLinks"],
   summary: () => "Reopen",
   // Runs on ↵ for the request on screen.
-  palette: (ctx) => (ctx.item?.type === "request" ? onScreen(ctx) : null),
+  palette: (ctx) => (ctx.item?.type === "request" ? itemOnScreen(ctx) : null),
   ai: false,
 });
 

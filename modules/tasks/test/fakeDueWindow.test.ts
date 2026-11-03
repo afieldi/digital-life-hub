@@ -1,7 +1,7 @@
+import { parseDue } from "@dlh/core/capture";
 import { scriptedFakeProvider } from "@dlh/server";
 import { expect, test } from "vitest";
 import { z } from "zod";
-import { parseDue } from "../src/capture";
 import { taskOps } from "../src/operations";
 
 // The e2e "what's due friday?" test asks the dev fake, which fills `due`'s

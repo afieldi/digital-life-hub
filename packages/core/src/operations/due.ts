@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timeZoneValue } from "../time";
 
 /**
  * When a thing is due, in Google Calendar's shape: a whole day with no time
@@ -10,7 +11,7 @@ export const dueValue = z.union([
   z
     .object({
       dateTime: z.iso.datetime({ offset: true }),
-      timeZone: z.string().optional(),
+      timeZone: timeZoneValue.optional(),
     })
     .strict(),
 ]);

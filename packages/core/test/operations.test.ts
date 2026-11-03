@@ -9,8 +9,10 @@ import {
   fields,
   formFields,
   ITEM_KEYS,
+  itemOnScreen,
   localDueValue,
   ModuleRegistryError,
+  NotReady,
   OperationError,
   operationList,
   toAiAction,
@@ -460,4 +462,15 @@ describe("dueFromLocal", () => {
       localDueValue.safeParse({ dateTime: "2026-11-06T09:00" }).success,
     ).toBe(true);
   });
+});
+
+test("itemOnScreen gives the versioned keys, or NotReady with nothing on screen", () => {
+  const ctx = { text: "", now: new Date(), timeZone: "UTC" };
+  expect(
+    itemOnScreen({
+      ...ctx,
+      item: { id: "a", type: "task", updatedAt: "2026-11-02T09:00:00.000Z" },
+    }),
+  ).toEqual({ id: "a", expectedUpdatedAt: "2026-11-02T09:00:00.000Z" });
+  expect(() => itemOnScreen(ctx)).toThrow(NotReady);
 });

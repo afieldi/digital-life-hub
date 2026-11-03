@@ -1,22 +1,23 @@
 import {
+  addDays,
   type Due,
+  dayOfDue,
+  dayValue,
   describeOperation,
   fields,
+  formatDue,
+  itemOnScreen,
   itemTitle,
   type PaletteContext,
   type PaletteRead,
-} from "@dlh/core";
-import { z } from "zod";
-import { parseDue, parseTaskInput } from "./capture";
-import {
-  addDays,
-  dayOfDue,
-  dueHeading,
-  formatDue,
-  isTimeZone,
+  timeZoneValue,
   todayIn,
   weekStartOf,
-} from "./dates";
+} from "@dlh/core";
+import { parseDue } from "@dlh/core/capture";
+import { z } from "zod";
+import { parseTaskInput } from "./capture";
+import { dueHeading } from "./dates";
 import { priority, taskRow } from "./schema";
 
 const id = z.uuid();
@@ -27,15 +28,6 @@ const priorityField = priority.describe("Priority");
 const notes = fields.longText().describe("Notes");
 const parentId = fields.item(["task"]).describe("Parent task");
 
-/** ⌘K builds versioned inputs from the task on screen; these operations apply only to tasks. */
-function onScreen(ctx: PaletteContext): {
-  id: string;
-  expectedUpdatedAt: string;
-} {
-  if (!ctx.item) throw new Error("No task on screen");
-  return { id: ctx.item.id, expectedUpdatedAt: ctx.item.updatedAt };
-}
-
 /** What `readTask` needs of `tasks.get`'s result. */
 const taskView = z.object({
   task: taskRow,
@@ -44,7 +36,7 @@ const taskView = z.object({
 
 /** `tasks.get` for the task on screen, as ⌘K's `load` reads it. */
 async function readTask(ctx: PaletteContext, read: PaletteRead) {
-  const { id } = onScreen(ctx);
+  const { id } = itemOnScreen(ctx);
   return taskView.parse(
     await read("tasks.get", { id, timeZone: ctx.timeZone }),
   );
@@ -140,7 +132,7 @@ const update = describeOperation({
       };
     },
     review: true,
-    toInput: (ctx, params) => ({ ...onScreen(ctx), ...params }),
+    toInput: (ctx, params) => ({ ...itemOnScreen(ctx), ...params }),
   },
 });
 
@@ -206,7 +198,7 @@ const reschedule = describeOperation({
     params: z.object({ due }),
     // "Reschedule friday"; with no date read, ⌘K asks for one.
     prefill: (ctx) => ({ due: parseDue(ctx.text, ctx) ?? undefined }),
-    toInput: (ctx, params) => ({ ...onScreen(ctx), due: params.due }),
+    toInput: (ctx, params) => ({ ...itemOnScreen(ctx), due: params.due }),
   },
 });
 
@@ -265,7 +257,10 @@ const reorder = describeOperation({
     params: z.object({
       position: z.enum(["top", "bottom"]).describe("Position"),
     }),
-    toInput: (ctx, params) => ({ ...onScreen(ctx), position: params.position }),
+    toInput: (ctx, params) => ({
+      ...itemOnScreen(ctx),
+      position: params.position,
+    }),
   },
 });
 
@@ -312,17 +307,14 @@ const removeParent = describeOperation({
       return parents.length === 1 ? { parentId: parents[0]?.id } : {};
     },
     toInput: (ctx, params) => ({
-      id: onScreen(ctx).id,
+      id: itemOnScreen(ctx).id,
       parentId: params.parentId,
     }),
   },
 });
 
-const timeZone = z
-  .string()
-  .refine(isTimeZone, "Unknown time zone")
-  .describe("IANA time zone of the device");
-const day = z.iso.date();
+const timeZone = timeZoneValue.describe("IANA time zone of the device");
+const day = dayValue;
 
 /**
  * "this week", "next week", or the day of the first date in the text ("friday",

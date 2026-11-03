@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./capture": "./src/capture.ts",
     "./testing": "./src/ai/suite.ts"
   },
   "scripts": {
@@ -12,6 +13,8 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@internationalized/date": "^3.12.4",
+    "chrono-node": "^2.10.3",
     "zod": "^4.6.7"
   },
   "peerDependencies": {

@@ -54,6 +54,21 @@ async function failure(p: Promise<unknown>) {
   throw new Error("expected the call to fail");
 }
 
+test("an unknown time zone is BAD_REQUEST before anything is recorded", async () => {
+  const { c, db, close } = await setup();
+  const err = await failure(
+    c.ai.prepare.mutate({
+      text: "x",
+      actionId: "answer",
+      kind: "ask",
+      timeZone: "Mars/Olympus",
+    }),
+  );
+  expect(err.data?.code).toBe("BAD_REQUEST");
+  expect(await db.select().from(aiRequests)).toHaveLength(0);
+  await close();
+});
+
 test("answer with no item", async () => {
   const { api, c, close } = await setup();
   api.ai.queue(JSON.stringify({ answer: "Forty-two.", used: [] }));

@@ -1,6 +1,5 @@
-import type { PaletteContext } from "@dlh/core";
+import { formatDue, type PaletteContext } from "@dlh/core";
 import { expect, test } from "vitest";
-import { formatDue } from "../src/dates";
 import { taskOps } from "../src/operations";
 
 const ctx: PaletteContext = {

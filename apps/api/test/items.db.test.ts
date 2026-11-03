@@ -1,7 +1,7 @@
 import { writeItems } from "@dlh/server";
 import { freshModuleDb } from "@dlh/server/testing";
 import { TRPCClientError } from "@trpc/client";
-import { seedIfEmpty } from "../src/cli/seed";
+import { seedMissing } from "../src/cli/seed";
 import { serverModules } from "../src/modules.gen";
 import { createTestApi } from "../src/testing";
 
@@ -188,14 +188,22 @@ test("sample.create is reachable through the app router", async () => {
   await close();
 });
 
-test("seedIfEmpty seeds an empty database once", async () => {
+test("seedMissing seeds each module once, including one added later", async () => {
   const { api, c, close } = await setup();
-  expect(await seedIfEmpty(api.deps, serverModules)).toBe(true);
-  const seeded = (await c.items.list.query({ limit: 200 })).items;
-  expect(seeded.length).toBeGreaterThan(0);
-  expect(await seedIfEmpty(api.deps, serverModules)).toBe(false);
+  const seedable = serverModules.filter((m) => m.seed);
+  const [later, ...first] = seedable;
+  expect(await seedMissing(api.deps, first)).toEqual(first.map((m) => m.id));
+  const before = (await c.items.list.query({ limit: 200 })).items;
+  expect(before.length).toBeGreaterThan(0);
+  expect(before.some((i) => later.itemTypes.includes(i.type))).toBe(false);
+
+  // A new module on an existing database: only it seeds.
+  expect(await seedMissing(api.deps, seedable)).toEqual([later.id]);
+  const after = (await c.items.list.query({ limit: 200 })).items;
+  expect(after.some((i) => later.itemTypes.includes(i.type))).toBe(true);
+  expect(await seedMissing(api.deps, seedable)).toEqual([]);
   expect((await c.items.list.query({ limit: 200 })).items).toHaveLength(
-    seeded.length,
+    after.length,
   );
   await close();
 });

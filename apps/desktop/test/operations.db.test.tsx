@@ -1,8 +1,8 @@
+import { parseDue } from "@dlh/core/capture";
 import { isMac } from "@dlh/ui";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach } from "vitest";
-import { parseDue } from "../../../modules/tasks/src/capture";
 import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];

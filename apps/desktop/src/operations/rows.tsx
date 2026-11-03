@@ -2,6 +2,7 @@ import {
   type FieldSpec,
   formFields,
   ITEM_KEYS,
+  NotReady,
   type OperationDescription,
   type PaletteContext,
 } from "@dlh/core";
@@ -113,11 +114,16 @@ function defined(values: Record<string, unknown>): Record<string, unknown> {
   );
 }
 
-/** Builders can throw on a context they don't expect (e.g. no item on screen). */
+/**
+ * A builder's result, or `null` when it isn't ready (`NotReady`, e.g. no item
+ * on screen). Any other error is a module bug: logged, and the row still shows.
+ */
 function attempt<T>(build: () => T): T | null {
   try {
     return build();
-  } catch {
+  } catch (e) {
+    if (!(e instanceof NotReady))
+      console.error("⌘K: building an operation failed", e);
     return null;
   }
 }

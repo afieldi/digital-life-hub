@@ -4,6 +4,7 @@ import {
   type AiProviderId,
   type AiResult,
   aiErrorData,
+  deviceTimeZone,
 } from "@dlh/core";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -109,7 +110,7 @@ export function startAiRequest(
         kind: req.kind,
         interpretedBy: req.interpretedBy,
         provider: req.provider,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timeZone: deviceTimeZone(),
       });
       if (res.status === "run") {
         const { requestId } = res;
