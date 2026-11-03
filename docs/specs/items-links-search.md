@@ -34,7 +34,6 @@ packages/core     + item and link schemas (Zod), useRecordView hook
 packages/db       + items, links, item_views tables; pg_trgm migration
 packages/server   NEW @dlh/server: tRPC setup (moved from apps/api), item/link/search/recents
                   functions, change bus, defineServerModule, core routers, testing helpers
-modules/sample    + src/server.ts: item type "sample", sample.create router
 apps/api          imports module server entries, checks them, mounts their routers, serves /changes
 apps/desktop      ⌘K Recents and Jump to, view recording, /changes listener
 ```
@@ -47,9 +46,9 @@ Each module may add a React-free `src/server.ts` next to its manifest.
 
 ```ts
 export default defineServerModule({
-  id: "sample",                 // must match the manifest id
-  itemTypes: ["sample"],        // the only values items.type may hold
-  router: router({ create: protectedProcedure.input(...).mutation(...) }),
+  id: "tasks",                  // must match the manifest id and the folder name
+  itemTypes: ["task"],          // the only values items.type may hold
+  operations: { create, complete, ... },  // or `router` for raw tRPC procedures
 });
 ```
 
@@ -171,22 +170,21 @@ Errors: `CONFLICT` (stale `updated_at`), `NOT_FOUND`, `BAD_REQUEST` (unknown typ
 
 **Live refresh.** A `ChangesProvider` inside the signed-in part of the app opens `/changes`. For each batch it invalidates queries for those ids, plus all item lists and searches; only queries on screen refetch. It reconnects with backoff, and after a reconnect it invalidates every item query, since missed changes are not replayed.
 
-## Sample module
+## Fixture module (tests only)
 
-Still throwaway; it proves a module can do the full round trip.
+Core features that need some item and some module are tested on a test-only module, so they don't depend on a product module's schema or UI.
 
-- `server.ts`: item type `sample`, `sample.create({ title })` via `createItem`.
-- Manifest: `itemType` `sample` with `href: (id) => /sample/${id}`.
-- `/sample` lists sample items with a "New sample item" field. `/sample/$id` shows one item, records the view, and has a rename field (exercises conflicts and live refresh).
-- Seed: `pnpm dev` adds 20 sample items with a few `contains` links when `items` is empty; `pnpm db:reset` seeds again.
+- `@dlh/core/fixture` describes `fixture.create`; `fixtureServer` in `@dlh/server/testing` implements it (item type `fixture`). `createTestApi({ modules })` mounts it.
+- `apps/desktop/test/fixture` is its manifest: `/fixture` lists fixture items with a "New fixture item" field, `/fixture/$id` shows one, records the view and has a rename field (exercises conflicts), and two palette actions, one using the open item. `signedInApp({ fixture: true })` registers both halves.
+- Seed: `pnpm dev` runs each module's seed that has no items yet; `pnpm db:reset` seeds again.
 
 ## Testing
 
 - **Unit:** server module registry (duplicate ids and types, clashes with core router names); search query building; palette groups; `ChangesProvider` invalidation, through the existing API test harness.
 - **Database (`test:db`):** write helpers (conflict, millisecond precision, change published only after commit); links (loop refused, including two concurrent adds; existing link returned; deleted ends hidden); `links.contained` (each item once, with its container); purge; recents dedupe; search ranking; 10,000-item p95 under 50 ms; `/changes` (401 without a session, batch arrives after a write).
-- **Module contract:** `@dlh/server/testing` helper, run by the sample module.
+- **Module contract:** `apps/desktop/test/moduleParity.test.ts` compares the client and server registries; `apps/api/test/module-tables.db.test.ts` checks every foreign key to `items`.
 - **Lint:** a module importing `items`, `links` or `item_views` from `@dlh/db` fails.
-- **Playwright:** sign in, create a sample item, find it in ⌘K, open it, see it in Recents; a script renames it through the API and the open screen updates within 2 seconds.
+- **Playwright:** sign in, find a task in ⌘K, open it, see it in Recents; a script renames it through the API and the open screen updates within 2 seconds.
 
 ## Decisions
 

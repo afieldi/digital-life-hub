@@ -46,18 +46,12 @@ test("/dev/ui lists stories", async ({ page }) => {
   expect(await page.locator("[data-story]").count()).toBeGreaterThan(10);
 });
 
-test("g s opens Sample and mod+K shows its palette action", async ({
-  page,
-}) => {
+test("g t opens Tasks and mod+K offers its operations", async ({ page }) => {
   await signIn(page);
   await page.keyboard.press("g");
-  await page.keyboard.press("s");
-  await expect(page).toHaveURL(/\/sample$/);
+  await page.keyboard.press("t");
+  await expect(page).toHaveURL(/\/tasks$/);
   await openPalette(page);
-  const option = page.getByRole("option", { name: "Hello from Sample" });
-  await expect(option).toBeVisible();
-  await option.click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Hello from Sample" }),
-  ).toBeVisible();
+  await page.getByRole("combobox").fill("new task");
+  await expect(page.getByRole("option", { name: /^New task/ })).toBeVisible();
 });
