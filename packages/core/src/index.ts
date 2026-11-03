@@ -27,13 +27,21 @@ export {
 export type { Interpretation, RequestInterpreter } from "./ai/interpreter";
 export { applicableActions, NOT_SURE_BELOW } from "./ai/interpreter";
 export { keywordInterpreter } from "./ai/keywords";
-export type { AiEffect, AiKind, AiProviderId } from "./ai/kinds";
+export type {
+  AiEffect,
+  AiKind,
+  AiProviderId,
+  CliProviderId,
+} from "./ai/kinds";
 export {
   AI_KIND_ORDER,
+  AI_PROVIDERS,
   aiEffect,
   aiKind,
   aiProviderId,
+  CLI_PROVIDER_IDS,
   capFor,
+  isCliProvider,
 } from "./ai/kinds";
 export type {
   Item,

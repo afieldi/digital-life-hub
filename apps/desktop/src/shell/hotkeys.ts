@@ -1,4 +1,4 @@
-import { isMac } from "@dlh/ui";
+import { isMac, isTextEntry } from "@dlh/ui";
 
 export type HotkeyOptions = {
   platform: string;
@@ -8,15 +8,6 @@ export type HotkeyOptions = {
 
 /** How long after `g` the second key still counts as a "go to" chord. */
 export const GO_CHORD_MS = 1000;
-
-function isEditable(target: EventTarget | null): boolean {
-  if (!target || typeof (target as Element).closest !== "function")
-    return false;
-  const el = target as HTMLElement;
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return true;
-  if (el.isContentEditable) return true;
-  return !!el.closest('[contenteditable]:not([contenteditable="false"])');
-}
 
 export type Hotkeys = {
   /** The window's keydown listener. */
@@ -55,7 +46,7 @@ export function createHotkeys({
       return;
     }
 
-    if (e.metaKey || e.ctrlKey || e.altKey || isEditable(e.target)) {
+    if (e.metaKey || e.ctrlKey || e.altKey || isTextEntry(e.target)) {
       gAt = null;
       return;
     }

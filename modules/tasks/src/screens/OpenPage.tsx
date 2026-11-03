@@ -5,6 +5,7 @@ import {
   Caption,
   EmptyState,
   GlassPanel,
+  isTextEntry,
   KeyHints,
   ListGroup,
   ProgressBar,
@@ -24,18 +25,6 @@ import { taskKeys, useOpenList } from "./queries";
 import { useRowCache, useTaskToggle } from "./rowWrites";
 import { TaskRowView } from "./TaskRowView";
 import { TasksHeader } from "./TasksHeader";
-
-/** Text inputs swallow keys; checkboxes, links and buttons don't. */
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  if (target instanceof HTMLTextAreaElement) return true;
-  if (target instanceof HTMLSelectElement) return true;
-  return (
-    target instanceof HTMLInputElement &&
-    !/^(checkbox|radio|button|submit|reset|range|color|file)$/.test(target.type)
-  );
-}
 
 /** The Open screen (`/tasks`): quick add, tasks grouped by when, a side column. */
 export function OpenPage({ search: given }: { search?: ListSearch }) {
@@ -92,7 +81,7 @@ export function OpenPage({ search: given }: { search?: ListSearch }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTyping(e.target)) return;
+      if (isTextEntry(e.target)) return;
       const key = e.key.toLowerCase();
       if (key === "n") {
         e.preventDefault();

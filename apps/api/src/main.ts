@@ -38,9 +38,16 @@ const { db, close } = createDb(config.databaseUrl);
 
 try {
   await db.execute(sql`select 1`);
-} catch {
+} catch (err) {
+  // Drizzle wraps the driver's error: the code and message are on the cause.
+  const cause: { code?: string; message?: string } =
+    err instanceof Error && err.cause instanceof Error ? err.cause : {};
+  const why =
+    cause.message ?? (err instanceof Error ? err.message : String(err));
   console.error(
-    `Can't reach Postgres at ${hostPort(config.databaseUrl)} — is Docker running? (pnpm dev starts it.)`,
+    cause.code === "ECONNREFUSED"
+      ? `Can't reach Postgres at ${hostPort(config.databaseUrl)} — is Docker running? (pnpm dev starts it.)`
+      : `Can't use the database at ${hostPort(config.databaseUrl)}: ${why}`,
   );
   await close().catch(() => {});
   process.exit(1);

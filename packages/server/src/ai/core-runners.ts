@@ -1,4 +1,4 @@
-import { coreAiActions, itemTitle } from "@dlh/core";
+import { aiRetitleOutput, coreAiActions, itemTitle } from "@dlh/core";
 import { z } from "zod";
 import { itemContext } from "./context";
 import { type AiRunner, defineAiRunner } from "./runners";
@@ -44,7 +44,7 @@ Write a clearer, more specific title for the item. When asked to suggest, give t
           .length(3),
       })
       .strict(),
-    do: z.object({ title: itemTitle }).strict(),
+    do: aiRetitleOutput.strict(),
   },
   async apply(w, out, ctx) {
     const { title } = out as { title: string };

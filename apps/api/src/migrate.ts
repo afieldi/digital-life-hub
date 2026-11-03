@@ -18,8 +18,24 @@ export async function migrateAll(
   opts: { root?: string; modulesRoot?: string } = {},
 ): Promise<void> {
   const root = opts.root ?? migrationsRoot();
-  await migrate(url, join(root, "packages", "db", "drizzle"));
+  const core = join(root, "packages", "db", "drizzle");
+  await step("Core", core, () => migrate(url, core));
   for (const m of moduleMigrations(modules, opts.modulesRoot ?? root)) {
-    await migrate(url, m.folder, { table: m.table });
+    await step(`Module "${m.id}"`, m.folder, () =>
+      migrate(url, m.folder, { table: m.table }),
+    );
+  }
+}
+
+/** Runs one migration set; a failure says whose folder it was, with the cause. */
+async function step(
+  whose: string,
+  folder: string,
+  run: () => Promise<void>,
+): Promise<void> {
+  try {
+    await run();
+  } catch (e) {
+    throw new Error(`${whose} migrations failed (${folder})`, { cause: e });
   }
 }

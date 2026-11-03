@@ -4,6 +4,8 @@ import {
   type AiPrepareInput,
   type AiProviderId,
   type AiResult,
+  type CliProviderId,
+  isCliProvider,
   kindAllowed,
 } from "@dlh/core";
 import { aiRequests } from "@dlh/db";
@@ -253,10 +255,10 @@ export async function complete(
   const row = await loadRow(deps, input.requestId);
   if (row.status !== "pending")
     throw conflict("This request already finished.");
-  if (row.provider !== "claude-cli" && row.provider !== "codex-cli") {
+  if (!isCliProvider(row.provider)) {
     throw badRequest("Only CLI requests are completed by the app.");
   }
-  const provider: "claude-cli" | "codex-cli" = row.provider;
+  const provider: CliProviderId = row.provider;
   if (expired(deps, row, PENDING_TTL_MS)) {
     return fail(
       deps,

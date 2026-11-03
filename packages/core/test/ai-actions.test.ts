@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  AI_PROVIDERS,
   type AiActionDescription,
+  aiProviderId,
+  CLI_PROVIDER_IDS,
   capFor,
   collectModules,
   coreAiActions,
   defineModule,
   describeAiAction,
+  isCliProvider,
   kindAllowed,
 } from "../src";
 
@@ -66,4 +70,11 @@ describe("registry aiActions", () => {
     expect(collectModules([m]).aiActions).toEqual([valid]);
     expect(collectModules([]).aiActions).toEqual([]);
   });
+});
+
+test("the CLI providers are those with a program", () => {
+  expect(CLI_PROVIDER_IDS).toEqual(["claude-cli", "codex-cli"]);
+  expect(isCliProvider("codex-cli")).toBe(true);
+  expect(isCliProvider("openrouter")).toBe(false);
+  expect(Object.keys(AI_PROVIDERS)).toEqual(aiProviderId.options);
 });

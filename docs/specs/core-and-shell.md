@@ -51,13 +51,18 @@ Component library: React Aria Components for behaviour (keyboard, focus, combobo
 digital-life-hub/
   apps/
     desktop/        Tauri app: src/ (React), src-tauri/ (Rust: CLI runner, keychain)
-    api/            Hono + tRPC server, background jobs
+    api/            Hono + tRPC server: auth, /changes, the purge job; mounts every module
   packages/
-    core/           Zod schemas, item types, module contract
-    db/             Drizzle schema and migrations
+    core/           The module contract (describeModule, operations, AI actions),
+                    item schemas, day and Due helpers; no server or React code
+    server/         What a module's server half builds on: tRPC setup, the item
+                    writer, links, search, the AI gateway, composeServer, test helpers
+    client/         What a module's screens build on: API hooks, writes with Undo,
+                    error kinds, the per-item write queue
+    db/             Drizzle schema and migrations for Core's tables
     ui/             Glass components, tokens, scenes
-    ai/             Gateway interface and providers
-  modules/          One folder per module (tasks/, notes/ ...), added later
+    api-contract/   Zod shapes the app and API share outside tRPC (auth, /changes)
+  modules/          One folder per module (home/, tasks/, requests/ ...); see docs/modules.md
 ```
 
 ### Build and run
@@ -89,7 +94,7 @@ Ctrl+C stops the API and the app. Postgres keeps running, with its data in a Doc
 | `pnpm dev:down` | Stops Postgres |
 | `pnpm db:reset` | Wipes the dev database and re-seeds it |
 | `pnpm test` | Runs every package's tests |
-| `pnpm build` | Builds the API image and the desktop app for your current OS |
+| `pnpm build` | Builds the API bundle (`pnpm --filter @dlh/api docker:build` makes the image; CI builds the desktop app) |
 
 ## Item model
 

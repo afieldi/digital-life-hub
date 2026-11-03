@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { CliProviderId } from "@dlh/core";
 import { createDb, items } from "@dlh/db";
 import {
   type AiProvider,
@@ -110,10 +111,7 @@ function spawnCli(
 }
 
 /** Runs a CLI request the way the app would and returns what `complete` needs. */
-async function runCli(
-  provider: "claude-cli" | "codex-cli",
-  run: CliRun,
-): Promise<string> {
+async function runCli(provider: CliProviderId, run: CliRun): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "dlh-ai-smoke-"));
   try {
     if (provider === "claude-cli") {
@@ -163,10 +161,7 @@ async function call(
 ): Promise<AiResult> {
   const first = await prepare(deps, { ...input, provider });
   if (first.status !== "run") return first;
-  const raw = await runCli(
-    first.run.provider as "claude-cli" | "codex-cli",
-    first.run,
-  );
+  const raw = await runCli(first.run.provider as CliProviderId, first.run);
   return complete(deps, { requestId: first.requestId, raw });
 }
 

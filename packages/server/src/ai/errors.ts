@@ -1,15 +1,8 @@
-import type { AiErrorData, AiProviderId } from "@dlh/core";
+import { AI_PROVIDERS, type AiErrorData, type AiProviderId } from "@dlh/core";
 
-export const PROVIDER_NAMES: Record<AiProviderId, string> = {
-  openrouter: "OpenRouter",
-  "claude-cli": "Claude Code",
-  "codex-cli": "Codex",
-};
-
-const CLI_COMMANDS: Partial<Record<AiProviderId, string>> = {
-  "claude-cli": "claude",
-  "codex-cli": "codex",
-};
+export const PROVIDER_NAMES = Object.fromEntries(
+  Object.entries(AI_PROVIDERS).map(([id, p]) => [id, p.name]),
+) as Record<AiProviderId, string>;
 
 export class AiError extends Error {
   readonly code: AiErrorData["code"];
@@ -45,7 +38,7 @@ export function aiErrorMessage(
         return `${name} isn't installed on this computer.`;
       }
       if (extra.reason === "signed_out") {
-        return `${name} isn't signed in. Run \`${CLI_COMMANDS[provider] ?? provider}\` once in a terminal to sign in.`;
+        return `${name} isn't signed in. Run \`${AI_PROVIDERS[provider].program ?? provider}\` once in a terminal to sign in.`;
       }
       return "OpenRouter isn't set up on the server.";
     case "provider_error":
