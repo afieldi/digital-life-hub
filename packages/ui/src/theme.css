@@ -10,6 +10,7 @@
 
 @theme {
   --color-type-task: #9fd9a8;
+  --color-type-request: #8fd3cf;
   --color-type-note: #f5cf7e;
   --color-type-project: #9ec2ff;
   --color-type-event: #f5a8a0;

@@ -35,7 +35,7 @@ const file = describeOperation({
   description:
     "Files something that needs the person into their queue, to review once later: a message, an ask, or a reminder to look at something. Not for a to-do with a date: that is a task.",
   appliesTo: ["*", "none"],
-  words: ["file", "file this", "remind me to look at"],
+  words: ["file", "file this", "remind me to look at", "to my queue"],
   group: "create",
   input: fileInput,
   subject: () => null,
@@ -65,7 +65,16 @@ const resolve = describeOperation({
   description:
     "Resolves the request on screen as handled (the person dealt with it) or not for me (it wasn't theirs to do), or as a task that already exists. Use Make task to make a new task from it.",
   appliesTo: ["request"],
-  words: ["handled", "done with this", "not for me", "ignore this"],
+  words: [
+    "handled",
+    "done with this",
+    "not for me",
+    "ignore this",
+    "ignore",
+    "dismiss",
+    "mark",
+    "resolve",
+  ],
   input: resolveInput,
   subject: (input) => input.id,
   effects: ["updateItem", "addLinks"],
@@ -99,7 +108,13 @@ const makeTask = describeOperation({
   description:
     "Makes a new task from the request on screen and resolves the request as a task. The title defaults to the request's and the notes to its details.",
   appliesTo: ["request"],
-  words: ["make a task", "make task", "task from this", "turn into a task"],
+  words: [
+    "make a task",
+    "make task",
+    "task from this",
+    "into a task",
+    "a task",
+  ],
   input: z.object({
     id,
     expectedUpdatedAt,
