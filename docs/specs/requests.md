@@ -109,9 +109,9 @@ Indexes: unique `(source, external_id)` where `external_id is not null`; `(recei
 - `file` with a `(source, externalId)` pair that exists returns that request with `existing: true` and writes nothing. Two concurrent calls with the same pair give one row (the unique index decides; the loser reads the winner).
 - `makeTask` creates the task through `tasks.create` (title defaults to the request's, notes to its body, due and priority as given), adds the `relates` link and resolves the request as `task`, all in one transaction. Its Undo soft-deletes the task and reopens the request.
 - `resolve` with `outcome: "task"` links a task that already exists: `taskId` must be a live item of type `task`, and the `relates` link is added in the same transaction. Other outcomes refuse a `taskId`.
-- `resolve` on a resolved request: the same outcome is a no-op; a different one is `CONFLICT`.
-- `reopen` clears `outcome` and `resolved_at`, and removes the `relates` link it added. The task stays. It is `resolve`'s Undo, and its own Undo resolves again with the old outcome and task.
-- `open` returns open requests, oldest `received_at` first, as `{ heading, items }` for ⌘K and AI. `resolved` covers the last 30 days, newest `resolved_at` first, paged.
+- `resolve` on a resolved request: the same outcome is a no-op; a different one, or `makeTask`, is `CONFLICT` "Already resolved".
+- `reopen` clears `outcome` and `resolved_at`, and removes the `relates` link it added. The task stays. On an open request it is `CONFLICT` "Not resolved". It is `resolve`'s Undo, and its own Undo resolves again with the old outcome and task.
+- `open` returns open, unarchived requests, oldest `received_at` first, as `{ heading, items }` for ⌘K and AI. `resolved` covers the last 30 days, newest `resolved_at` first, paged.
 - `get` returns the request and its task, if any. Other links come from Core's `links.forItem`.
 - Delete and restore are Core's `items.delete` / `items.restore`. Queue has no `deleteWith`: deleting a request never deletes its task. Deleting the task leaves the request resolved, and its detail shows "Task deleted".
 - Errors as Core: `CONFLICT`, `NOT_FOUND`, `BAD_REQUEST` (empty title, `externalId` with `source: "manual"`, an outcome and `taskId` that don't match).

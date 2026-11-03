@@ -321,12 +321,11 @@ const resolveAgainRecord = z.object({
 
 export const reopen = implementOperation(requestOps.reopen, {
   async run(w, input, deps) {
-    const { item, row } = await loadRequest(w.tx, input.id);
+    const { row } = await loadRequest(w.tx, input.id);
     const was = row.outcome === null ? null : outcome.parse(row.outcome);
-    // Reopening an open request writes nothing, whatever the version.
-    if (was === null || row.resolvedAt === null) {
-      return { result: toRequestRow(item, row), undo: null };
-    }
+    // A state conflict like "Already resolved": ⌘K shows the message, and a
+    // screen that still showed it resolved refetches.
+    if (was === null || row.resolvedAt === null) conflict("Not resolved");
     const { request, taskId } = await reopenRequest(w, input, was, deps.now());
     return {
       result: request,
@@ -340,7 +339,6 @@ export const reopen = implementOperation(requestOps.reopen, {
     };
   },
   async undo(w, r) {
-    if (!r) return;
     await lockRequest(w.tx, r.id);
     await setOutcome(
       w,
@@ -352,5 +350,5 @@ export const reopen = implementOperation(requestOps.reopen, {
       await linkOutcome(w, r.id, r.taskId);
     }
   },
-  undoRecord: resolveAgainRecord.nullable(),
+  undoRecord: resolveAgainRecord,
 });

@@ -420,7 +420,7 @@ test("resolve with another outcome is CONFLICT", async () => {
   const target = { id: r.id, expectedUpdatedAt: done.result.updatedAt };
   await expect(
     caller.requests.resolve({ ...target, outcome: "not_for_me" }),
-  ).rejects.toMatchObject({ code: "CONFLICT" });
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Already resolved" });
   const task = await mkTask("T");
   await expect(
     caller.requests.resolve({ ...target, outcome: "task", taskId: task.id }),
@@ -559,7 +559,7 @@ test("makeTask on a resolved request is CONFLICT", async () => {
       id: r.id,
       expectedUpdatedAt: done.result.updatedAt,
     }),
-  ).rejects.toMatchObject({ code: "CONFLICT" });
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Already resolved" });
   expect(await count(deps, "items")).toBe(items);
   await close();
 });
@@ -600,6 +600,17 @@ test("makeTask undo after the task was edited still removes it", async () => {
     caller.ops.undo({ id: "requests.makeTask", token: again.undo }),
   ).rejects.toMatchObject({ code: "CONFLICT", message: "Changed since" });
   expect((await itemRow(deps, again.result.task.id)).deleted).toBe(false);
+  await close();
+});
+
+test("reopen on an open request is CONFLICT Not resolved and writes nothing", async () => {
+  const { deps, caller, file, close } = await setup();
+  const r = await file("Ping");
+  await expect(
+    caller.requests.reopen({ id: r.id, expectedUpdatedAt: r.updatedAt }),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Not resolved" });
+  expect(await requestRow(deps, r.id)).toMatchObject({ outcome: null });
+  expect(await version(deps, r.id)).toBe(r.updatedAt);
   await close();
 });
 

@@ -201,3 +201,44 @@ test('"not for me" on a request prefills the outcome', async () => {
   const { request } = await client.requests.get.query({ id });
   expect(request.outcome).toBe("not_for_me");
 });
+
+test("Make task on a resolved request says Already resolved", async () => {
+  const { renderApp, router, api, token } = await setup();
+  const client = api.client(token);
+  const { result } = await client.requests.file.mutate({
+    title: "Sign up for the offsite",
+  });
+  const id = result.request.id;
+  await client.requests.resolve.mutate({
+    id,
+    expectedUpdatedAt: result.request.updatedAt,
+    outcome: "handled",
+  });
+  router.history.push(`/queue/${id}`);
+  renderApp();
+  await screen.findAllByRole("heading", { name: "Sign up for the offsite" });
+  await userEvent.type(await openPalette(), "make task");
+  await screen.findByRole("option", { name: /^Make task/ });
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  const form = await screen.findByRole("dialog", { name: "Make task" });
+  await userEvent.click(within(form).getByRole("button", { name: "Run" }));
+  expect(await screen.findByText("Already resolved")).toBeInTheDocument();
+  const { request } = await client.requests.get.query({ id });
+  expect(request.outcome).toBe("handled");
+});
+
+test("Reopen on an open request says Not resolved", async () => {
+  const { renderApp, router, api, token } = await setup();
+  const { result } = await api
+    .client(token)
+    .requests.file.mutate({ title: "Sign up for the offsite" });
+  router.history.push(`/queue/${result.request.id}`);
+  renderApp();
+  await screen.findAllByRole("heading", { name: "Sign up for the offsite" });
+  await userEvent.type(await openPalette(), "reopen");
+  await screen.findByRole("option", { name: /^Reopen$/ });
+  await settled();
+  await userEvent.keyboard("{Enter}");
+  expect(await screen.findByText("Not resolved")).toBeInTheDocument();
+});
