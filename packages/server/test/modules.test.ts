@@ -1,4 +1,4 @@
-import { describeOperation } from "@dlh/core";
+import { describeModule, describeOperation } from "@dlh/core";
 import { initTRPC } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -7,6 +7,7 @@ import {
   defineServerModule,
   implementOperation,
   type Operations,
+  ServerModuleError,
 } from "../src";
 
 const router = initTRPC.create().router({});
@@ -230,4 +231,68 @@ describe("collectServerModules operations", () => {
       collectServerModules([{ id: "a", itemTypes: [] }], reserved, core),
     ).toThrow('Module "a" has neither a router nor operations');
   });
+});
+
+describe("defineServerModule with a description", () => {
+  const op = (id: string) =>
+    describeOperation({
+      id,
+      kind: "query",
+      label: "Peek",
+      description: "Peeks.",
+      appliesTo: ["*"],
+      input: z.object({}),
+      subject: () => null,
+      effects: [],
+      summary: () => "Peek",
+    });
+  const peek = op("demo.peek");
+  const desc = describeModule({
+    id: "demo",
+    itemTypes: ["demo"],
+    operations: { peek },
+  });
+  const impl = (d: typeof peek) =>
+    implementOperation(d, { run: async () => 1 });
+
+  it("takes id, item types and AI actions from the description", () => {
+    const m = defineServerModule(desc, { operations: { peek: impl(peek) } });
+    expect(m).toMatchObject({ id: "demo", itemTypes: ["demo"], aiActions: [] });
+  });
+
+  it("refuses an implementation for another operation than described", () => {
+    expect(() =>
+      defineServerModule(desc, { operations: { peek: impl(op("demo.peek")) } }),
+    ).toThrow(ServerModuleError);
+  });
+
+  it("refuses a missing or extra implementation", () => {
+    expect(() =>
+      // @ts-expect-error: `peek` is described but not implemented
+      defineServerModule(desc, { operations: {} }),
+    ).toThrow(ServerModuleError);
+  });
+});
+
+describe("describeModule", () => {
+  it("refuses an operation mounted under a key its id doesn't name", () =>
+    expect(() =>
+      describeModule({
+        id: "demo",
+        itemTypes: [],
+        operations: {
+          look: describeOperation({
+            id: "demo.peek",
+            kind: "query",
+            label: "Peek",
+            description: "Peeks.",
+            appliesTo: ["*"],
+            input: z.object({}),
+            subject: () => null,
+            effects: [],
+            summary: () => "Peek",
+          }),
+        },
+      }),
+    ).toThrow(/must be "demo.look"/));
 });

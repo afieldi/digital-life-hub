@@ -1,15 +1,13 @@
 import { defineModule } from "@dlh/core";
 import { createRoute } from "@tanstack/react-router";
-import { tasksAiActions } from "./ai";
-import { taskOps } from "./operations";
+import { tasksModule } from "./module";
 import { DetailRoute } from "./screens/DetailRoute";
 import { DonePage } from "./screens/DonePage";
 import { parseListSearch } from "./screens/lastList";
 import { OpenPage } from "./screens/OpenPage";
 import { UpcomingPage } from "./screens/UpcomingPage";
 
-export default defineModule({
-  id: "tasks",
+export default defineModule(tasksModule, {
   itemType: {
     type: "task",
     label: "Task",
@@ -49,6 +47,4 @@ export default defineModule({
       component: DetailRoute,
     }),
   ],
-  operations: Object.values(taskOps),
-  aiActions: Object.values(tasksAiActions),
 });

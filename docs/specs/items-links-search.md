@@ -42,18 +42,32 @@ Dependencies point one way: `apps/api` → `modules/*` → `@dlh/server` → `@d
 
 ## Server module contract
 
-Each module may add a React-free `src/server.ts` next to its manifest.
+A module describes itself once, in a React- and server-free `src/module.ts`; its manifest and its `src/server.ts` both derive from that.
 
 ```ts
-export default defineServerModule({
-  id: "tasks",                  // must match the manifest id and the folder name
+// src/module.ts
+export const tasksModule = describeModule({
+  id: "tasks",                  // must match the folder name; the manifest and server take it from here
   itemTypes: ["task"],          // the only values items.type may hold
-  operations: { create, complete, ... },  // or `router` for raw tRPC procedures
+  operations: taskOps,          // keyed as mounted: taskOps.complete is tasks.complete
+  aiActions: Object.values(tasksAiActions),
+});
+
+// src/manifest.tsx
+export default defineModule(tasksModule, { itemType, nav, routes });
+
+// src/server.ts
+export default defineServerModule(tasksModule, {
+  operations: { create, complete, ... },  // exactly one implementation per described operation
+  migrations: true,
+  seed,
 });
 ```
 
+A missing or extra implementation fails to compile, and one for another operation than described fails at load. Test fixtures may still pass a hand-built module, with `router` in place of `operations` for raw tRPC procedures.
+
 - The API refuses to start if two modules share an `id` or an item type.
-- Each router is mounted under the module's `id` (`sample.create`, later `tasks.complete`). A module id may not clash with a core router name (`items`, `links`, `search`, `recents`, `auth`, `devices`).
+- Each router is mounted under the module's `id` (`tasks.complete`). A module id may not clash with a core router name (`items`, `links`, `search`, `recents`, `auth`, `devices`).
 - An item's `type` is checked against the registered types on every create. Types are not a database enum, so a new module needs no Core migration.
 - The desktop's `AppRouter` type must include every module router, so the import list has to be static. `apps/api/src/modules.gen.ts` is generated from `modules/*/src/server.ts` by a script that runs before `dev`, `build`, `typecheck` and `test`. Adding a module never needs a hand edit. The generated file is committed so editors resolve types without running the script; CI checks it is up to date.
 

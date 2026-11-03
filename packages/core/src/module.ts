@@ -57,6 +57,87 @@ export interface ModuleManifest {
   operations?: OperationDescription[];
 }
 
-export function defineModule(m: ModuleManifest): ModuleManifest {
-  return m;
+/**
+ * What a module is and does, shared by its manifest (`defineModule`) and its
+ * server module (`defineServerModule`), so the two can't disagree. It lives in
+ * the module's React- and server-free `src/module.ts`.
+ */
+export type ModuleDescription<
+  Id extends string = string,
+  Ops extends Record<string, OperationDescription> = Record<
+    string,
+    OperationDescription
+  >,
+> = {
+  id: Id;
+  /** The only values `items.type` may hold for this module. */
+  itemTypes: readonly string[];
+  /** Keyed as mounted: `operations.complete` is the procedure `<id>.complete`. */
+  operations: Ops;
+  /** Hand-written AI actions; operations are AI actions on their own. */
+  aiActions: readonly AiActionDescription[];
+};
+
+export class ModuleDescriptionError extends Error {
+  override name = "ModuleDescriptionError";
+}
+
+export function describeModule<
+  const Id extends string,
+  const Ops extends Record<string, OperationDescription> = Record<never, never>,
+>(d: {
+  id: Id;
+  itemTypes: readonly string[];
+  operations?: Ops;
+  aiActions?: readonly AiActionDescription[];
+}): ModuleDescription<Id, Ops> {
+  const operations = d.operations ?? ({} as Ops);
+  for (const [key, op] of Object.entries(operations)) {
+    if (op.id !== `${d.id}.${key}`) {
+      throw new ModuleDescriptionError(
+        `Module "${d.id}" mounts operation "${op.id}" as "${key}": its id must be "${d.id}.${key}"`,
+      );
+    }
+  }
+  return {
+    id: d.id,
+    itemTypes: d.itemTypes,
+    operations,
+    aiActions: d.aiActions ?? [],
+  };
+}
+
+/** The manifest fields a module's description supplies. */
+type Described = "id" | "operations" | "aiActions";
+
+/**
+ * A module's client half. With a description, its id, operations and AI
+ * actions come from it, and its item type must be one it declares.
+ */
+export function defineModule(m: ModuleManifest): ModuleManifest;
+export function defineModule(
+  desc: ModuleDescription,
+  ui: Omit<ModuleManifest, Described>,
+): ModuleManifest;
+export function defineModule(
+  a: ModuleManifest | ModuleDescription,
+  ui?: Omit<ModuleManifest, Described>,
+): ModuleManifest {
+  // Only a description has `itemTypes` (a manifest has one `itemType`).
+  if (!("itemTypes" in a)) return a;
+  const desc = a;
+  if (!ui) {
+    throw new ModuleDescriptionError(`Module "${desc.id}" has no manifest`);
+  }
+  if (ui.itemType && !desc.itemTypes.includes(ui.itemType.type)) {
+    throw new ModuleDescriptionError(
+      `Module "${desc.id}" shows item type "${ui.itemType.type}" but declares ${JSON.stringify(desc.itemTypes)}`,
+    );
+  }
+  return {
+    ...ui,
+    id: desc.id,
+    operations: Object.values(desc.operations),
+    aiActions: [...desc.aiActions],
+  };
 }

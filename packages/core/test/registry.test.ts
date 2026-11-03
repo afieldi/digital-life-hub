@@ -1,6 +1,8 @@
 import {
   collectModules,
   defineModule,
+  describeModule,
+  ModuleDescriptionError,
   type ModuleManifest,
   ModuleRegistryError,
 } from "../src";
@@ -134,3 +136,34 @@ test("a module may own / when the shell doesn't reserve it", () =>
       paths: ["/settings"],
     }).nav.map((n) => n.path),
   ).toEqual(["/"]));
+
+test("a manifest from a description takes its id and operations, and must show a declared item type", () => {
+  const desc = describeModule({ id: "notes", itemTypes: ["note"] });
+  const manifest = defineModule(desc, {
+    routes: () => [],
+    itemType: {
+      type: "note",
+      label: "Note",
+      glyph: "x",
+      color: "red",
+      href: (i) => `/n/${i}`,
+    },
+  });
+  expect(manifest).toMatchObject({
+    id: "notes",
+    operations: [],
+    aiActions: [],
+  });
+  expect(() =>
+    defineModule(desc, {
+      routes: () => [],
+      itemType: {
+        type: "page",
+        label: "Page",
+        glyph: "x",
+        color: "red",
+        href: (i) => `/p/${i}`,
+      },
+    }),
+  ).toThrow(ModuleDescriptionError);
+});
