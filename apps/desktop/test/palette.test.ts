@@ -61,10 +61,11 @@ test("itemRows navigates to the type's href and disables unclaimed types", () =>
   expect(rows[1].hint).toBe("no module for this type");
 });
 
-test("goToRows lists Home, keyed modules, then Settings", () => {
+test("goToRows lists the modules' nav entries in order, then Settings", () => {
   const navigate = vi.fn();
   const rows = goToRows(
     [
+      { label: "Home", icon: "House", path: "/", order: 0, key: "h" },
       {
         label: "Sample",
         icon: "FlaskConical",

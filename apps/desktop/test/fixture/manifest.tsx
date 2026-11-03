@@ -39,6 +39,13 @@ export const fixtureManifest = defineModule({
     }),
   ],
   operations: Object.values(fixtureOps),
+  homeWidgets: [
+    {
+      id: "hello",
+      label: "Fixture widget",
+      component: () => <p>Fixture widget on Home</p>,
+    },
+  ],
   paletteActions: [
     {
       id: "fixture.hello",

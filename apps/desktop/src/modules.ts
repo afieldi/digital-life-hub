@@ -5,10 +5,10 @@ import {
 } from "@dlh/core";
 import { createContext, useContext } from "react";
 
-/** Keys and paths the shell itself owns (Home, Settings, /dev/ui). */
+/** Paths the shell itself owns (Settings, /dev/ui). Home is a module. */
 export const SHELL_RESERVED = {
-  keys: ["h"],
-  paths: ["/", "/settings", "/dev/ui"],
+  keys: [],
+  paths: ["/settings", "/dev/ui"],
 };
 
 // Every modules/*/src/manifest.tsx is picked up at build time: adding a module

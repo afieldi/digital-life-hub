@@ -1,6 +1,6 @@
 import type { ItemSummary, ModuleRegistry } from "@dlh/core";
 import type { CommandGroup, CommandItem } from "@dlh/ui";
-import { House, type LucideIcon, Settings as SettingsIcon } from "lucide-react";
+import { type LucideIcon, Settings as SettingsIcon } from "lucide-react";
 import { createElement } from "react";
 import { iconFor } from "./icons";
 
@@ -47,7 +47,7 @@ export function itemRows(
   });
 }
 
-/** Home (`G H`), each module nav entry (`G <KEY>` when it has a key), then Settings. */
+/** Each module nav entry, Home first (`G <KEY>` when it has a key), then Settings. */
 export function goToRows(
   nav: ModuleRegistry["nav"],
   navigate: (to: string) => void,
@@ -55,13 +55,6 @@ export function goToRows(
   const icon = (Icon: LucideIcon) =>
     createElement(Icon, { "aria-hidden": true, size: 18 });
   return [
-    {
-      id: "goto:home",
-      label: "Home",
-      icon: icon(House),
-      hint: "G H",
-      onAction: () => navigate("/"),
-    },
     ...nav.map((n) => ({
       id: `goto:${n.path}`,
       label: n.label,

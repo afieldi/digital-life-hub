@@ -6,6 +6,7 @@ import {
   ShellProvider,
   useCommandBar,
   useGoChordPending,
+  useHomeWidgets,
   useItemHref,
   useItemsChanged,
   useModuleApi,
@@ -117,8 +118,9 @@ test("useOpenItem is null without a provider", () => {
   expect(result.current).toBeNull();
 });
 
-test("useCommandBar, useItemHref, useItemsChanged and useGoChordPending use the shell's, and do nothing without one", () => {
+test("useCommandBar, useItemHref, useItemsChanged, useGoChordPending and useHomeWidgets use the shell's, and do nothing without one", () => {
   const openCommandBar = vi.fn();
+  const widget = { id: "tasks.today", label: "Today", component: () => null };
   const itemsChanged = vi.fn();
   const itemHref = (item: { id: string; type: string }) =>
     item.type === "task" ? `/tasks/${item.id}` : undefined;
@@ -128,6 +130,7 @@ test("useCommandBar, useItemHref, useItemsChanged and useGoChordPending use the 
       href: useItemHref(),
       changed: useItemsChanged(),
       goPending: useGoChordPending(),
+      widgets: useHomeWidgets(),
     }),
     {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -138,6 +141,7 @@ test("useCommandBar, useItemHref, useItemsChanged and useGoChordPending use the 
             itemsChanged,
             openExternal: async () => {},
             goChordPending: () => true,
+            homeWidgets: [widget],
           }}
         >
           {children}
@@ -151,17 +155,20 @@ test("useCommandBar, useItemHref, useItemsChanged and useGoChordPending use the 
   result.current.changed();
   expect(itemsChanged).toHaveBeenCalledOnce();
   expect(result.current.goPending()).toBe(true);
+  expect(result.current.widgets).toEqual([widget]);
 
   const bare = renderHook(() => ({
     bar: useCommandBar(),
     href: useItemHref(),
     changed: useItemsChanged(),
     goPending: useGoChordPending(),
+    widgets: useHomeWidgets(),
   }));
   expect(() => bare.result.current.bar.open()).not.toThrow();
   expect(() => bare.result.current.changed()).not.toThrow();
   expect(bare.result.current.goPending()).toBe(false);
   expect(bare.result.current.href({ id: "1", type: "task" })).toBeUndefined();
+  expect(bare.result.current.widgets).toEqual([]);
 });
 
 test("useOpenExternal uses the shell's, and opens a new window without one", async () => {
@@ -175,6 +182,7 @@ test("useOpenExternal uses the shell's, and opens a new window without one", asy
           itemsChanged: () => {},
           openExternal,
           goChordPending: () => false,
+          homeWidgets: [],
         }}
       >
         {children}

@@ -8,10 +8,16 @@ const serverOps = serverModules.flatMap((m) =>
   Object.values(m.operations ?? {}).map((op) => op.desc.id),
 );
 
-test("the same modules on both sides", () => {
-  expect(registry.modules.map((m) => m.id).sort()).toEqual(
-    serverModules.map((m) => m.id).sort(),
-  );
+test("every server module has a manifest; client-only ones own no data", () => {
+  const serverIds = new Set<string>(serverModules.map((m) => m.id));
+  const clientIds = registry.modules.map((m) => m.id);
+  for (const id of serverIds) expect(clientIds).toContain(id);
+  // A module with no server half (Home) can't own item types or operations.
+  for (const m of registry.modules.filter((m) => !serverIds.has(m.id))) {
+    expect(m.itemType, m.id).toBeUndefined();
+    expect(m.operations ?? [], m.id).toEqual([]);
+    expect(m.aiActions ?? [], m.id).toEqual([]);
+  }
 });
 
 test.each(serverModules.map((m) => [m.id, m] as const))(
