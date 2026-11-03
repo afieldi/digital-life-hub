@@ -47,12 +47,17 @@ export function Dock({
             } ${focusRing}`}
           >
             <Icon aria-hidden="true" size={20} />
-            <span>{label}</span>
-            {/* A space keeps the name "Queue 3" rather than "Queue3". */}
-            {badge ? " " : null}
-            {badge ? (
-              <span className="text-[11px] text-ink-tertiary">{badge}</span>
-            ) : null}
+            <span className="flex items-baseline gap-1">
+              <span>{label}</span>
+              {/* A space keeps the name "Queue 3" rather than "Queue3"; flex items ignore it visually. */}
+              {badge ? " " : null}
+              {/* empty:hidden: a badge component that renders nothing adds no gap. */}
+              {badge ? (
+                <span className="text-[11px] text-ink-tertiary empty:hidden">
+                  {badge}
+                </span>
+              ) : null}
+            </span>
           </Link>
         );
       })}
