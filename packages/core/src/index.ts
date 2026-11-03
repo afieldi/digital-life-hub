@@ -65,7 +65,12 @@ export type {
   PaletteRead,
   PaletteSpec,
 } from "./operations/describe";
-export { describeOperation, ITEM_KEYS } from "./operations/describe";
+export {
+  describeOperation,
+  ITEM_KEYS,
+  itemOnScreen,
+  NotReady,
+} from "./operations/describe";
 export type { Due, LocalDue } from "./operations/due";
 export { dueFromLocal, dueValue, localDueValue } from "./operations/due";
 export type { FieldSpec } from "./operations/fields";

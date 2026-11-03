@@ -15,8 +15,8 @@ import {
   conflict,
   expired,
   fail,
+  failRequest,
   loadRow,
-  markFailed,
   type RequestRow,
   RequestUsedError,
   runnerFor,
@@ -170,13 +170,7 @@ export async function runApply(
     return runner.summary?.(out, ctx) ?? runner.action.label;
   } catch (e) {
     if (e instanceof RequestUsedError) throw e;
-    const err = writeFailure(e, provider);
-    if (err) return fail(deps, row.id, from, err, endPatch);
-    await markFailed(deps, row.id, from, {
-      ...endPatch,
-      errorMessage: "The action failed on the server.",
-    });
-    throw e;
+    return failRequest(deps, row.id, from, e, provider, endPatch);
   }
 }
 

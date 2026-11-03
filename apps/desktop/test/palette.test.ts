@@ -1,4 +1,9 @@
-import type { ItemSummary, ModuleRegistry } from "@dlh/core";
+import {
+  type ItemSummary,
+  type ModuleRegistry,
+  NotReady,
+  type OperationDescription,
+} from "@dlh/core";
 import { requestOps } from "../../../modules/requests/src/operations";
 import {
   operationRows,
@@ -137,5 +142,37 @@ test("a form sees the word ⌘K matched, which the text no longer holds", () => 
   expect(planOperation(resolve, ctx)).toMatchObject({
     status: "ready",
     input: { id: "r1", outcome: "not_for_me" },
+  });
+});
+
+describe("a palette builder that throws", () => {
+  // Reopen's input built by a palette function that throws.
+  const withPalette = (palette: () => never): OperationDescription => ({
+    ...requestOps.reopen,
+    palette,
+  });
+  const ctx = { text: "", now: new Date(), timeZone: "UTC" };
+
+  test("NotReady waits quietly", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const op = withPalette(() => {
+      throw new NotReady("No item on screen");
+    });
+    expect(planOperation(op, ctx).status).toBe("waiting");
+    expect(log).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  test("any other error also waits, and is logged as a bug", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const op = withPalette(() => {
+      throw new TypeError("boom");
+    });
+    expect(planOperation(op, ctx).status).toBe("waiting");
+    expect(log).toHaveBeenCalledWith(
+      "⌘K: building an operation failed",
+      expect.objectContaining({ message: "boom" }),
+    );
+    log.mockRestore();
   });
 });

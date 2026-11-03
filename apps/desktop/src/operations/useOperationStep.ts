@@ -3,6 +3,7 @@ import {
   formFields,
   type ItemSummary,
   type ModuleRegistry,
+  NotReady,
   type OperationDescription,
   type OperationList,
   operationList,
@@ -301,7 +302,9 @@ export function useOperationStep({
     if (!needsLoad(op, ctx)) return undefined;
     try {
       return await queryClient.fetchQuery(loadOptions(op, ctx));
-    } catch {
+    } catch (e) {
+      if (!(e instanceof NotReady))
+        console.error(`⌘K: loading ${op.id} failed`, e);
       return undefined;
     }
   };
@@ -432,8 +435,17 @@ export function useOperationStep({
           let input: unknown;
           try {
             input = plan.toInput(values);
-          } catch {
-            toast(`Couldn't ${op.label.toLowerCase()}`, { tone: "error" });
+          } catch (e) {
+            const why = firstIssue(e);
+            if (!why && !(e instanceof NotReady)) {
+              console.error(`⌘K: ${op.id} input failed`, e);
+            }
+            toast(
+              `Couldn't ${op.label.toLowerCase()}${why ? `: ${why}` : ""}`,
+              {
+                tone: "error",
+              },
+            );
             return;
           }
           if (op.kind === "query") {
@@ -454,4 +466,13 @@ export function useOperationStep({
     ...(formNode ? { form: formNode } : {}),
     onKeyDown,
   };
+}
+
+/** The first message of a zod validation error, if `e` is one. */
+function firstIssue(e: unknown): string | undefined {
+  if (!(e instanceof Error) || e.name !== "ZodError" || !("issues" in e)) {
+    return undefined;
+  }
+  const [first] = Array.isArray(e.issues) ? e.issues : [];
+  return typeof first?.message === "string" ? first.message : undefined;
 }

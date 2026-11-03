@@ -80,7 +80,7 @@ export const steps: DevStep[] = [
   },
   {
     name: "seed",
-    // Sample data from every module's seed, only while `items` is empty.
+    // Sample data from each module's seed that has no items yet.
     run: () => runCommand("pnpm", ["--filter", "@dlh/api", "seed"]),
   },
   {

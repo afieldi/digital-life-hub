@@ -9,19 +9,32 @@ import {
   type ServerModule,
   writeItems,
 } from "@dlh/server";
+import { inArray } from "drizzle-orm";
 import { serverModules } from "../modules.gen";
 
-/** Runs every module's `seed` in one transaction when `items` is empty. */
-export async function seedIfEmpty(
+/**
+ * Runs each module's `seed` that has never written: one with no row of its item
+ * types in `items`, deleted rows included. So a module added to an existing dev
+ * database still gets its sample data. Returns the ids of the seeded modules.
+ */
+export async function seedMissing(
   deps: CoreDeps,
   modules: readonly ServerModule[],
-): Promise<boolean> {
-  const [any] = await deps.db.select({ id: items.id }).from(items).limit(1);
-  if (any) return false;
-  await writeItems(deps, async (w) => {
-    for (const m of modules) await m.seed?.(w);
-  });
-  return true;
+): Promise<string[]> {
+  const seeded: string[] = [];
+  for (const m of modules) {
+    if (!m.seed || m.itemTypes.length === 0) continue;
+    const [any] = await deps.db
+      .select({ id: items.id })
+      .from(items)
+      .where(inArray(items.type, m.itemTypes))
+      .limit(1);
+    if (any) continue;
+    const seed = m.seed;
+    await writeItems(deps, (w) => seed(w));
+    seeded.push(m.id);
+  }
+  return seeded;
 }
 
 async function main(): Promise<void> {
@@ -29,7 +42,7 @@ async function main(): Promise<void> {
   const { modules, itemTypes, aiRunners, deleteWith, operations } =
     collectServerModules([...serverModules], [...CORE_ROUTER_IDS], coreAi);
   try {
-    const seeded = await seedIfEmpty(
+    const seeded = await seedMissing(
       {
         db,
         changes: createChangeBus(),
@@ -46,7 +59,11 @@ async function main(): Promise<void> {
       },
       modules,
     );
-    console.log(seeded ? "Seeded sample data." : "Items exist — not seeding.");
+    console.log(
+      seeded.length > 0
+        ? `Seeded sample data for ${seeded.join(", ")}.`
+        : "Every module already has items — not seeding.",
+    );
   } finally {
     await close();
   }

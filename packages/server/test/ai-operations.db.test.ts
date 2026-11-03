@@ -518,6 +518,80 @@ test("a title that matches nothing fails without writing", async () => {
   await s.close();
 });
 
+test("suggest skips an option naming nothing and keeps the rest", async () => {
+  const s = await setup();
+  await s.mk("Shopping");
+  s.fake.queue(
+    JSON.stringify({
+      options: [
+        { label: "Under Groceries", title: "Milk", parentId: "Groceries" },
+        { label: "Under Shopping", title: "Milk", parentId: "Shopping" },
+      ],
+    }),
+  );
+  const res = await prepare(s.deps, {
+    text: "add milk",
+    actionId: "test.create",
+    kind: "suggest",
+  });
+  expect(res).toMatchObject({
+    status: "suggested",
+    options: [{ label: "Under Shopping" }],
+  });
+  await s.close();
+});
+
+test("suggest fails not_found only when no option names anything", async () => {
+  const s = await setup();
+  s.fake.queue(
+    JSON.stringify({
+      options: [
+        { label: "A", title: "Milk", parentId: "Nowhere" },
+        { label: "B", title: "Milk", parentId: "Elsewhere" },
+      ],
+    }),
+  );
+  const err = await caught(
+    prepare(s.deps, {
+      text: "add milk",
+      actionId: "test.create",
+      kind: "suggest",
+    }),
+  );
+  expect((err.cause as AiError).code).toBe("not_found");
+  expect(err.message).toContain("Nowhere");
+  await s.close();
+});
+
+test("suggest keeps each option's best match before an ambiguous one's others", async () => {
+  const s = await setup();
+  await s.mk("Groceries list");
+  await s.mk("Groceries plan");
+  await s.mk("Pantry");
+  await s.mk("Fridge");
+  s.fake.queue(
+    JSON.stringify({
+      options: [
+        { label: "Groceries", title: "Milk", parentId: "Groceries" },
+        { label: "Pantry", title: "Milk", parentId: "Pantry" },
+        { label: "Fridge", title: "Milk", parentId: "Fridge" },
+      ],
+    }),
+  );
+  const res = await prepare(s.deps, {
+    text: "add milk",
+    actionId: "test.create",
+    kind: "suggest",
+  });
+  if (res.status !== "suggested") throw new Error(res.status);
+  // Three options: one Groceries match, then Pantry and Fridge, not a second Groceries.
+  expect(res.options).toHaveLength(3);
+  const labels = res.options.map((o) => o.label);
+  expect(labels.filter((l) => l.includes("Groceries"))).toHaveLength(1);
+  expect(labels.slice(1)).toEqual(["Pantry", "Fridge"]);
+  await s.close();
+});
+
 test("undo soft-deletes created items", async () => {
   const s = await setup();
   s.fake.queue(JSON.stringify({ title: "Milk" }));
@@ -634,12 +708,14 @@ test("a query that throws ends the request failed", async () => {
   const broken = await caught(
     prepare(s.deps, { text: "x", actionId: "broken.list", kind: "ask" }),
   );
-  expect((broken.cause as AiError).code).toBe("provider_error");
+  expect((broken.cause as AiError).code).toBe("internal");
+  // The original error is kept for the server log.
+  expect((broken.cause as AiError).cause).toBeInstanceOf(Error);
   expect(broken.message).toBe("The action failed on the server.");
   const rows = await s.db.select().from(aiRequests);
   expect(rows.map((r) => [r.status, r.errorCode])).toEqual([
     ["failed", "not_found"],
-    ["failed", "provider_error"],
+    ["failed", "internal"],
   ]);
   await s.close();
 });
