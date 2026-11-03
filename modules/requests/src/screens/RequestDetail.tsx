@@ -131,8 +131,8 @@ export function RequestDetail({
             row={request}
             handlers={{
               onMakeTask: () => setMaking(true),
-              onResolve: (row, outcome) => void outcomes.resolve(row, outcome),
-              onAction: (row, action) => void outcomes.act(row, action),
+              onResolve: (row, outcome) => outcomes.resolve(row, outcome),
+              onAction: (row, action) => outcomes.act(row, action),
             }}
           />
         )}

@@ -37,8 +37,13 @@ export function SourceGlyph({ source }: { source: Source }) {
 export type OpenRowHandlers = {
   /** `refocus`: where focus goes once the task is made and the row leaves. */
   onMakeTask: (row: RequestRow, refocus?: HTMLElement | null) => void;
-  onResolve: (row: RequestRow, outcome: "handled" | "not_for_me") => void;
-  onAction: (row: RequestRow, action: RequestAction) => void;
+  /** Resolves to the write's result, or null when it failed. */
+  onResolve: (
+    row: RequestRow,
+    outcome: "handled" | "not_for_me",
+  ) => Promise<unknown>;
+  /** Resolves to the write's result, or null when it failed. */
+  onAction: (row: RequestRow, action: RequestAction) => Promise<unknown>;
 };
 
 /**
@@ -60,7 +65,7 @@ export function OutcomeButtons({
         key={action.label}
         variant="ghost"
         aria-label={label(action.label)}
-        onPress={() => handlers.onAction(row, action)}
+        onPress={() => void handlers.onAction(row, action)}
       >
         {action.label}
       </Button>
@@ -78,9 +83,13 @@ export function OutcomeButtons({
   );
   return [
     button("Make task", () => handlers.onMakeTask(row)),
-    button(OUTCOME_LABELS.handled, () => handlers.onResolve(row, "handled")),
-    button(OUTCOME_LABELS.not_for_me, () =>
-      handlers.onResolve(row, "not_for_me"),
+    button(
+      OUTCOME_LABELS.handled,
+      () => void handlers.onResolve(row, "handled"),
+    ),
+    button(
+      OUTCOME_LABELS.not_for_me,
+      () => void handlers.onResolve(row, "not_for_me"),
     ),
   ];
 }
@@ -114,6 +123,37 @@ function focusAfter(row: HTMLElement): HTMLElement | null {
   return next?.querySelector<HTMLElement>("a[href]") ?? list;
 }
 
+/** How long a failed write's row has to come back for focus to return to it. */
+const REFOCUS_WAIT_MS = 5000;
+
+/**
+ * After a write that dropped row `id` failed, focus goes back to the row once
+ * the refresh brings it back, unless the person has moved focus on from
+ * `movedTo` (where it went when the row left).
+ */
+function focusWhenBack(id: string, movedTo: HTMLElement) {
+  const list = movedTo.closest("[data-request-list]") ?? document;
+  const tryFocus = (): boolean => {
+    const active = document.activeElement;
+    if (active !== movedTo && active !== document.body) return true;
+    const link = list.querySelector<HTMLElement>(
+      `[data-request-id="${id}"] a[href]`,
+    );
+    link?.focus();
+    return !!link;
+  };
+  if (tryFocus()) return;
+  const observer = new MutationObserver(() => {
+    if (tryFocus()) stop();
+  });
+  const timer = setTimeout(() => stop(), REFOCUS_WAIT_MS);
+  const stop = () => {
+    observer.disconnect();
+    clearTimeout(timer);
+  };
+  observer.observe(list, { childList: true, subtree: true });
+}
+
 /**
  * An open request: source glyph, sender, title, a line of the body and its
  * age. Its outcomes (or own actions) show on hover or focus; with focus in
@@ -137,16 +177,18 @@ export function OpenRequestRow({
     const el = ref.current;
     return el?.contains(document.activeElement) ? focusAfter(el) : null;
   };
+  // If the write fails, the refresh puts the row back and focus with it.
+  const leave = async (write: () => Promise<unknown>) => {
+    const movedTo = refocus();
+    movedTo?.focus();
+    const result = await write();
+    if (result === null && movedTo) focusWhenBack(row.id, movedTo);
+    return result;
+  };
   const leaving: OpenRowHandlers = {
     onMakeTask: (r) => handlers.onMakeTask(r, refocus()),
-    onResolve: (r, outcome) => {
-      refocus()?.focus();
-      handlers.onResolve(r, outcome);
-    },
-    onAction: (r, action) => {
-      refocus()?.focus();
-      handlers.onAction(r, action);
-    },
+    onResolve: (r, outcome) => leave(() => handlers.onResolve(r, outcome)),
+    onAction: (r, action) => leave(() => handlers.onAction(r, action)),
   };
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -154,8 +196,8 @@ export function OpenRequestRow({
     if (goChordPending() || hasActions) return;
     const key = e.key.toLowerCase();
     if (key === "t") leaving.onMakeTask(row);
-    else if (key === "h") leaving.onResolve(row, "handled");
-    else if (key === "n") leaving.onResolve(row, "not_for_me");
+    else if (key === "h") void leaving.onResolve(row, "handled");
+    else if (key === "n") void leaving.onResolve(row, "not_for_me");
     else return;
     e.preventDefault();
   };

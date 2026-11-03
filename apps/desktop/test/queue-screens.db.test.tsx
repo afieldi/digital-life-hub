@@ -344,6 +344,44 @@ describe("Open", () => {
     expect((await read(app.client, request.id)).outcome).toBeNull();
   });
 
+  test("after h fails, focus goes back to the row", async () => {
+    let elsewhere: (() => Promise<unknown>) | undefined;
+    const app = await setup("/queue", {
+      wrapFetch: (inner) => async (input, init) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.includes("requests.resolve") && elsewhere) {
+          const run = elsewhere;
+          elsewhere = undefined;
+          await run();
+        }
+        return inner(input, init);
+      },
+    });
+    const first = await file(app.client, {
+      title: "First",
+      receivedAt: hoursAgo(2),
+    });
+    await file(app.client, { title: "Second", receivedAt: hoursAgo(1) });
+    elsewhere = () =>
+      app.client.items.rename.mutate({
+        id: first.id,
+        expectedUpdatedAt: first.updatedAt,
+        title: "First, renamed",
+      });
+    app.renderApp();
+    (await screen.findByRole("link", { name: "First" })).focus();
+    await userEvent.keyboard("h");
+    expect(
+      await screen.findByText("It changed elsewhere; try again"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: "First, renamed" }),
+      ).toHaveFocus(),
+    );
+    expect((await read(app.client, first.id)).outcome).toBeNull();
+  });
+
   test("the nav count shows 2, then nothing after both are resolved", async () => {
     const { renderApp, client } = await setup("/queue");
     await file(client, { title: "First ask" });
