@@ -32,3 +32,34 @@ test("in the browser a link opens a new window", async () => {
     "noopener",
   );
 });
+
+test("a link that isn't http or https is refused before opening", async () => {
+  vi.mocked(openUrl).mockClear();
+  for (const tauri of [true, false]) {
+    vi.mocked(isTauri).mockReturnValue(tauri);
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    for (const url of ["javascript:alert(1)", "file:///etc/passwd", "nope"]) {
+      await expect(openExternal(url)).rejects.toThrow();
+    }
+    expect(openUrl).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  }
+});
+
+test("in the desktop app an http link is refused; the opener allows only https", async () => {
+  vi.mocked(isTauri).mockReturnValue(true);
+  vi.mocked(openUrl).mockClear();
+  await expect(openExternal("http://example.com/a")).rejects.toThrow();
+  expect(openUrl).not.toHaveBeenCalled();
+});
+
+test("in the browser an http link opens", async () => {
+  vi.mocked(isTauri).mockReturnValue(false);
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  await openExternal("http://example.com/a");
+  expect(open).toHaveBeenCalledWith(
+    "http://example.com/a",
+    "_blank",
+    "noopener",
+  );
+});

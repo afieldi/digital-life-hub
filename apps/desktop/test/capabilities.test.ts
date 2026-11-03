@@ -28,12 +28,12 @@ test("no permission starts with shell: or process:", () => {
   }
 });
 
-test("the opener opens only Google sign-in and Slack links", () => {
+test("the opener opens Google sign-in and any https link", () => {
   const opener = permissions().find(
     (p) => typeof p !== "string" && p.identifier === "opener:allow-open-url",
   ) as { allow: Array<{ url: string }> } | undefined;
   expect(opener?.allow.map((a) => a.url)).toEqual([
     "https://accounts.google.com/*",
-    "https://*.slack.com/*",
+    "https://*",
   ]);
 });
