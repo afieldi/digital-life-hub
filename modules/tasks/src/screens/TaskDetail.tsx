@@ -1,4 +1,5 @@
 import {
+  apiErrorKind,
   UNDO_TOAST_MS,
   useCommandBar,
   useCoreApi,
@@ -88,7 +89,10 @@ export function TaskDetail({
   if (!data) {
     return (
       <SidePanel title="Task" onClose={onClose}>
-        {detail.isError ? (
+        {detail.isError && apiErrorKind(detail.error) === "gone" ? (
+          // Deleted (here or elsewhere), or a stale link: retrying can't help.
+          <EmptyState icon={CircleAlert} title="This task was deleted" />
+        ) : detail.isError ? (
           <EmptyState
             icon={CircleAlert}
             title="Couldn't load the task"

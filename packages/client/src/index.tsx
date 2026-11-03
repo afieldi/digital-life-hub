@@ -172,7 +172,11 @@ export function useHomeWidgets(): ShellApi["homeWidgets"] {
 }
 
 export {
+  type ApiErrorKind,
+  apiErrorKind,
+  apiErrorMessage,
   isConflict,
+  isTransient,
   type ModuleWrite,
   type ModuleWriteOptions,
   UNDO_TOAST_MS,
