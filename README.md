@@ -8,6 +8,7 @@ One personal home for tasks, notes, projects, events and saved things: a single-
 - [Design](docs/design.md): visual direction, navigation, key flows and decision log
 - [Core + Shell spec](docs/specs/core-and-shell.md): the shared platform every module plugs into
 - [Items, Links, Search spec](docs/specs/items-links-search.md): the shared data layer (milestone 3)
+- [Adding a module](docs/modules.md): the module contract, the scaffold, and a checklist
 - [Tasks spec](docs/specs/tasks.md): the first module, and Core operations and module migrations
 - [Command Bar capture spec](docs/specs/command-bar-capture.md): natural-language capture (deferred)
 - [Implementation plans](docs/superpowers/plans/)
@@ -27,9 +28,10 @@ pnpm dev
 | ------------------------------------- | -------------------------------------------------------------------- |
 | `pnpm dev`                            | Starts everything                                                    |
 | `pnpm dev:down`                       | Stops Postgres                                                       |
-| `pnpm db:migrate`                     | Applies Core's migrations, then each module's (Tasks)                |
+| `pnpm db:migrate`                     | Applies Core's migrations, then each module's                        |
 | `pnpm db:reset`                       | Wipes the dev database and reseeds sample items                      |
 | `pnpm gen:modules`                    | Regenerates the module registry (`pnpm lint` fails if it is stale)   |
+| `pnpm new:module <id> <type>`         | Scaffolds a module (see [Adding a module](docs/modules.md))          |
 | `pnpm test`                           | Unit tests                                                           |
 | `pnpm test:db`                        | Database tests (needs Postgres)                                      |
 | `pnpm --filter @dlh/desktop test:e2e` | End-to-end tests (Playwright, needs Postgres)                        |

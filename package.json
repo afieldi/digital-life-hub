@@ -18,6 +18,7 @@
     "db:migrate": "pnpm --filter @dlh/api migrate",
     "db:reset": "pnpm --filter @dlh/db reset && pnpm --filter @dlh/api migrate && pnpm --filter @dlh/api seed",
     "gen:modules": "tsx scripts/gen-modules.ts",
+    "new:module": "tsx scripts/new-module.ts",
     "ai:eval-interpreter": "tsx scripts/ai-eval-interpreter.ts",
     "ai:smoke": "pnpm --filter @dlh/api ai:smoke"
   },
