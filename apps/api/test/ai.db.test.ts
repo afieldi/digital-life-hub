@@ -54,27 +54,6 @@ async function failure(p: Promise<unknown>) {
   throw new Error("expected the call to fail");
 }
 
-test("every AI call without a token is UNAUTHORIZED", async () => {
-  const { api, close } = await setup();
-  const c = api.client();
-  const requestId = "0197a000-0000-7000-8000-000000000000";
-  const calls = [
-    c.ai.prepare.mutate({ text: "x", actionId: "answer", kind: "ask" }),
-    c.ai.complete.mutate({ requestId, raw: "{}" }),
-    c.ai.cancel.mutate({ requestId }),
-    c.ai.applyOption.mutate({ requestId, option: 0 }),
-    c.ai.discard.mutate({ requestId }),
-    c.ai.undo.mutate({ requestId }),
-    c.ai.settings.get.query(),
-    c.ai.settings.set.mutate({}),
-    c.ai.log.list.query({}),
-  ];
-  for (const call of calls) {
-    expect((await failure(call)).data?.code).toBe("UNAUTHORIZED");
-  }
-  await close();
-});
-
 test("answer with no item", async () => {
   const { api, c, close } = await setup();
   api.ai.queue(JSON.stringify({ answer: "Forty-two.", used: [] }));

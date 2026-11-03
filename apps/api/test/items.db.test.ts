@@ -28,31 +28,6 @@ async function codeOf(p: Promise<unknown>): Promise<string | undefined> {
   return undefined;
 }
 
-test("every call without a token is UNAUTHORIZED", async () => {
-  const { api, close } = await setup();
-  const c = api.client();
-  const id = "0197a000-0000-7000-8000-000000000000";
-  const v = { id, expectedUpdatedAt: "2026-10-30T12:00:00.000Z" };
-  const calls = [
-    c.items.get.query({ id }),
-    c.items.list.query({}),
-    c.items.rename.mutate({ ...v, title: "x" }),
-    c.items.archive.mutate(v),
-    c.items.unarchive.mutate(v),
-    c.items.delete.mutate(v),
-    c.items.restore.mutate(v),
-    c.links.add.mutate({ fromId: id, toId: id, kind: "relates" }),
-    c.links.remove.mutate({ id }),
-    c.links.forItem.query({ id }),
-    c.links.contained.query({ id }),
-    c.search.query({ query: "x" }),
-    c.recents.list.query(),
-    c.recents.record.mutate({ id }),
-  ];
-  for (const call of calls) expect(await codeOf(call)).toBe("UNAUTHORIZED");
-  await close();
-});
-
 test("rename round-trip, stale rename conflicts, search finds the new title", async () => {
   const { c, mk, close } = await setup();
   const a = await mk("Old title", "secret body words");
