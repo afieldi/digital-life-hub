@@ -1,4 +1,4 @@
-import { coreAiActions } from "@dlh/core";
+import { addDays, coreAiActions } from "@dlh/core";
 import {
   apply,
   CORE_ROUTER_IDS,
@@ -14,7 +14,6 @@ import {
 import { freshModuleDb, testDeps } from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
-import { addDays } from "../src/dates";
 import tasksServer from "../src/server";
 
 async function setup() {

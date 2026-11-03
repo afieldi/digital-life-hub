@@ -1,11 +1,5 @@
-import {
-  clock,
-  type Day,
-  type DueGroup,
-  formatWhen,
-  groupFor,
-  todayIn,
-} from "../dates";
+import { clock, type Day, formatWhen, todayIn } from "@dlh/core";
+import { type DueGroup, groupFor } from "../dates";
 import type { TaskRow } from "../schema";
 
 export type OpenGroup = { key: DueGroup; label: string; rows: TaskRow[] };

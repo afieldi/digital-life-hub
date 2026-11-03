@@ -1,4 +1,4 @@
-import type { Due } from "@dlh/core";
+import { type Due, todayIn } from "@dlh/core";
 import {
   CORE_ROUTER_IDS,
   type CoreDeps,
@@ -11,7 +11,7 @@ import {
 import { freshModuleDb, testDeps } from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
-import { groupFor, todayIn } from "../src/dates";
+import { groupFor } from "../src/dates";
 import type { TaskRow } from "../src/schema";
 import tasksServer from "../src/server";
 import { dueBetween, dueBetweenQuery } from "../src/server/reads";

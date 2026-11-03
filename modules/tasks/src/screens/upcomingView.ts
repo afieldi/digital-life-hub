@@ -1,17 +1,13 @@
-import { addDays, clock, type Day, dueHeading } from "../dates";
+import { addDays, clock, type Day, utcNoon, weekdayShort } from "@dlh/core";
+import { dueHeading } from "../dates";
 import type { TaskRow } from "../schema";
 
-const weekday = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  timeZone: "UTC",
-});
 const fullDay = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
   month: "long",
   day: "numeric",
   timeZone: "UTC",
 });
-const noon = (day: Day) => new Date(`${day}T12:00:00Z`);
 
 export type WeekColumn = { id: Day; title: string; full: string };
 
@@ -21,8 +17,8 @@ export function weekColumns(weekStart: Day): WeekColumn[] {
     const id = addDays(weekStart, n);
     return {
       id,
-      title: `${weekday.format(noon(id))} ${Number(id.slice(8))}`,
-      full: fullDay.format(noon(id)),
+      title: `${weekdayShort.format(utcNoon(id))} ${Number(id.slice(8))}`,
+      full: fullDay.format(utcNoon(id)),
     };
   });
 }

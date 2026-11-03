@@ -1,10 +1,9 @@
 import { useCoreApi } from "@dlh/client";
-import { formFields } from "@dlh/core";
+import { deviceTimeZone, formFields } from "@dlh/core";
 import { OperationForm } from "@dlh/ui";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { makeTaskParams, requestOps } from "../operations";
 import type { RequestRow } from "../schema";
-import { deviceTimeZone } from "./api";
 import type { MakeTaskParams, useOutcomes } from "./outcomes";
 
 const fields = formFields(makeTaskParams);

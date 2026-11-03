@@ -1,23 +1,23 @@
 import {
+  addDays,
   type Due,
+  dayOfDue,
+  dayValue,
   describeOperation,
   fields,
+  formatDue,
   itemOnScreen,
   itemTitle,
   type PaletteContext,
   type PaletteRead,
-} from "@dlh/core";
-import { z } from "zod";
-import { parseDue, parseTaskInput } from "./capture";
-import {
-  addDays,
-  dayOfDue,
-  dueHeading,
-  formatDue,
-  isTimeZone,
+  timeZoneValue,
   todayIn,
   weekStartOf,
-} from "./dates";
+} from "@dlh/core";
+import { parseDue } from "@dlh/core/capture";
+import { z } from "zod";
+import { parseTaskInput } from "./capture";
+import { dueHeading } from "./dates";
 import { priority, taskRow } from "./schema";
 
 const id = z.uuid();
@@ -313,11 +313,8 @@ const removeParent = describeOperation({
   },
 });
 
-const timeZone = z
-  .string()
-  .refine(isTimeZone, "Unknown time zone")
-  .describe("IANA time zone of the device");
-const day = z.iso.date();
+const timeZone = timeZoneValue.describe("IANA time zone of the device");
+const day = dayValue;
 
 /**
  * "this week", "next week", or the day of the first date in the text ("friday",

@@ -1,25 +1,21 @@
-import { addDays, clock, type Day, todayIn } from "../dates";
+import {
+  addDays,
+  clock,
+  type Day,
+  fullDayLabel,
+  todayIn,
+  utcNoon,
+  weekdayShort,
+} from "@dlh/core";
 import type { TaskRow } from "../schema";
 import { parentLabel } from "./openView";
 
 export type DoneGroup = { day: Day; label: string; rows: TaskRow[] };
 
-const dayLabel = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
-const weekday = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  timeZone: "UTC",
-});
-const noon = (day: Day) => new Date(`${day}T12:00:00Z`);
-
 function describe(day: Day, today: Day): string {
   if (day === today) return "Today";
   if (day === addDays(today, -1)) return "Yesterday";
-  return dayLabel.format(noon(day));
+  return fullDayLabel.format(utcNoon(day));
 }
 
 /**
@@ -60,7 +56,7 @@ export function dayBars(
   perDay: { day: Day; count: number }[],
 ): { label: string; value: number }[] {
   return perDay.map((d) => ({
-    label: weekday.format(noon(d.day)),
+    label: weekdayShort.format(utcNoon(d.day)),
     value: d.count,
   }));
 }

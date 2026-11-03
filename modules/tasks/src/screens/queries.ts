@@ -1,6 +1,6 @@
+import { type Day, deviceTimeZone } from "@dlh/core";
 import { useQuery } from "@tanstack/react-query";
-import type { Day } from "../dates";
-import { deviceTimeZone, TASKS_KEY, useTasksApi } from "./api";
+import { TASKS_KEY, useTasksApi } from "./api";
 
 /** Query keys for the Tasks screens; all start with `TASKS_KEY`. */
 export const taskKeys = {

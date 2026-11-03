@@ -1,7 +1,7 @@
 import type { AppRouter } from "@dlh/api/router";
+import { parseDue } from "@dlh/core/capture";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import { createTRPCClient, httpLink } from "@trpc/client";
-import { parseDue } from "../../../modules/tasks/src/capture";
 import { E2E_API_URL } from "./apiUrl";
 import { modEnter } from "./keys";
 import { openPalette } from "./palette";

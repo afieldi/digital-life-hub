@@ -1,5 +1,6 @@
+import { parseDue } from "@dlh/core/capture";
 import { expect, test } from "vitest";
-import { parseDue, parseTaskInput } from "../src/capture";
+import { parseTaskInput } from "../src/capture";
 
 const LA = "America/Los_Angeles";
 // Monday 2 Nov 2026, 10:00 in Los Angeles.

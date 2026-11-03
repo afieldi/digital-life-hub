@@ -97,15 +97,6 @@ export function todayLine(now: Date, timeZone: string): string {
   return `Today is ${day}, ${Number(part("hour"))}:${part("minute")} (${timeZone}).`;
 }
 
-function checkTimeZone(timeZone: string | undefined): void {
-  if (timeZone === undefined) return;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone });
-  } catch {
-    throw badRequest(`unknown time zone "${timeZone}"`);
-  }
-}
-
 /**
  * What a pending request keeps for when it finishes: the zone (`complete`
  * lists rows and sets local times in it), and for a list runner the ids its
@@ -152,7 +143,6 @@ export async function prepare(
   input: AiPrepareInput,
 ): Promise<AiResult> {
   const runner = runnerFor(deps, input.actionId);
-  checkTimeZone(input.timeZone);
   const settings = await getSettings(deps.db);
   const provider = input.provider ?? settings.defaultProvider;
   const itemId = input.itemId ?? null;

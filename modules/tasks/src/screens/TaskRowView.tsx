@@ -1,5 +1,5 @@
+import type { Day } from "@dlh/core";
 import { Checkbox, Flag, ItemRow } from "@dlh/ui";
-import type { Day } from "../dates";
 import type { TaskRow } from "../schema";
 import { rowMeta } from "./openView";
 
