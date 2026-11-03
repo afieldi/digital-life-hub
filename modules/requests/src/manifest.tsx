@@ -1,6 +1,6 @@
 import { defineModule } from "@dlh/core";
 import { createRoute } from "@tanstack/react-router";
-import { requestOps } from "./operations";
+import { requestsModule } from "./module";
 import { DetailRoute } from "./screens/DetailRoute";
 import { NeedsYou } from "./screens/NeedsYou";
 import { OpenCount } from "./screens/OpenCount";
@@ -8,8 +8,7 @@ import { OpenPage } from "./screens/OpenPage";
 import { parseQueueSearch } from "./screens/QueueHeader";
 import { ResolvedPage } from "./screens/ResolvedPage";
 
-export default defineModule({
-  id: "requests",
+export default defineModule(requestsModule, {
   itemType: {
     type: "request",
     label: "Request",
@@ -44,5 +43,4 @@ export default defineModule({
     }),
   ],
   homeWidgets: [{ id: "needsYou", label: "Needs you", component: NeedsYou }],
-  operations: Object.values(requestOps),
 });

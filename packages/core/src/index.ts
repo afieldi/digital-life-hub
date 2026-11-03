@@ -53,10 +53,15 @@ export {
 export type {
   CommandContext,
   HomeWidget,
+  ModuleDescription,
   ModuleManifest,
   PaletteAction,
 } from "./module";
-export { defineModule } from "./module";
+export {
+  defineModule,
+  describeModule,
+  ModuleDescriptionError,
+} from "./module";
 export type { OperationList } from "./operations/ai";
 export { operationList, toAiAction } from "./operations/ai";
 export type {

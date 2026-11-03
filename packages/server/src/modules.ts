@@ -1,4 +1,9 @@
-import { type AiActionDescription, toAiAction } from "@dlh/core";
+import {
+  type AiActionDescription,
+  type ModuleDescription,
+  type OperationDescription,
+  toAiAction,
+} from "@dlh/core";
 import type { AnyRouter } from "@trpc/server";
 import { operationAiRunner } from "./ai/operation-runner";
 import {
@@ -46,6 +51,35 @@ export class ServerModuleError extends Error {
   override name = "ServerModuleError";
 }
 
+/** The server-module fields a module's description supplies. */
+type Described = "id" | "itemTypes" | "aiActions" | "operations" | "router";
+
+/** One implementation per described operation, keyed the same, and no others. */
+export type ImplementationsOf<
+  Ops extends Record<string, OperationDescription>,
+  Impls,
+> = { [K in keyof Ops]: ImplementedOperation<Ops[K], unknown> } & Record<
+  Exclude<keyof Impls, keyof Ops>,
+  never
+>;
+
+/**
+ * A module's server half. With a description, its id, item types and AI
+ * actions come from it, and `operations` must implement exactly the
+ * operations it describes (checked by type, and at load by identity). The
+ * one-argument forms take a hand-built module, with `router` in place of
+ * `operations` for raw tRPC procedures.
+ */
+export function defineServerModule<
+  const Id extends string,
+  Ops extends Record<string, OperationDescription>,
+  Impls extends Operations,
+>(
+  desc: ModuleDescription<Id, Ops>,
+  parts: Omit<ServerModule, Described> & {
+    operations: Impls & ImplementationsOf<Ops, Impls>;
+  },
+): ServerModule<Id, AnyRouter, Impls> & { operations: Impls };
 export function defineServerModule<
   const Id extends string,
   R extends AnyRouter,
@@ -58,8 +92,33 @@ export function defineServerModule<
 >(
   m: ServerModule<Id, AnyRouter, Ops> & { operations: Ops; router?: undefined },
 ): ServerModule<Id, AnyRouter, Ops> & { operations: Ops };
-export function defineServerModule(m: ServerModule): ServerModule {
-  return m;
+export function defineServerModule(
+  a: ServerModule | ModuleDescription,
+  parts?: Omit<ServerModule, Described> & { operations: Operations },
+): ServerModule {
+  // A description always comes with `parts`; a hand-built module never does.
+  if (!parts) return a as ServerModule;
+  const desc = a as ModuleDescription;
+  const described = Object.keys(desc.operations).sort();
+  const implemented = Object.keys(parts.operations).sort();
+  if (described.join() !== implemented.join()) {
+    throw new ServerModuleError(
+      `Module "${desc.id}" implements ${JSON.stringify(implemented)} but describes ${JSON.stringify(described)}`,
+    );
+  }
+  for (const [key, op] of Object.entries(parts.operations)) {
+    if (op.desc !== desc.operations[key]) {
+      throw new ServerModuleError(
+        `Module "${desc.id}" implements "${key}" for another operation than it describes`,
+      );
+    }
+  }
+  return {
+    ...parts,
+    id: desc.id,
+    itemTypes: [...desc.itemTypes],
+    aiActions: [...desc.aiActions],
+  };
 }
 
 /** The router mounted under the module's id. */

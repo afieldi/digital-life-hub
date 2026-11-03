@@ -1,5 +1,5 @@
 import { defineServerModule, type OperationsRouter } from "@dlh/server";
-import { tasksAiActions } from "./ai";
+import { tasksModule } from "./module";
 import { tasksAiRunners } from "./server/ai";
 import { deleteWith } from "./server/deleteWith";
 import { due, get, list, stats } from "./server/reads";
@@ -16,9 +16,7 @@ import {
   update,
 } from "./server/writes";
 
-const tasksServer = defineServerModule({
-  id: "tasks",
-  itemTypes: ["task"],
+const tasksServer = defineServerModule(tasksModule, {
   migrations: true,
   deleteWith,
   seed,
@@ -37,7 +35,6 @@ const tasksServer = defineServerModule({
     get,
     stats,
   },
-  aiActions: Object.values(tasksAiActions),
   aiRunners: tasksAiRunners,
 });
 
