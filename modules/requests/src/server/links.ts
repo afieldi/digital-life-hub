@@ -1,5 +1,5 @@
 import type { Item } from "@dlh/core";
-import type { Tx } from "@dlh/server";
+import type { CoreDeps, Tx } from "@dlh/server";
 import { sql } from "drizzle-orm";
 
 // Read-only queries on Core's `items` and `links`, by table name: modules can't
@@ -49,7 +49,7 @@ export async function anyItem(tx: Tx, id: string): Promise<Item | null> {
  * Deleted tasks count; `taskDeleted` says so.
  */
 export async function requestTask(
-  tx: Tx,
+  tx: Tx | CoreDeps["db"],
   requestId: string,
   outcome: string | null,
 ): Promise<{

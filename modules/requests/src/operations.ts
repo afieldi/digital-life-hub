@@ -6,7 +6,7 @@ import {
 } from "@dlh/core";
 import { taskOps } from "@dlh/module-tasks/operations";
 import { z } from "zod";
-import { fileInput, requestRow, resolveInput } from "./schema";
+import { fileInput, outcome, requestRow, resolveInput } from "./schema";
 
 const id = z.uuid();
 const expectedUpdatedAt = z.iso.datetime();
@@ -145,4 +145,59 @@ const reopen = describeOperation({
   ai: false,
 });
 
-export const requestOps = { file, resolve, makeTask, reopen };
+const open = describeOperation({
+  id: "requests.open",
+  kind: "query",
+  label: "Waiting on me",
+  description:
+    "The requests waiting on the person, oldest first: what is in their queue and not yet resolved.",
+  appliesTo: ["*", "none"],
+  words: ["waiting on me", "waiting for me", "queue", "requests", "needs me"],
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  summary: () => "Waiting on me",
+});
+
+const resolved = describeOperation({
+  id: "requests.resolved",
+  kind: "query",
+  label: "Resolved requests",
+  description:
+    "Requests resolved in the last 30 days, newest first, 50 a page, optionally of one outcome.",
+  appliesTo: "none",
+  input: z.object({
+    outcome: outcome.optional(),
+    cursor: z.string().optional(),
+  }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Resolved requests",
+  palette: false,
+  ai: false,
+});
+
+const get = describeOperation({
+  id: "requests.get",
+  kind: "query",
+  label: "Request",
+  description:
+    "A request with the task it was resolved as, if any, for the detail panel.",
+  appliesTo: ["request"],
+  input: z.object({ id }),
+  subject: (input) => input.id,
+  effects: [],
+  summary: () => "Request",
+  palette: false,
+  ai: false,
+});
+
+export const requestOps = {
+  file,
+  resolve,
+  makeTask,
+  reopen,
+  open,
+  resolved,
+  get,
+};
