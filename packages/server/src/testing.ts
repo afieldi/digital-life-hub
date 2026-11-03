@@ -14,6 +14,7 @@ import type {
   AiCompleteResult,
   AiProvider,
 } from "./ai/providers";
+import type { RunnerTools } from "./ai/runners";
 import { createChangeBus } from "./changes";
 import { composeServer } from "./compose";
 import { migrationsRoot, moduleMigrations } from "./migrations";
@@ -263,3 +264,9 @@ export const fixtureServer = defineServerModule({
     }),
   },
 });
+
+/** Runner tools for a test whose runner never calls them: either call fails. */
+export const noTools: RunnerTools = {
+  mutate: () => Promise.reject(new Error("this test's runner has no tools")),
+  revert: () => Promise.reject(new Error("this test's runner has no tools")),
+};

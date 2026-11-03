@@ -220,6 +220,58 @@ test("removeParent unlinks, and refuses a task that isn't a parent", async () =>
   await close();
 });
 
+test("addParent on a task already under that parent offers nothing to undo", async () => {
+  const { caller, mk, close } = await setup();
+  const a = await mk("A");
+  const b = await mk("B", { parentId: a.id });
+  const out = await caller.tasks.addParent({ id: b.id, parentId: a.id });
+  // The client offers Undo only for a record or created items (undoOf).
+  expect(out.undo).toEqual({ record: null, created: [] });
+  await close();
+});
+
+test("undoing removeParent refuses to nest two deep", async () => {
+  const { deps, caller, mk, close } = await setup();
+  const a = await mk("A");
+  const b = await mk("B", { parentId: a.id });
+  const removed = await caller.tasks.removeParent({ id: b.id, parentId: a.id });
+  // Meanwhile B gains a subtask, so it can no longer go back under A.
+  await mk("C", { parentId: b.id });
+  await expect(
+    caller.ops.undo({ id: "tasks.removeParent", token: removed.undo }),
+  ).rejects.toMatchObject({
+    code: "BAD_REQUEST",
+    message: "A task with subtasks can't be a subtask",
+  });
+  expect(await childrenOf(deps, a.id)).toEqual([]);
+  await close();
+});
+
+test("restoring a subtask whose parent became a subtask meanwhile is refused", async () => {
+  const { deps, caller, mk, close } = await setup();
+  const a = await mk("A");
+  const b = await mk("B", { parentId: a.id });
+  const deleted = await caller.items.delete({
+    id: b.id,
+    expectedUpdatedAt: await version(deps, b.id),
+  });
+  // A has no live subtasks now, so it may go under D.
+  const d = await mk("D");
+  await caller.tasks.addParent({ id: a.id, parentId: d.id });
+  await expect(
+    caller.items.restore({
+      id: b.id,
+      expectedUpdatedAt: deleted.updatedAt,
+    }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  // Refused as a whole: B stays deleted.
+  const [row] = await deps.db.execute<{ deleted: boolean }>(
+    sql`select deleted_at is not null as deleted from items where id = ${b.id}`,
+  );
+  expect(row?.deleted).toBe(true);
+  await close();
+});
+
 test("update notes writes search_text", async () => {
   const { deps, caller, mk, close } = await setup();
   const a = await mk("A");

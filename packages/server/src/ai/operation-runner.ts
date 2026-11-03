@@ -20,7 +20,7 @@ import type { CoreDeps } from "../trpc";
 import { type AiContext, itemContext } from "./context";
 import { PREAMBLE } from "./core-runners";
 import { AiError } from "./errors";
-import type { AiRunner, Resolved, RunnerTools } from "./runners";
+import type { AiRunner, Resolved } from "./runners";
 
 const WRAPPERS = new Set(["optional", "nullable", "default"]);
 const TITLE_MATCHES = 3;
@@ -228,16 +228,6 @@ export const operationUndo = z.object({
 });
 export type OperationUndo = z.infer<typeof operationUndo>;
 
-/** Operation runners write through Core's tools, which `runApply` and `undo` always pass. */
-function requireTools(tools: RunnerTools | undefined, id: string): RunnerTools {
-  if (!tools) {
-    throw new Error(
-      `AI runner for operation "${id}" was called without Core's RunnerTools`,
-    );
-  }
-  return tools;
-}
-
 function mutationRunner(
   op: ImplementedMutation,
   action: AiActionDescription,
@@ -284,13 +274,21 @@ function mutationRunner(
           resolved[key] = dueFromLocal(local.data, opts?.timeZone ?? "UTC");
         }
       }
-      let choice: { key: string; matches: Match[] } | null = null;
+      let choice: { key: string; value: string; matches: Match[] } | null =
+        null;
       for (const [key, types] of itemFields) {
         const value = resolved[key];
         if (typeof value !== "string") continue;
         const matches = await matchTitle(deps, value, types);
         resolved[key] = matches[0]?.id;
-        if (matches.length > 1 && !choice) choice = { key, matches };
+        if (matches.length < 2) continue;
+        // Options pick one field; a second ambiguous one would be guessed.
+        if (choice) {
+          throw badOutput(
+            `More than one item name was unclear (“${choice.value}” and “${value}”)`,
+          );
+        }
+        choice = { key, value, matches };
       }
       if (!choice) return { out: resolved };
       const { key, matches } = choice;
@@ -303,12 +301,12 @@ function mutationRunner(
     },
     operation: op,
     async apply(_w, out, ctx, tools): Promise<OperationUndo> {
-      const { mutate } = requireTools(tools, desc.id);
+      const { mutate } = tools;
       const { undo } = await mutate(op, inputOf(out, ctx));
       return { kind: "operation", operation: desc.id, token: undo };
     },
     async undo(_w, record, tools) {
-      const { revert } = requireTools(tools, desc.id);
+      const { revert } = tools;
       await revert(op, operationUndo.parse(record).token.record);
     },
     summary(out, ctx) {

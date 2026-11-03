@@ -13,6 +13,8 @@ export type UndoToken = { record: unknown; created: string[] };
  * A mutation's server half. `run` writes through the scoped writer and returns
  * its result and an undo record; `undo` reverts with a record that passed
  * `undoRecord`. Items `run` created are soft-deleted by Core before `undo` runs.
+ * A run that changed nothing returns a null record and creates nothing, so no
+ * Undo is offered.
  */
 export type MutationImpl<I, O, U> = {
   run(

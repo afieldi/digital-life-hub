@@ -45,6 +45,22 @@ const createDesc = describeOperation({
   summary: (i) => `New test ${i.title}`,
 });
 
+/** Two item fields: the model names both by title. */
+const relateDesc = describeOperation({
+  id: "test.relate",
+  kind: "mutation",
+  label: "Relate tests",
+  description: "Links one test item to another.",
+  appliesTo: ["*", "none"],
+  input: z.object({
+    fromId: fields.item(["test"]),
+    toId: fields.item(["test"]),
+  }),
+  subject: (i) => i.fromId,
+  effects: ["addLinks"],
+  summary: () => "Relate",
+});
+
 const renameDesc = describeOperation({
   id: "test.rename",
   kind: "mutation",
@@ -99,6 +115,18 @@ const testModule = defineServerModule({
   id: "test",
   itemTypes: ["test"],
   operations: {
+    relate: implementOperation(relateDesc, {
+      async run(w, input) {
+        await w.addLink?.({
+          fromId: input.fromId,
+          toId: input.toId,
+          kind: "relates",
+        });
+        return { result: null, undo: null };
+      },
+      async undo() {},
+      undoRecord: z.null(),
+    }),
     create: implementOperation(createDesc, {
       async run(w, input) {
         const item = await w.createItem?.({ type: "test", title: input.title });
@@ -485,6 +513,27 @@ test("an ambiguous item title drops to suggested with matches", async () => {
   await s.close();
 });
 
+test("two unclear item names fail rather than guess one", async () => {
+  const s = await setup();
+  for (const t of [
+    "Groceries list",
+    "Groceries plan",
+    "Trip ideas",
+    "Trip plan",
+  ]) {
+    await s.mk(t);
+  }
+  s.fake.queue(JSON.stringify({ fromId: "Groceries", toId: "Trip" }));
+  const err = await caught(
+    prepare(s.deps, { text: "relate", actionId: "test.relate", kind: "do" }),
+  );
+  expect((err.cause as AiError).code).toBe("bad_output");
+  expect(err.message).toContain("Groceries");
+  expect(err.message).toContain("Trip");
+  expect(await s.db.select().from(links)).toHaveLength(0);
+  await s.close();
+});
+
 test("one exact match runs", async () => {
   const s = await setup();
   const parent = await s.mk("Groceries");
@@ -638,6 +687,7 @@ test("prompt carries today in the zone", async () => {
 test("actions derived from operations pass collectAiRunners", async () => {
   const actions = moduleAiActions(testModule);
   expect(actions.map((a) => [a.id, a.kinds])).toEqual([
+    ["test.relate", ["suggest", "do"]],
     ["test.create", ["suggest", "do"]],
     ["test.rename", ["suggest", "do"]],
     ["test.find", ["ask"]],
@@ -649,6 +699,7 @@ test("actions derived from operations pass collectAiRunners", async () => {
     { actions: [], runners: [] },
   );
   expect([...aiRunners.keys()]).toEqual([
+    "test.relate",
     "test.create",
     "test.rename",
     "test.find",

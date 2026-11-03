@@ -405,14 +405,16 @@ export const addParent = implementOperation(taskOps.addParent, {
     const { link, added } = await linkParent(w, input.parentId, input.id, {
       newChild: false,
     });
-    return { result: link, undo: { linkId: added ? link.id : null } };
+    // Already its parent: nothing changed, so nothing to undo.
+    return { result: link, undo: added ? { linkId: link.id } : null };
   },
   async undo(w, record) {
-    if (record.linkId && (await linkExists(w.tx, record.linkId))) {
+    if (record?.linkId && (await linkExists(w.tx, record.linkId))) {
       await allowed(w.removeLink)(record.linkId);
     }
   },
-  undoRecord: z.object({ linkId: z.uuid().nullable() }),
+  // A null linkId is a no-op record from before null meant "nothing to undo".
+  undoRecord: z.object({ linkId: z.uuid().nullable() }).nullable(),
 });
 
 export const removeParent = implementOperation(taskOps.removeParent, {
@@ -426,11 +428,9 @@ export const removeParent = implementOperation(taskOps.removeParent, {
     return { result: null, undo: { id: input.id, parentId: input.parentId } };
   },
   async undo(w, record) {
-    await allowed(w.addLink)({
-      fromId: record.parentId,
-      toId: record.id,
-      kind: "contains",
-    });
+    // The same rules as adding it: since the removal either side may have
+    // gained a parent or a subtask.
+    await linkParent(w, record.parentId, record.id, { newChild: false });
   },
   undoRecord: z.object({ id: z.uuid(), parentId: z.uuid() }),
 });
