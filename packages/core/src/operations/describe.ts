@@ -19,6 +19,24 @@ export type PaletteContext = {
   timeZone: string;
 };
 
+/**
+ * Thrown by a palette builder (a palette function, `toInput`, `load`) when the
+ * context can't build the input yet, e.g. no item on screen. ⌘K shows the row
+ * as waiting; any other error is a bug and is logged.
+ */
+export class NotReady extends Error {
+  override name = "NotReady";
+}
+
+/** The versioned keys of the item on screen; `NotReady` when there is none. */
+export function itemOnScreen(ctx: PaletteContext): {
+  id: string;
+  expectedUpdatedAt: string;
+} {
+  if (!ctx.item) throw new NotReady("No item on screen");
+  return { id: ctx.item.id, expectedUpdatedAt: ctx.item.updatedAt };
+}
+
 /** Runs one of the registry's query operations by id, as ⌘K would call it. */
 export type PaletteRead = (
   operationId: string,
