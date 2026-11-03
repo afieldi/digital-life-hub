@@ -82,3 +82,36 @@ export async function requestTask(
       }
     : null;
 }
+
+/**
+ * The task each request was resolved as, for requests whose outcome is
+ * `task`: one query for a page of rows, picking the link as `requestTask` does.
+ */
+export async function requestTasks(
+  db: CoreDeps["db"],
+  requestIds: string[],
+): Promise<Map<string, { id: string; title: string; deleted: boolean }>> {
+  if (requestIds.length === 0) return new Map();
+  const rows = await db.execute<{
+    request_id: string;
+    task_id: string;
+    title: string;
+    task_deleted: boolean;
+  }>(sql`
+    select distinct on (l.from_id) l.from_id as request_id, t.id as task_id,
+      t.title, t.deleted_at is not null as task_deleted
+    from links l
+    join items t on t.id = l.to_id and t.type = 'task'
+    where l.from_id in (${sql.join(
+      requestIds.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    )}) and l.kind = 'relates'
+    order by l.from_id, (l.context is not distinct from 'outcome') desc,
+      l.created_at, l.id`);
+  return new Map(
+    rows.map((r) => [
+      r.request_id,
+      { id: r.task_id, title: r.title, deleted: r.task_deleted },
+    ]),
+  );
+}

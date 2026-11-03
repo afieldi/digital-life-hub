@@ -13,15 +13,22 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@dlh/client": "workspace:*",
     "@dlh/core": "workspace:*",
     "@dlh/module-tasks": "workspace:*",
     "@dlh/server": "workspace:*",
+    "@dlh/ui": "workspace:*",
+    "@tanstack/react-query": "^5.105.0",
+    "@tanstack/react-router": "^1.170.46",
     "@trpc/server": "^11.22.1",
     "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.64.0",
+    "react": "^19",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
     "drizzle-kit": "^0.31.11",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

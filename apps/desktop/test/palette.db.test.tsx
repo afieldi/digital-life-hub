@@ -187,8 +187,7 @@ test('"not for me" on a request prefills the outcome', async () => {
     title: "Sign up for the offsite",
   });
   const id = result.request.id;
-  // No Queue screens yet: any item page makes the request the open item.
-  router.history.push(`/sample/${id}`);
+  router.history.push(`/queue/${id}`);
   renderApp();
   await screen.findAllByRole("heading", { name: "Sign up for the offsite" });
   await userEvent.type(await openPalette(), "not for me");

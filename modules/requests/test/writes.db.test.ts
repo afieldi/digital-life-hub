@@ -471,6 +471,9 @@ test("makeTask creates the task through tasks.create", async () => {
     sql`select due_date::text, priority, notes from tasks where item_id = ${custom.result.task.id}`,
   );
   expect(custom.result.task.title).toBe("Call Sam about the lease");
+  // The task's title is the task's: the request keeps its own.
+  expect(custom.result.request.title).toBe("Call Sam");
+  expect(await itemRow(deps, s.id)).toMatchObject({ title: "Call Sam" });
   expect(row).toEqual({
     due_date: "2026-11-06",
     priority: "high",

@@ -156,6 +156,35 @@ test("resolved filters by outcome", async () => {
   await close();
 });
 
+test("resolved rows carry the task a task outcome made", async () => {
+  const { caller, deps, file, resolveAt, close } = await setup();
+  const handled = await file("handled");
+  await resolveAt(handled, "handled", ago(1));
+  const asked = await file("ask");
+  const made = (
+    await caller.requests.makeTask({
+      id: asked.id,
+      expectedUpdatedAt: asked.updatedAt,
+      title: "Follow up",
+    })
+  ).result;
+  const byId = async () =>
+    Object.fromEntries(
+      (await caller.requests.resolved({})).rows.map((r) => [r.id, r.task]),
+    );
+  expect(await byId()).toEqual({
+    [handled.id]: null,
+    [asked.id]: { id: made.task.id, title: "Follow up", deleted: false },
+  });
+  await setDeleted(deps, made.task.id);
+  expect((await byId())[asked.id]).toEqual({
+    id: made.task.id,
+    title: "Follow up",
+    deleted: true,
+  });
+  await close();
+});
+
 test("get returns the outcome task, even after it is deleted", async () => {
   const { caller, deps, file, close } = await setup();
   const r = await file("ask");

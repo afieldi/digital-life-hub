@@ -1,4 +1,4 @@
-import { Inbox } from "lucide-react";
+import { ExternalLink, Inbox, MessageSquare, PenLine } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Chip } from "../../dusk/Chip";
 import { Kbd } from "../../dusk/Kbd";
@@ -12,6 +12,7 @@ import { ListGroup } from "../../patterns/ListGroup";
 import { PageHeader } from "../../patterns/PageHeader";
 import { PeriodNav } from "../../patterns/PeriodNav";
 import { SectionCard } from "../../patterns/SectionCard";
+import { SidePanel } from "../../patterns/SidePanel";
 import { SortableList } from "../../patterns/SortableList";
 import { Button } from "../../primitives/Button";
 import { Caption } from "../../primitives/Caption";
@@ -290,6 +291,85 @@ const steps = [
   { id: "s3", title: "List questions for legal", done: false },
 ];
 
+// Queue: composed as modules/requests composes its screens.
+const queueRow = (props: {
+  title: string;
+  from: string;
+  preview: string;
+  age: string;
+  slack?: boolean;
+  actions?: boolean;
+}) => (
+  <ItemRow
+    leading={
+      props.slack ? (
+        <MessageSquare role="img" aria-label="From Slack" size={18} />
+      ) : (
+        <PenLine role="img" aria-label="Filed by you" size={18} />
+      )
+    }
+    title={props.title}
+    href="#"
+    meta={
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0">{props.from}</span>
+        <span aria-hidden="true">·</span>
+        <span className="truncate">{props.preview}</span>
+      </span>
+    }
+    trailing={
+      <>
+        {props.actions ? (
+          <span className="flex items-center gap-1">
+            <Button variant="ghost">Make task</Button>
+            <Button variant="ghost">Handled</Button>
+            <Button variant="ghost">Not for me</Button>
+          </span>
+        ) : null}
+        <span>{props.age}</span>
+      </>
+    }
+  />
+);
+
+const queueDetail = (resolved: boolean) => (
+  <div className="h-[460px] w-[420px] p-4">
+    <SidePanel title="Can you review the Q3 planning doc?" onClose={noop}>
+      <div className="flex items-center gap-2">
+        <MessageSquare role="img" aria-label="From Slack" size={18} />
+        <span>Maya Chen</span>
+      </div>
+      <Caption>Received 2 Nov 2026, 09:12 · 20h</Caption>
+      <p className="whitespace-pre-wrap">
+        {"Mostly the hiring section.\nNo rush, before Thursday is fine."}
+      </p>
+      <div>
+        <Button variant="glass">
+          <ExternalLink aria-hidden="true" size={16} />
+          Open in Slack
+        </Button>
+      </div>
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-4">
+        {resolved ? (
+          <>
+            <Caption>Resolved as Task</Caption>
+            <Chip kind="type" color={typeColors.task} href="#">
+              Review the Q3 doc
+            </Chip>
+            <Button variant="glass">Reopen</Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost">Make task</Button>
+            <Button variant="ghost">Handled</Button>
+            <Button variant="ghost">Not for me</Button>
+          </>
+        )}
+      </div>
+    </SidePanel>
+  </div>
+);
+
 registerStories("patterns", [
   {
     id: "patterns/period-nav",
@@ -511,5 +591,48 @@ registerStories("patterns", [
         <Caption>Next up at 10:00: Review vendor contracts</Caption>
       </div>
     ),
+  },
+  {
+    id: "patterns/queue-row",
+    title: "Queue row",
+    render: () => (
+      <div className="glass-panel flex w-[640px] flex-col gap-0.5 p-2.5">
+        <ListGroup label="Waiting on you" count={2}>
+          {queueRow({
+            title: "Can you review the Q3 planning doc?",
+            from: "Maya Chen",
+            preview: "Mostly the hiring section.",
+            age: "20h",
+            slack: true,
+            actions: true,
+          })}
+          {queueRow({
+            title: "Look at the insurance renewal letter",
+            from: "You",
+            preview: "It came in the post; the deadline is on page 2.",
+            age: "2d",
+          })}
+        </ListGroup>
+      </div>
+    ),
+  },
+  {
+    id: "patterns/queue-empty",
+    title: "Queue empty state",
+    render: () => (
+      <div className="glass-panel w-[420px]">
+        <EmptyState icon={Inbox} title="Nothing waiting on you" />
+      </div>
+    ),
+  },
+  {
+    id: "patterns/queue-detail",
+    title: "Queue detail (open)",
+    render: () => queueDetail(false),
+  },
+  {
+    id: "patterns/queue-detail-resolved",
+    title: "Queue detail (resolved)",
+    render: () => queueDetail(true),
   },
 ]);

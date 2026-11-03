@@ -98,6 +98,14 @@ const resolve = describeOperation({
 
 const taskFields = taskOps.create.input.shape;
 
+/** Make task's form, in ⌘K and on the Queue screens. */
+export const makeTaskParams = z.object({
+  title: taskFields.title.optional(),
+  due: taskFields.due.optional(),
+  priority: taskFields.priority.optional(),
+  notes: taskFields.notes.optional(),
+});
+
 /** What ⌘K's `load` needs of `requests.get`'s result. */
 const requestView = z.object({ request: requestRow });
 
@@ -128,12 +136,7 @@ const makeTask = describeOperation({
   summary: (input) => (input.title ? `Make task: ${input.title}` : "Make task"),
   calls: [taskOps.create],
   palette: {
-    params: z.object({
-      title: taskFields.title.optional(),
-      due: taskFields.due.optional(),
-      priority: taskFields.priority.optional(),
-      notes: taskFields.notes.optional(),
-    }),
+    params: makeTaskParams,
     // The form starts from the request: its title, and its details as notes.
     load: async (ctx, read) => {
       const { request } = requestView.parse(

@@ -99,7 +99,11 @@ async function setOutcome(
   to: Outcome | null,
   resolvedAt: Date,
 ): Promise<RequestRow> {
-  const item = await allowed(w.updateItem)(target);
+  // Only the version: makeTask's `title` names the task, not the request.
+  const item = await allowed(w.updateItem)({
+    id: target.id,
+    expectedUpdatedAt: target.expectedUpdatedAt,
+  });
   const [row] = await w.tx
     .update(requests)
     .set({ outcome: to, resolvedAt: to === null ? null : resolvedAt })

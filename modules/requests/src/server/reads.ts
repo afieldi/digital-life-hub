@@ -4,7 +4,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requestOps } from "../operations";
 import type { RequestRow } from "../schema";
-import { requestTask } from "./links";
+import { requestTask, requestTasks } from "./links";
 import { toRequestRow } from "./writes";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -105,8 +105,16 @@ export const open = implementOperation(requestOps.open, {
   },
 });
 
+/** A resolved row, with the task a `task` outcome names (deleted or not). */
+export type ResolvedRow = RequestRow & {
+  task: { id: string; title: string; deleted: boolean } | null;
+};
+
 export const resolved = implementOperation(requestOps.resolved, {
-  async run(deps, input): Promise<{ rows: RequestRow[]; nextCursor?: string }> {
+  async run(
+    deps,
+    input,
+  ): Promise<{ rows: ResolvedRow[]; nextCursor?: string }> {
     const since = new Date(deps.now().getTime() - RESOLVED_DAYS * DAY_MS);
     const after = input.cursor ? decodeCursor(input.cursor) : null;
     // Newest first; ties by id ascending, so the cursor compares both.
@@ -123,10 +131,15 @@ export const resolved = implementOperation(requestOps.resolved, {
       ),
     );
     const page = raw.slice(0, RESOLVED_PAGE).map(toRow);
+    const tasks = await requestTasks(
+      deps.db,
+      page.filter((r) => r.outcome === "task").map((r) => r.id),
+    );
+    const rows = page.map((r) => ({ ...r, task: tasks.get(r.id) ?? null }));
     const last = page[page.length - 1];
     return raw.length > RESOLVED_PAGE && last
-      ? { rows: page, nextCursor: encodeCursor(last) }
-      : { rows: page };
+      ? { rows, nextCursor: encodeCursor(last) }
+      : { rows };
   },
 });
 
