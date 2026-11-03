@@ -6,12 +6,9 @@ import { pathToFileURL } from "node:url";
 import { createDb, databaseUrlFrom, items } from "@dlh/db";
 import {
   type AiProvider,
-  CORE_ROUTER_IDS,
   type CoreDeps,
-  collectServerModules,
   complete,
-  coreAi,
-  createChangeBus,
+  createCoreDeps,
   createOpenRouter,
   listLog,
   prepare,
@@ -20,7 +17,7 @@ import {
   writeItems,
 } from "@dlh/server";
 import { eq } from "drizzle-orm";
-import { serverModules } from "../modules.gen";
+import { composed } from "../router";
 
 type PrepareInput = Parameters<typeof prepare>[1];
 type AiResult = Awaited<ReturnType<typeof prepare>>;
@@ -247,11 +244,6 @@ async function softDelete(deps: CoreDeps, id: string): Promise<void> {
 
 async function main(): Promise<void> {
   const { db, close } = createDb(databaseUrlFrom(process.env));
-  const { itemTypes, aiRunners, deleteWith, operations } = collectServerModules(
-    [...serverModules],
-    [...CORE_ROUTER_IDS],
-    coreAi,
-  );
   const providers: Partial<Record<"openrouter", AiProvider>> = process.env
     .OPENROUTER_API_KEY
     ? {
@@ -260,20 +252,13 @@ async function main(): Promise<void> {
         }),
       }
     : {};
-  const deps: CoreDeps = {
+  const deps = createCoreDeps(composed, {
     db,
-    changes: createChangeBus(),
-    itemTypes,
-    deleteWith,
-    operations,
-    now: () => new Date(),
-    devErrors: false,
     ai: {
-      runners: aiRunners,
       providers,
       defaultModel: process.env.OPENROUTER_DEFAULT_MODEL ?? null,
     },
-  };
+  });
   const cleanup: string[] = [];
   try {
     const all = targets();

@@ -1,14 +1,6 @@
 import { type Due, todayIn } from "@dlh/core";
-import {
-  CORE_ROUTER_IDS,
-  type CoreDeps,
-  collectServerModules,
-  coreRouters,
-  operationsRouter,
-  router,
-  writeItems,
-} from "@dlh/server";
-import { freshModuleDb, testDeps } from "@dlh/server/testing";
+import { type CoreDeps, writeItems } from "@dlh/server";
+import { freshModuleDb, testServer } from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import { groupFor } from "../src/dates";
@@ -16,28 +8,16 @@ import type { TaskRow } from "../src/schema";
 import tasksServer from "../src/server";
 import { dueBetween, dueBetweenQuery } from "../src/server/reads";
 
-const session = { id: "s", email: "arek@example.com" };
 const LA = "America/Los_Angeles";
 /** Mon, Nov 2, 2026, 09:00 in Los Angeles (PST, -08:00). */
 const NOW = new Date("2026-11-02T17:00:00.000Z");
 
 async function setup() {
   const t = await freshModuleDb([tasksServer]);
-  const collected = collectServerModules([tasksServer], [...CORE_ROUTER_IDS], {
-    actions: [],
-    runners: [],
-  });
-  const deps = testDeps(t.db, {
-    itemTypes: ["task", "note"],
+  const { deps, caller } = testServer(t.db, [tasksServer], {
+    itemTypes: ["note"],
     now: () => NOW,
-    deleteWith: Object.fromEntries(collected.deleteWith),
-    operations: collected.operations,
   });
-  const app = router({
-    ...coreRouters,
-    tasks: operationsRouter(tasksServer.operations),
-  });
-  const caller = app.createCaller({ deps, session });
   const mk = async (
     title: string,
     extra: { parentId?: string; due?: Due } = {},

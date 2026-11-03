@@ -1,41 +1,18 @@
-import {
-  coreRouters,
-  moduleRouter,
-  type Operations,
-  type OperationsRouter,
-  router,
-  type ServerModule,
-} from "@dlh/server";
+import { composeServer, router } from "@dlh/server";
 import { serverModules } from "./modules.gen";
 import { authRouter } from "./routers/auth";
 import { devicesRouter } from "./routers/devices";
 
-/** The router type of a module: its operations router when it has `operations`. */
-export type ModuleRouterOf<M> = M extends {
-  operations: infer T extends Operations;
-}
-  ? OperationsRouter<T>
-  : M extends { router: infer R }
-    ? R
-    : never;
-
-type ModuleRouters<Mods extends readonly ServerModule[]> = {
-  [M in Mods[number] as M["id"]]: ModuleRouterOf<M>;
-};
-
-/** Each module's router mounted under its id (`sample.create`). */
-export function mountModules<const Mods extends readonly ServerModule[]>(
-  mods: Mods,
-): ModuleRouters<Mods> {
-  return Object.fromEntries(
-    mods.map((m) => [m.id, moduleRouter(m)]),
-  ) as ModuleRouters<Mods>;
-}
+/**
+ * What the API derives from its modules: the CoreDeps fields and the routers.
+ * Throws on a duplicate module id or item type, or an id that clashes with a
+ * core router.
+ */
+export const composed = composeServer(serverModules);
 
 export const appRouter = router({
   auth: authRouter,
   devices: devicesRouter,
-  ...coreRouters,
-  ...mountModules(serverModules),
+  ...composed.routers,
 });
 export type AppRouter = typeof appRouter;

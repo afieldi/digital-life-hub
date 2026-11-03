@@ -1,20 +1,15 @@
 import { describeOperation } from "@dlh/core";
 import {
-  CORE_ROUTER_IDS,
   type CoreDeps,
-  collectServerModules,
-  coreRouters,
   defineServerModule,
   implementOperation,
-  operationsRouter,
-  router,
   writeItems,
 } from "@dlh/server";
 import {
   expectModuleWrites,
   expectTracked,
   freshModuleDb,
-  testDeps,
+  testServer,
 } from "@dlh/server/testing";
 import { asc, eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
@@ -24,8 +19,6 @@ import { requests } from "../src/db/schema";
 import { requestOps } from "../src/operations";
 import requestsServer from "../src/server";
 import { seed } from "../src/server/seed";
-
-const session = { id: "s", email: "arek@example.com" };
 
 /** A module whose `approve` resolves a request through an operation call, as agent approvals will. */
 const approveDesc = describeOperation({
@@ -85,22 +78,11 @@ const fakeServer = defineServerModule({
 
 async function setup() {
   const t = await freshModuleDb([requestsServer, tasksServer]);
-  const collected = collectServerModules(
+  const { deps, caller } = testServer(
+    t.db,
     [requestsServer, tasksServer, fakeServer],
-    [...CORE_ROUTER_IDS],
-    { actions: [], runners: [] },
+    { itemTypes: ["note"] },
   );
-  const deps = testDeps(t.db, {
-    itemTypes: ["request", "task", "note"],
-    deleteWith: Object.fromEntries(collected.deleteWith),
-    operations: collected.operations,
-  });
-  const app = router({
-    ...coreRouters,
-    requests: operationsRouter(requestsServer.operations),
-    tasks: operationsRouter(tasksServer.operations),
-  });
-  const caller = app.createCaller({ deps, session });
   const file = async (title: string, extra: Record<string, unknown> = {}) =>
     (await caller.requests.file({ title, ...extra })).result.request;
   const mkTask = async (title: string) =>

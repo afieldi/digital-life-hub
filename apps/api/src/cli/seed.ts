@@ -1,16 +1,14 @@
 import { pathToFileURL } from "node:url";
 import { createDb, databaseUrlFrom, items } from "@dlh/db";
 import {
-  CORE_ROUTER_IDS,
   type CoreDeps,
-  collectServerModules,
-  coreAi,
-  createChangeBus,
+  createCoreDeps,
   type ServerModule,
   writeItems,
 } from "@dlh/server";
 import { inArray } from "drizzle-orm";
 import { serverModules } from "../modules.gen";
+import { composed } from "../router";
 
 /**
  * Runs each module's `seed` that has never written: one with no row of its item
@@ -39,25 +37,10 @@ export async function seedMissing(
 
 async function main(): Promise<void> {
   const { db, close } = createDb(databaseUrlFrom(process.env));
-  const { modules, itemTypes, aiRunners, deleteWith, operations } =
-    collectServerModules([...serverModules], [...CORE_ROUTER_IDS], coreAi);
   try {
     const seeded = await seedMissing(
-      {
-        db,
-        changes: createChangeBus(),
-        itemTypes,
-        deleteWith,
-        operations,
-        now: () => new Date(),
-        devErrors: false,
-        ai: {
-          runners: aiRunners,
-          providers: {},
-          defaultModel: null,
-        },
-      },
-      modules,
+      createCoreDeps(composed, { db }),
+      serverModules,
     );
     console.log(
       seeded.length > 0

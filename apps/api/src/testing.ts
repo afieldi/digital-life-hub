@@ -1,11 +1,6 @@
 import type { DeviceInput } from "@dlh/api-contract";
 import type { Db } from "@dlh/db";
-import {
-  CORE_ROUTER_IDS,
-  collectServerModules,
-  coreAi,
-  createChangeBus,
-} from "@dlh/server";
+import { createCoreDeps } from "@dlh/server";
 import { FakeProvider } from "@dlh/server/testing";
 
 export { freshModuleDb } from "@dlh/server/testing";
@@ -16,7 +11,7 @@ import { createApp } from "./app";
 import type { GoogleOAuth } from "./auth/google";
 import { memoryAuthStore } from "./auth/memoryStore";
 import { serverModules } from "./modules.gen";
-import type { AppRouter } from "./router";
+import { type AppRouter, composed } from "./router";
 
 export class FakeGoogle implements GoogleOAuth {
   identity: { email: string; emailVerified: boolean };
@@ -75,20 +70,20 @@ export function createTestApi(
   const store = memoryAuthStore();
   const google = new FakeGoogle(allowedEmail);
   const devAuth = opts.devAuth ?? false;
-  const collected = collectServerModules(
-    [...serverModules],
-    [...CORE_ROUTER_IDS],
-    coreAi,
-  );
   // OpenRouter in tests: queue model outputs on `ai`.
   const ai = opts.aiProvider ?? new FakeProvider();
-  const deps = {
+  const core = createCoreDeps(composed, {
     db: opts.db ?? noDb(),
-    changes: createChangeBus(),
-    itemTypes: new Set([...collected.itemTypes, ...(opts.itemTypes ?? [])]),
-    deleteWith: collected.deleteWith,
-    operations: collected.operations,
+    now: clock.now,
     devErrors: devAuth,
+    ai: {
+      providers: opts.noOpenRouter ? {} : { openrouter: ai },
+      defaultModel: "test-model",
+    },
+  });
+  const deps = {
+    ...core,
+    itemTypes: new Set([...core.itemTypes, ...(opts.itemTypes ?? [])]),
     config: {
       port: 0,
       host: "127.0.0.1",
@@ -100,12 +95,6 @@ export function createTestApi(
     },
     store,
     google,
-    now: clock.now,
-    ai: {
-      runners: collected.aiRunners,
-      providers: opts.noOpenRouter ? {} : { openrouter: ai },
-      defaultModel: "test-model",
-    },
   };
   const app = createApp(deps);
 

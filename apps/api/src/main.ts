@@ -1,12 +1,5 @@
 import { createDb } from "@dlh/db";
-import {
-  CORE_ROUTER_IDS,
-  collectServerModules,
-  coreAi,
-  createChangeBus,
-  createOpenRouter,
-  devFakeAi,
-} from "@dlh/server";
+import { createCoreDeps, createOpenRouter, devFakeAi } from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
 import { createApp } from "./app";
@@ -16,6 +9,7 @@ import { startPurgeJob } from "./changes";
 import { ConfigError, loadConfig } from "./config";
 import { migrateAll } from "./migrate";
 import { serverModules } from "./modules.gen";
+import { composed } from "./router";
 
 function loadConfigOrExit() {
   try {
@@ -40,12 +34,6 @@ function hostPort(url: string): string {
 }
 
 const config = loadConfigOrExit();
-// Throws on a duplicate module id or item type, or an id that clashes with a core router.
-const { itemTypes, aiRunners, deleteWith, operations } = collectServerModules(
-  [...serverModules],
-  [...CORE_ROUTER_IDS],
-  coreAi,
-);
 const { db, close } = createDb(config.databaseUrl);
 
 try {
@@ -67,25 +55,19 @@ if (process.env.MIGRATE_ON_START === "1") {
 }
 
 const deps = {
-  db,
-  changes: createChangeBus(),
-  itemTypes,
-  deleteWith,
-  operations,
-  devErrors: config.devAuth,
-  config,
-  store: drizzleAuthStore(db),
-  google: createGoogleOAuth(config.google),
-  now: () => new Date(),
-  ai: {
-    runners: aiRunners,
-    ...(devFakeAi(process.env) ?? {
+  ...createCoreDeps(composed, {
+    db,
+    devErrors: config.devAuth,
+    ai: devFakeAi(process.env) ?? {
       providers: config.openrouter.apiKey
         ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }
         : {},
       defaultModel: config.openrouter.defaultModel,
-    }),
-  },
+    },
+  }),
+  config,
+  store: drizzleAuthStore(db),
+  google: createGoogleOAuth(config.google),
 };
 const app = createApp(deps);
 startPurgeJob(deps);
