@@ -147,7 +147,7 @@ Every Queue operation marked ✓ is an AI action through the operation adapter. 
 ## Testing
 
 - **Unit:** input rules (source and `externalId`, outcome and `taskId`); the age label.
-- **Operation calls:** `makeTask` creates the task through Tasks' own rules (an invalid due is refused), all in one transaction (a failure after the call leaves no task); registration refuses an undeclared call, a query, self-calls and nested calls.
+- **Operation calls:** `makeTask` creates the task through Tasks' own rules (an invalid due is refused), all in one transaction (a failure after the call leaves no task); registration refuses an undeclared call, self-calls and nested calls.
 - **Database (`test:db`):** concurrent `file` with one external id gives one row; `resolve` no-op and `CONFLICT`; the `relates` link written with the outcome in one transaction and removed by `reopen`; deleting the task leaves the request resolved; `open` order and the 30-day `resolved` window; every write moves `updated_at` and publishes a change (Core's module contract test).
 - **Undo:** the shared operation Undo test covers `file`, `resolve` and `reopen`.
 - **AI** (fake provider): `file`, `makeTask` and `resolve` through the gateway with Undo; "what's waiting on me?" lists open requests; the actions meet the 90% gate.

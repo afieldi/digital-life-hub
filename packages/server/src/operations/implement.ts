@@ -1,4 +1,6 @@
 import { type OperationDescription, OperationError } from "@dlh/core";
+import type { Db } from "@dlh/db";
+import { TRPCError } from "@trpc/server";
 import type { z } from "zod";
 import { type ScopedWriter, scopedWriter } from "../ai/scoped";
 import { type ItemWriter, writeItems } from "../items/writer";
@@ -77,7 +79,9 @@ export function implementOperation(
 /**
  * Runs a mutation in `w`'s transaction with Core's scoped writer: only the
  * methods its effects allow, on `subject(input)` unless it declares
- * `writeOtherItems`. The token lists the items it created.
+ * `writeOtherItems`. The token lists the items it created, including those
+ * created by operations it called; a callee's own undo record is dropped, so
+ * `ops.undo` soft-deletes its items and the caller's `undo` reverses the rest.
  */
 export async function runMutationIn<D extends OperationDescription, O>(
   w: ItemWriter,
@@ -91,6 +95,44 @@ export async function runMutationIn<D extends OperationDescription, O>(
     itemId: op.desc.subject(input),
     created,
   });
+  if (op.desc.calls?.length) {
+    const declared = new Set(op.desc.calls.map((c) => c.id));
+    scoped.call = async (callee, calleeInput) => {
+      const registered = deps.operations.get(callee.id);
+      if (!declared.has(callee.id) || !registered) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Call outside the declared calls",
+        });
+      }
+      const parsed = registered.desc.input.safeParse(calleeInput);
+      if (!parsed.success) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: parsed.error.message,
+          cause: parsed.error,
+        });
+      }
+      if (registered.kind === "query") {
+        // A Tx lacks only Db's `$client`, which queries don't use; this transaction lets them see the caller's uncommitted writes.
+        return registered.impl.run(
+          { ...deps, db: w.tx as unknown as Db },
+          parsed.data,
+        );
+      }
+      const calleeScope = scopedWriter(w, {
+        effects: registered.desc.effects,
+        itemId: registered.desc.subject(parsed.data),
+        created,
+      });
+      const { result } = await registered.impl.run(
+        calleeScope,
+        parsed.data,
+        deps,
+      );
+      return result;
+    };
+  }
   const { result, undo } = await op.impl.run(scoped, input, deps);
   return { result, undo: { record: undo, created } };
 }

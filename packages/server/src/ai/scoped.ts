@@ -1,7 +1,8 @@
-import type { AiEffect } from "@dlh/core";
+import type { AiEffect, OperationDescription } from "@dlh/core";
 import { links } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
+import type { z } from "zod";
 import type { ItemWriter } from "../items/writer";
 
 /**
@@ -11,7 +12,16 @@ import type { ItemWriter } from "../items/writer";
  * cannot govern those).
  */
 export type ScopedWriter = Pick<ItemWriter, "tx"> &
-  Partial<Omit<ItemWriter, "tx">>;
+  Partial<Omit<ItemWriter, "tx">> & {
+    /**
+     * Runs an operation the running mutation declared in `calls`, in this
+     * transaction, and returns its result. Present only when it declared any.
+     */
+    call?: <D extends OperationDescription>(
+      op: D,
+      input: z.input<D["input"]>,
+    ) => Promise<unknown>;
+  };
 
 function forbidden(): never {
   throw new TRPCError({

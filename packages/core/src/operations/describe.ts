@@ -82,6 +82,11 @@ export type OperationDescription<
   palette?: PaletteSpec<z.infer<S>, P>;
   /** Defaults to `true`. */
   ai?: boolean;
+  /**
+   * Operations of other modules this mutation's `run` may call with `w.call`.
+   * They must be registered, not this operation, and make no calls of their own.
+   */
+  calls?: OperationDescription[];
 };
 
 /** Input keys ⌘K fills from the item on screen rather than a form. */
@@ -96,6 +101,9 @@ export function describeOperation<
   }
   if (d.kind === "query" && d.effects.length > 0) {
     throw new OperationError(`Operation "${d.id}" is a query with effects`);
+  }
+  if (d.kind === "query" && d.calls?.length) {
+    throw new OperationError(`Operation "${d.id}" is a query with calls`);
   }
   try {
     if (d.palette === undefined || d.palette === true) {

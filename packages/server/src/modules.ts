@@ -149,6 +149,25 @@ export function collectServerModules(
       operations.set(op.desc.id, op);
     }
   }
+  // Calls last, once every operation is registered. One level deep: a callee has no calls.
+  for (const op of operations.values()) {
+    for (const callee of op.desc.calls ?? []) {
+      const registered = operations.get(callee.id);
+      if (!registered) {
+        throw new ServerModuleError(
+          `Operation "${op.desc.id}" calls "${callee.id}", which is not registered`,
+        );
+      }
+      if (callee.id === op.desc.id) {
+        throw new ServerModuleError(`Operation "${op.desc.id}" calls itself`);
+      }
+      if (registered.desc.calls?.length) {
+        throw new ServerModuleError(
+          `Operation "${op.desc.id}" calls "${callee.id}", which makes calls of its own`,
+        );
+      }
+    }
+  }
   const aiRunners = collectAiRunners(descriptions, runners, moduleOf, owners);
   return {
     modules: mods,
