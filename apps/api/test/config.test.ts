@@ -16,6 +16,23 @@ test("normalises the allowed email and defaults port and devAuth", () => {
   expect(loadConfig({ ...base, NODE_ENV: "development" }).devAuth).toBe(true);
 });
 
+test("host defaults to loopback and is trimmed", () => {
+  expect(loadConfig(base).host).toBe("127.0.0.1");
+  expect(loadConfig({ ...base, HOST: " 0.0.0.0 " }).host).toBe("0.0.0.0");
+});
+
+test("refuses dev auth on a host other than loopback", () => {
+  for (const HOST of ["127.0.0.1", "::1", "localhost"]) {
+    expect(loadConfig({ ...base, NODE_ENV: "development", HOST }).devAuth).toBe(
+      true,
+    );
+  }
+  expect(() =>
+    loadConfig({ ...base, NODE_ENV: "development", HOST: "0.0.0.0" }),
+  ).toThrow(ConfigError);
+  expect(loadConfig({ ...base, HOST: "0.0.0.0" }).devAuth).toBe(false);
+});
+
 test("lists every missing variable", () => {
   try {
     loadConfig({});
