@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { openNewTask, taskPanel } from "./api";
 import { modEnter } from "./keys";
 import { openPalette } from "./palette";
 import { signIn } from "./signIn";
@@ -11,17 +12,11 @@ test.beforeEach(async ({ page }) => {
   await page.evaluate(() => localStorage.clear());
 });
 
-/** Signs in, creates a sample item (unique per run) and opens its page. */
+/** Signs in, creates a task (unique per run) and opens its Detail panel. */
 async function openNewItem(page: Page, label: string): Promise<string> {
   const title = `AI item ${label} ${Date.now()}`;
   await signIn(page);
-  await page.goto("/sample");
-  await page.getByRole("textbox", { name: "New sample item" }).fill(title);
-  await page.getByRole("button", { name: "Create" }).click();
-  await page.getByRole("link", { name: title }).click();
-  await expect(
-    page.getByRole("heading", { level: 1, name: title }),
-  ).toBeVisible();
+  await openNewTask(page, title);
   return title;
 }
 
@@ -33,7 +28,10 @@ async function openNewItem(page: Page, label: string): Promise<string> {
  */
 async function ask(page: Page, text: string, action: string): Promise<void> {
   await openPalette(page);
-  await page.getByRole("combobox").fill(text);
+  // The command bar's input: a task's Detail panel has comboboxes of its own.
+  await page
+    .getByRole("combobox", { name: "Search, create, or ask AI" })
+    .fill(text);
   await expect(page.getByText("Understood as")).toBeVisible();
   await expect(page.getByText(action, { exact: true })).toBeVisible();
   await expect(page.getByText("to ask AI")).toBeVisible();
@@ -43,8 +41,7 @@ test("Do renames the item and Undo restores the title", async ({
   page,
 }, testInfo) => {
   const title = await openNewItem(page, testInfo.project.name);
-  const heading = (name: string) =>
-    page.getByRole("heading", { level: 1, name });
+  const heading = (name: string) => taskPanel(page, name);
 
   await ask(page, "rename this", "Rename");
   await page.getByRole("radio", { name: "Do" }).click();
@@ -70,9 +67,7 @@ test("Suggest shows options and Use applies the picked one", async ({
   await expect(page.getByText("Reason Two.")).toBeVisible();
   await page.getByRole("button", { name: "Use Fake title Two" }).click();
 
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Fake title Two" }),
-  ).toBeVisible();
+  await expect(taskPanel(page, "Fake title Two")).toBeVisible();
 });
 
 test("delete is shown first and cancelling leaves the item", async ({
@@ -91,11 +86,9 @@ test("delete is shown first and cancelling leaves the item", async ({
   await expect(page.getByText("Deletes this item.")).toBeVisible();
   await page.getByRole("button", { name: "None of these" }).click();
 
-  await expect(
-    page.getByRole("heading", { level: 1, name: title }),
-  ).toBeVisible();
-  await page.goto("/sample");
-  await expect(page.getByRole("link", { name: title })).toBeVisible();
+  await expect(taskPanel(page, title)).toBeVisible();
+  await page.reload();
+  await expect(taskPanel(page, title)).toBeVisible();
 });
 
 test("a bad model answer shows the message and changes nothing", async ({
@@ -112,7 +105,5 @@ test("a bad model answer shows the message and changes nothing", async ({
       "OpenRouter's answer wasn't in the expected format, so nothing was changed.",
     ),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { level: 1, name: title }),
-  ).toBeVisible();
+  await expect(taskPanel(page, title)).toBeVisible();
 });

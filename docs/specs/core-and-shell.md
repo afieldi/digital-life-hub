@@ -77,7 +77,7 @@ One command, `pnpm dev`, brings up everything. In development, Docker Compose ru
 
 1. `docker compose up -d --wait` starts Postgres and returns once it accepts connections. If Docker Desktop isn't running, it says so clearly.
 2. Applies pending migrations.
-3. Seeds sample items through the throwaway test module, only when the database is empty. Sample projects, notes and tasks arrive with those modules; Core never hard-codes item types.
+3. Runs each module's seed that has no items yet, so a module added later seeds an existing database. Core never hard-codes item types.
 4. Starts the API and the Tauri app through Turborepo, with labelled logs in one terminal and hot reload in both.
 
 Ctrl+C stops the API and the app. Postgres keeps running, with its data in a Docker volume, so the next start is faster.
