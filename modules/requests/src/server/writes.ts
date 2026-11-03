@@ -20,7 +20,7 @@ import {
   requestAction,
   source,
 } from "../schema";
-import { anyItem, liveType, outcomeLink } from "./links";
+import { anyItem, liveType, requestTask } from "./links";
 
 type RequestTableRow = typeof requests.$inferSelect;
 
@@ -90,18 +90,19 @@ async function loadRequest(
 
 /**
  * Writes the request's item (so `updated_at` moves and a change is published)
- * under its version check, then sets the outcome; `null` reopens it.
+ * under its version check, then sets the outcome, resolved at `resolvedAt`;
+ * `null` reopens it.
  */
 async function setOutcome(
   w: ScopedWriter,
   target: { id: string; expectedUpdatedAt: string },
   to: Outcome | null,
-  now: Date,
+  resolvedAt: Date,
 ): Promise<RequestRow> {
   const item = await allowed(w.updateItem)(target);
   const [row] = await w.tx
     .update(requests)
-    .set({ outcome: to, resolvedAt: to === null ? null : now })
+    .set({ outcome: to, resolvedAt: to === null ? null : resolvedAt })
     .where(eq(requests.itemId, target.id))
     .returning();
   if (!row) notFound();
@@ -118,16 +119,20 @@ async function linkOutcome(w: ScopedWriter, requestId: string, taskId: string) {
   });
 }
 
-/** Clears the outcome and removes the outcome link, if any. Returns what it removed. */
+/**
+ * Clears the outcome (`was`, the outcome it had) and removes the outcome link,
+ * if any. A link the person added by hand stays. Returns the request's task.
+ */
 async function reopenRequest(
   w: ScopedWriter,
   target: { id: string; expectedUpdatedAt: string },
+  was: Outcome | null,
   now: Date,
 ): Promise<{ request: RequestRow; taskId: string | null }> {
-  const link = await outcomeLink(w.tx, target.id);
+  const found = await requestTask(w.tx, target.id, was);
   const request = await setOutcome(w, target, null, now);
-  if (link) await allowed(w.removeLink)(link.linkId);
-  return { request, taskId: link?.taskId ?? null };
+  if (found?.isOutcomeLink) await allowed(w.removeLink)(found.linkId);
+  return { request, taskId: found?.taskId ?? null };
 }
 
 /** Reopens request `id` if it is still at `updatedAt`, else Core reports "Changed since". */
@@ -143,6 +148,7 @@ async function undoByReopening(
   await reopenRequest(
     w,
     { id: r.id, expectedUpdatedAt: r.updatedAt },
+    null,
     deps.now(),
   );
 }
@@ -279,11 +285,15 @@ export const makeTask = implementOperation(requestOps.makeTask, {
   undoRecord: reopenRecord,
 });
 
-/** Resolves request `id` again, if it is still at `updatedAt`, and relinks a live task. */
+/**
+ * Resolves request `id` again as it was (outcome and time), if it is still at
+ * `updatedAt`, and relinks a live task.
+ */
 const resolveAgainRecord = z.object({
   id: z.uuid(),
   updatedAt: z.string(),
   outcome,
+  resolvedAt: z.iso.datetime(),
   taskId: z.uuid().nullable(),
 });
 
@@ -292,25 +302,28 @@ export const reopen = implementOperation(requestOps.reopen, {
     const { item, row } = await loadRequest(w.tx, input.id);
     const was = row.outcome === null ? null : outcome.parse(row.outcome);
     // Reopening an open request writes nothing, whatever the version.
-    if (was === null) return { result: toRequestRow(item, row), undo: null };
-    const { request, taskId } = await reopenRequest(w, input, deps.now());
+    if (was === null || row.resolvedAt === null) {
+      return { result: toRequestRow(item, row), undo: null };
+    }
+    const { request, taskId } = await reopenRequest(w, input, was, deps.now());
     return {
       result: request,
       undo: {
         id: request.id,
         updatedAt: request.updatedAt,
         outcome: was,
+        resolvedAt: row.resolvedAt.toISOString(),
         taskId,
       },
     };
   },
-  async undo(w, r, deps) {
+  async undo(w, r) {
     if (!r) return;
     await setOutcome(
       w,
       { id: r.id, expectedUpdatedAt: r.updatedAt },
       r.outcome,
-      deps.now(),
+      new Date(r.resolvedAt),
     );
     if (r.taskId && (await liveType(w.tx, r.taskId)) === "task") {
       await linkOutcome(w, r.id, r.taskId);

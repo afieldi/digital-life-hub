@@ -162,8 +162,7 @@ async function setDeleted(deps: CoreDeps, id: string, deleted: boolean) {
 
 /**
  * Everything a request write can change, without versions: live items, their
- * request rows and links between live items. `resolved_at` is compared as set
- * or not, since re-resolving on undo stamps the time of the undo.
+ * request rows and links between live items.
  */
 async function snapshot(deps: CoreDeps) {
   const live = await deps.db.execute(sql`
@@ -172,7 +171,7 @@ async function snapshot(deps: CoreDeps) {
     .select({
       itemId: requests.itemId,
       outcome: requests.outcome,
-      resolved: sql<boolean>`${requests.resolvedAt} is not null`,
+      resolvedAt: requests.resolvedAt,
     })
     .from(requests)
     .where(
@@ -618,6 +617,41 @@ test("reopen keeps a link the person added", async () => {
   expect((await relatesFrom(deps, r.id)).map((l) => l.to_id).sort()).toEqual(
     [task.id, other.id].sort(),
   );
+  await close();
+});
+
+test("reopen finds a hand-linked task and its undo resolves with it again", async () => {
+  const { deps, caller, file, mkTask, close } = await setup();
+  const r = await file("Ping");
+  const task = await mkTask("Mine");
+  await caller.links.add({ fromId: r.id, toId: task.id, kind: "relates" });
+  const done = await caller.requests.resolve({
+    id: r.id,
+    expectedUpdatedAt: await version(deps, r.id),
+    outcome: "task",
+    taskId: task.id,
+  });
+  const reopened = await caller.requests.reopen({
+    id: r.id,
+    expectedUpdatedAt: done.result.updatedAt,
+  });
+  expect(await relatesFrom(deps, r.id)).toMatchObject([
+    { to_id: task.id, context: null },
+  ]);
+  expect(reopened.undo.record).toMatchObject({
+    outcome: "task",
+    taskId: task.id,
+    resolvedAt: done.result.resolvedAt,
+  });
+  deps.setNow(new Date("2026-10-30T13:00:00.000Z"));
+  await caller.ops.undo({ id: "requests.reopen", token: reopened.undo });
+  expect(await requestRow(deps, r.id)).toMatchObject({
+    outcome: "task",
+    resolvedAt: new Date(done.result.resolvedAt ?? ""),
+  });
+  expect(await relatesFrom(deps, r.id)).toMatchObject([
+    { to_id: task.id, context: null },
+  ]);
   await close();
 });
 

@@ -41,27 +41,44 @@ export async function anyItem(tx: Tx, id: string): Promise<Item | null> {
 }
 
 /**
- * The `relates` link that `resolve` or `makeTask` wrote from the request to its
- * task (`context = 'outcome'`), including one to a deleted task. A link the
- * person added by hand has another context and is never this one.
+ * The request's task and the `relates` link that names it. The link `resolve`
+ * or `makeTask` wrote (`context = 'outcome'`) comes first. When there is none
+ * and the request is resolved as `task`, its oldest `relates` link to a task:
+ * resolving as a task the person had already linked by hand keeps that link
+ * (links are unique per pair and kind), so it is the one that names the task.
+ * Deleted tasks count; `taskDeleted` says so.
  */
-export async function outcomeLink(
+export async function requestTask(
   tx: Tx,
   requestId: string,
-): Promise<{ linkId: string; taskId: string; taskDeleted: boolean } | null> {
+  outcome: string | null,
+): Promise<{
+  linkId: string;
+  taskId: string;
+  taskDeleted: boolean;
+  isOutcomeLink: boolean;
+} | null> {
   const rows = await tx.execute<{
     link_id: string;
     task_id: string;
     task_deleted: boolean;
+    is_outcome_link: boolean;
   }>(sql`
-    select l.id as link_id, t.id as task_id, t.deleted_at is not null as task_deleted
+    select l.id as link_id, t.id as task_id, t.deleted_at is not null as task_deleted,
+      l.context is not distinct from 'outcome' as is_outcome_link
     from links l
     join items t on t.id = l.to_id and t.type = 'task'
-    where l.from_id = ${requestId} and l.kind = 'relates' and l.context = 'outcome'
-    order by l.created_at, l.id
+    where l.from_id = ${requestId} and l.kind = 'relates'
+      and (l.context = 'outcome' or ${outcome} = 'task')
+    order by (l.context is not distinct from 'outcome') desc, l.created_at, l.id
     limit 1`);
   const r = rows[0];
   return r
-    ? { linkId: r.link_id, taskId: r.task_id, taskDeleted: r.task_deleted }
+    ? {
+        linkId: r.link_id,
+        taskId: r.task_id,
+        taskDeleted: r.task_deleted,
+        isOutcomeLink: r.is_outcome_link,
+      }
     : null;
 }
