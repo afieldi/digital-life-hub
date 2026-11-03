@@ -100,12 +100,23 @@ export type ShellApi = {
    * its version) refetch now, rather than when the change stream says so.
    */
   itemsChanged: () => void;
+  /**
+   * Opens a web link outside the app, in the system browser (or Slack's app
+   * for its links). Rejects when the link can't be opened.
+   */
+  openExternal: (url: string) => Promise<void>;
 };
+
+/** Outside a desktop shell (tests, the browser): a new window. */
+async function openInNewWindow(url: string): Promise<void> {
+  window.open(url, "_blank", "noopener");
+}
 
 const ShellContext = createContext<ShellApi>({
   openCommandBar: () => {},
   itemHref: () => undefined,
   itemsChanged: () => {},
+  openExternal: openInNewWindow,
 });
 
 /** Given by the shell around every module screen. */
@@ -133,4 +144,9 @@ export function useItemsChanged(): () => void {
 /** Finds the page of an item of any module's type. */
 export function useItemHref(): ShellApi["itemHref"] {
   return useContext(ShellContext).itemHref;
+}
+
+/** Opens a web link outside the app (see `ShellApi.openExternal`). */
+export function useOpenExternal(): ShellApi["openExternal"] {
+  return useContext(ShellContext).openExternal;
 }

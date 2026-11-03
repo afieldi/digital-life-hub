@@ -26,7 +26,8 @@ export const fileInput = z
     fromName: z.string().trim().min(1).optional().describe("From"),
     source: source.optional(),
     sourceHandle: z.string().optional(),
-    sourceUrl: z.url().optional(),
+    // Detail opens it: only a web link, never `javascript:` or `file:`.
+    sourceUrl: z.url({ protocol: /^https?$/ }).optional(),
     externalId: z.string().min(1).optional(),
     receivedAt: z.iso.datetime().optional(),
     actions: z.array(requestAction).max(3).optional(),

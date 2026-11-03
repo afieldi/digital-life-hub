@@ -1,5 +1,12 @@
-import { useRecordView } from "@dlh/client";
-import { Button, Caption, EmptyState, SidePanel, Skeleton } from "@dlh/ui";
+import { useOpenExternal, useRecordView } from "@dlh/client";
+import {
+  Button,
+  Caption,
+  EmptyState,
+  SidePanel,
+  Skeleton,
+  toast,
+} from "@dlh/ui";
 import { useQuery } from "@tanstack/react-query";
 import { CircleAlert, ExternalLink } from "lucide-react";
 import { useState } from "react";
@@ -21,6 +28,17 @@ const received = (at: string) =>
     timeStyle: "short",
   }).format(new Date(at));
 
+/** The link to open, when it is a web link; `file` only takes those. */
+function webLink(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "http:" || protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The Detail panel (`/queue/$id`): sender, when it came, the full body, a
  * link to where it came from, and the outcomes. A resolved request shows its
@@ -36,6 +54,7 @@ export function RequestDetail({
   useRecordView(id);
   const requests = useRequestsApi();
   const outcomes = useOutcomes();
+  const openExternal = useOpenExternal();
   const [making, setMaking] = useState(false);
   const detail = useQuery({
     queryKey: requestKeys.get(id),
@@ -64,7 +83,7 @@ export function RequestDetail({
   }
 
   const { request, task } = data;
-  const url = request.sourceUrl;
+  const url = webLink(request.sourceUrl);
   return (
     <SidePanel title={request.title} onClose={onClose}>
       <div className="flex items-center gap-2">
@@ -82,7 +101,11 @@ export function RequestDetail({
         <div>
           <Button
             variant="glass"
-            onPress={() => void window.open(url, "_blank", "noopener")}
+            onPress={() =>
+              void openExternal(url).catch(() =>
+                toast("Couldn't open the link", { tone: "error" }),
+              )
+            }
           >
             <ExternalLink aria-hidden="true" size={16} />
             {request.source === "slack" ? "Open in Slack" : "Open original"}

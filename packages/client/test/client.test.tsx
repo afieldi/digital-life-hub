@@ -8,6 +8,7 @@ import {
   useItemHref,
   useItemsChanged,
   useModuleApi,
+  useOpenExternal,
   useOpenItem,
   useRecordView,
 } from "../src/index";
@@ -128,7 +129,14 @@ test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do not
     }),
     {
       wrapper: ({ children }: { children: ReactNode }) => (
-        <ShellProvider value={{ openCommandBar, itemHref, itemsChanged }}>
+        <ShellProvider
+          value={{
+            openCommandBar,
+            itemHref,
+            itemsChanged,
+            openExternal: async () => {},
+          }}
+        >
           {children}
         </ShellProvider>
       ),
@@ -148,4 +156,34 @@ test("useCommandBar, useItemHref and useItemsChanged use the shell's, and do not
   expect(() => bare.result.current.bar.open()).not.toThrow();
   expect(() => bare.result.current.changed()).not.toThrow();
   expect(bare.result.current.href({ id: "1", type: "task" })).toBeUndefined();
+});
+
+test("useOpenExternal uses the shell's, and opens a new window without one", async () => {
+  const openExternal = vi.fn(async () => {});
+  const { result } = renderHook(() => useOpenExternal(), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <ShellProvider
+        value={{
+          openCommandBar: () => {},
+          itemHref: () => undefined,
+          itemsChanged: () => {},
+          openExternal,
+        }}
+      >
+        {children}
+      </ShellProvider>
+    ),
+  });
+  await result.current("https://x.slack.com/archives/1");
+  expect(openExternal).toHaveBeenCalledWith("https://x.slack.com/archives/1");
+
+  const open = vi.spyOn(window, "open").mockReturnValue(null);
+  const bare = renderHook(() => useOpenExternal());
+  await bare.result.current("https://example.com/a");
+  expect(open).toHaveBeenCalledWith(
+    "https://example.com/a",
+    "_blank",
+    "noopener",
+  );
+  open.mockRestore();
 });

@@ -63,3 +63,13 @@ test("refined inputs are still objects, for describeOperation", () => {
   expectTypeOf<Source>().toEqualTypeOf<"manual" | "ai" | "slack" | "agent">();
   expectTypeOf<Outcome>().toEqualTypeOf<"task" | "handled" | "not_for_me">();
 });
+
+test("sourceUrl takes only http and https links", () => {
+  const ok = (sourceUrl: string) =>
+    fileInput.safeParse({ title: "A", sourceUrl }).success;
+  expect(ok("javascript:alert(1)")).toBe(false);
+  expect(ok("javascript://%0aalert(1)")).toBe(false);
+  expect(ok("file:///etc/passwd")).toBe(false);
+  expect(ok("https://x.slack.com/archives/1")).toBe(true);
+  expect(ok("http://example.com/a")).toBe(true);
+});

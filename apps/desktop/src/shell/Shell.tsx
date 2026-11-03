@@ -25,6 +25,7 @@ import {
 } from "../operations/useOperationStep";
 import { createHotkeys } from "./hotkeys";
 import { iconFor } from "./icons";
+import { openExternal } from "./openExternal";
 import { goToRows, itemRows, jumpGroup, matchesQuery } from "./palette";
 import {
   loadSceneOverride,
@@ -110,6 +111,7 @@ export function Shell() {
       openCommandBar,
       itemHref: (item) => registry.itemTypes.get(item.type)?.href(item.id),
       itemsChanged,
+      openExternal,
     }),
     [openCommandBar, itemsChanged],
   );
