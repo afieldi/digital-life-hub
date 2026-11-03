@@ -1,9 +1,13 @@
 import type { DeviceInput } from "@dlh/api-contract";
 import type { Db } from "@dlh/db";
-import { createCoreDeps, type ServerModule } from "@dlh/server";
-import { FakeProvider } from "@dlh/server/testing";
+import {
+  createCoreDeps,
+  type OperationsRouter,
+  type ServerModule,
+} from "@dlh/server";
+import { FakeProvider, type fixtureServer } from "@dlh/server/testing";
 
-export { freshModuleDb } from "@dlh/server/testing";
+export { fixtureServer, freshModuleDb } from "@dlh/server/testing";
 export { serverModules };
 
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";
@@ -54,6 +58,12 @@ function noDb(): Db {
 export type TestApiRouter<Extra extends readonly ServerModule[]> = ReturnType<
   typeof composeApi<[...typeof serverModules, ...Extra]>
 >["router"];
+
+/** The fixture module's router, as a desktop test page calls it. */
+export type FixtureRouter = OperationsRouter<typeof fixtureServer.operations>;
+
+/** A client for the API with the fixture module mounted. */
+export type FixtureClient = TRPCClient<TestApiRouter<[typeof fixtureServer]>>;
 
 export function createTestApi(
   opts: {

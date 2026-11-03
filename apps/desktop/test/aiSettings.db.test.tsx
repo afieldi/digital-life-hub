@@ -7,7 +7,12 @@ import {
   type CliStatus,
   setCliRunnerForTests,
 } from "../src/ai/cli";
-import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
+import {
+  createFixture,
+  dismissToasts,
+  freshApiDb,
+  signedInApp,
+} from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 beforeEach(() => localStorage.clear());
@@ -52,9 +57,13 @@ type SeedOpts = {
 async function seeded(opts: SeedOpts) {
   const t = await freshApiDb();
   closers.push(t.close);
-  const app = await signedInApp("/settings", { db: t.db, ...opts });
-  const client = app.api.client(app.token);
-  const item = await client.sample.create.mutate({ title: "Hello item" });
+  const app = await signedInApp("/settings", {
+    db: t.db,
+    fixture: true,
+    ...opts,
+  });
+  const client = app.fixture;
+  const item = await createFixture(client, { title: "Hello item" });
   return { ...app, client, item, fake: app.api.ai };
 }
 

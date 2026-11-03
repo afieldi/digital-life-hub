@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useTRPC, useTRPCClient } from "../api/client";
 import { AiResult, CHECKLIST_KEYS } from "./AiResult";
-import { ALL_ACTIONS } from "./actions";
+import { useAllActions } from "./actions";
 import { errorActions } from "./errorActions";
 import { PROVIDER_NAMES } from "./providers";
 import { allowedKinds, UnderstoodAs } from "./UnderstoodAs";
@@ -84,6 +84,7 @@ export function useAskAi({
   onOpenChange: (open: boolean) => void;
 } {
   const trpc = useTRPC();
+  const allActions = useAllActions();
   const openItemId = useOpenItem();
   const item = useQuery({
     ...trpc.items.get.queryOptions(openItemId ? { id: openItemId } : skipToken),
@@ -103,8 +104,8 @@ export function useAskAi({
   const itemId = itemType ? openItemId : null;
   const actions = useMemo(
     () =>
-      itemType === undefined ? null : applicableActions(ALL_ACTIONS, itemType),
-    [itemType],
+      itemType === undefined ? null : applicableActions(allActions, itemType),
+    [itemType, allActions],
   );
   const { interpretation: interp, current: interpCurrent } = useInterpretation(
     open ? query : "",
@@ -118,7 +119,7 @@ export function useAskAi({
     ? [{ actionId: interp.actionId, kind: interp.kind }, ...interp.alternatives]
     : [];
   const forced = forcedActionId
-    ? ALL_ACTIONS.find((a) => a.id === forcedActionId)
+    ? allActions.find((a) => a.id === forcedActionId)
     : undefined;
   const candidate = forced
     ? (candidates.find((c) => c.actionId === forced.id) ?? {
@@ -192,7 +193,7 @@ export function useAskAi({
 
   const showApplied = useCallback(
     (requestId: string, summary: string, req: AiRunRequest | undefined) => {
-      const acted = ALL_ACTIONS.find((a) => a.id === req?.actionId);
+      const acted = allActions.find((a) => a.id === req?.actionId);
       const canSuggest =
         req?.kind === "do" &&
         !!acted &&
@@ -216,7 +217,7 @@ export function useAskAi({
         ],
       });
     },
-    [client, showOptions],
+    [client, showOptions, allActions],
   );
 
   // Each Do runs on its own, so its toast's Cancel stops only that one.

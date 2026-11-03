@@ -2,7 +2,7 @@ import { Button, Checkbox, Kbd, toast } from "@dlh/ui";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "react-aria-components";
 import { useTRPC } from "../api/client";
-import { registry } from "../modules";
+import { useRegistry } from "../modules";
 import { ListResult } from "../operations/ListResult";
 import type { AiAction } from "./errorActions";
 import type { AiUiState } from "./useAiRequest";
@@ -15,6 +15,7 @@ const linkClass =
 
 /** The items an answer relied on, as links to their pages. Deleted ones are left out. */
 function UsedItems({ ids, onOpen }: { ids: string[]; onOpen: () => void }) {
+  const registry = useRegistry();
   const trpc = useTRPC();
   const items = useQueries({
     queries: ids.map((id) => ({
@@ -75,6 +76,7 @@ export function AiResult({
   /** Opens a listed row's page. */
   onOpen: (href: string) => void;
 }) {
+  const registry = useRegistry();
   const { result } = state;
   if (state.phase === "working") {
     return (

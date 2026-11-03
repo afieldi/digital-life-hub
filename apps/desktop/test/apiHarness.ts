@@ -1,5 +1,13 @@
 import { resolve } from "node:path";
-import { createTestApi, freshModuleDb, serverModules } from "@dlh/api/testing";
+import {
+  createTestApi,
+  type FixtureClient,
+  fixtureServer,
+  freshModuleDb,
+  serverModules,
+  type TestApiRouter,
+} from "@dlh/api/testing";
+import { collectModules } from "@dlh/core";
 import type { Db } from "@dlh/db";
 import { createMemoryHistory } from "@tanstack/react-router";
 import {
@@ -14,7 +22,15 @@ import { App } from "../src/App";
 import { createApi } from "../src/api/client";
 import { devSignIn } from "../src/auth/signIn";
 import { memoryTokenStore, type TokenStore } from "../src/auth/tokenStore";
+import { registry, SHELL_RESERVED } from "../src/modules";
 import { createAppRouter } from "../src/router";
+import { fixtureManifest } from "./fixture/manifest";
+
+/** The app's registry with the test-only fixture module added. */
+export const registryWithFixture = collectModules(
+  [...registry.modules, fixtureManifest],
+  SHELL_RESERVED,
+);
 
 /**
  * A fresh test database with Core's and every module's migrations. jsdom gives
@@ -34,6 +50,8 @@ export async function signedInApp(
     db?: Db;
     /** Runs the server with no OpenRouter key. */
     noOpenRouter?: boolean;
+    /** Mounts the test-only fixture module (item type `fixture`) on both sides. */
+    fixture?: boolean;
     /** Wraps the API fetch, e.g. to delay or fail a request. */
     wrapFetch?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch;
     /** Builds the router in place of the app's own, e.g. to mount one component. */
@@ -47,11 +65,14 @@ export async function signedInApp(
   tokenStore: TokenStore;
   renderApp(opts?: { sessionCheckMs?: number }): RenderResult;
   router: ReturnType<typeof createAppRouter>;
+  /** A client that also reaches `fixture.*` (with `fixture: true`). */
+  fixture: FixtureClient;
 }> {
   const api = createTestApi({
     devAuth: true,
     db: opts.db,
     noOpenRouter: opts.noOpenRouter,
+    modules: opts.fixture ? [fixtureServer] : [],
   });
   const { token } = await api.client().auth.devSignIn.mutate({
     device: { name: "Browser (dev)", platform: "web" },
@@ -59,7 +80,9 @@ export async function signedInApp(
   const apiFetch = opts.wrapFetch ? opts.wrapFetch(api.fetch) : api.fetch;
   const tokenStore = memoryTokenStore(token);
   const history = createMemoryHistory({ initialEntries: [path] });
-  const router = (opts.createRouter ?? createAppRouter)(history);
+  const router = opts.createRouter
+    ? opts.createRouter(history)
+    : createAppRouter(history, opts.fixture ? registryWithFixture : registry);
   const renderApp = (opts: { sessionCheckMs?: number } = {}) =>
     render(
       createElement(App, {
@@ -72,7 +95,16 @@ export async function signedInApp(
         },
       }),
     );
-  return { api, token, tokenStore, renderApp, router };
+  const fixture = api.clientAs<TestApiRouter<[typeof fixtureServer]>>(token);
+  return { api, token, tokenStore, renderApp, router, fixture };
+}
+
+/** A fixture item (type `fixture`), created through `fixture.create`. */
+export async function createFixture(
+  client: FixtureClient,
+  input: { title: string },
+) {
+  return (await client.fixture.create.mutate(input)).result;
 }
 
 /**

@@ -14,7 +14,12 @@ import {
   type CliRunner,
   setCliRunnerForTests,
 } from "../src/ai/cli";
-import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
+import {
+  createFixture,
+  dismissToasts,
+  freshApiDb,
+  signedInApp,
+} from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -28,16 +33,16 @@ afterEach(async () => {
 async function setup(opts: { onHome?: boolean } = {}) {
   const t = await freshApiDb();
   closers.push(t.close);
-  const app = await signedInApp("/", { db: t.db });
-  const client = app.api.client(app.token);
-  const sample = await client.sample.create.mutate({ title: "Hello item" });
-  if (!opts.onHome) app.router.history.push(`/sample/${sample.id}`);
+  const app = await signedInApp("/", { db: t.db, fixture: true });
+  const client = app.fixture;
+  const item = await createFixture(client, { title: "Hello item" });
+  if (!opts.onHome) app.router.history.push(`/fixture/${item.id}`);
   app.renderApp();
   if (!opts.onHome) {
     await screen.findByRole("heading", { name: "Hello item", level: 1 });
   }
-  const title = async () => (await client.items.get.query(sample)).title;
-  return { ...app, client, sample, fake: app.api.ai, title };
+  const title = async () => (await client.items.get.query(item)).title;
+  return { ...app, client, item, fake: app.api.ai, title };
 }
 
 async function ask(text: string) {
@@ -213,7 +218,7 @@ test("Show options after a Do runs the same request as Suggest", async () => {
 
 test("an Ask answer shows the items it used as links, and Copy", async () => {
   const { fake, client } = await setup();
-  const other = await client.sample.create.mutate({ title: "Linked note" });
+  const other = await createFixture(client, { title: "Linked note" });
   fake.queue(
     JSON.stringify({ answer: "It greets the world.", used: [other.id] }),
   );
@@ -223,7 +228,7 @@ test("an Ask answer shows the items it used as links, and Copy", async () => {
   await userEvent.keyboard("{Enter}");
   expect(await screen.findByText("It greets the world.")).toBeInTheDocument();
   const link = await screen.findByRole("link", { name: "Linked note" });
-  expect(link).toHaveAttribute("href", `/sample/${other.id}`);
+  expect(link).toHaveAttribute("href", `/fixture/${other.id}`);
   expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
 });
 
@@ -356,8 +361,12 @@ test("text with no action words keeps the bar's own rows and ↵", async () => {
   await new Promise((r) => setTimeout(r, 100));
   expect(screen.queryByText("Understood as")).toBeNull();
   expect(screen.queryByRole("radiogroup", { name: "Kind" })).toBeNull();
+  // ↵ runs the bar's top row (a palette action, whose toast is its label), not an AI request.
+  const [top] = await screen.findAllByRole("option");
+  const label = top?.textContent ?? "";
+  expect(label).toMatch(/^Hello from /);
   await userEvent.keyboard("{Enter}");
-  expect(await screen.findByText("Hello from Sample")).toBeInTheDocument();
+  expect(await screen.findByText(label)).toBeInTheDocument();
   const { entries } = await client.ai.log.list.query({});
   expect(entries).toHaveLength(0);
 });
@@ -463,7 +472,7 @@ test("a CLI that exits non-zero with no output shows its exit code", async () =>
 
 test("on Home, ↵ opens a matching search result and asks no AI; ⌘↵ asks", async () => {
   const { client, fake } = await setup({ onHome: true });
-  await client.sample.create.mutate({ title: "How to brew coffee" });
+  await createFixture(client, { title: "How to brew coffee" });
 
   fake.queue(JSON.stringify({ answer: "Grind, bloom, pour.", used: [] }));
   await ask("how to brew coffee");
@@ -496,7 +505,7 @@ test("on Home, ↵ opens a matching search result and asks no AI; ⌘↵ asks", 
 
 test("on an item, ↵ opens a listed result row instead of running the request", async () => {
   const { client, fake, title } = await setup();
-  await client.sample.create.mutate({ title: "Give this a better title" });
+  await createFixture(client, { title: "Give this a better title" });
   await ask("give this a better title");
   await screen.findByText("Rename");
   await screen.findByRole("option", { name: /Give this a better title/ });
@@ -548,7 +557,7 @@ test("the log records the interpreter only when its own pick ran", async () => {
 
 test("on Home, ↵ typed before search settles asks no AI; once rows arrive it opens one", async () => {
   const { client, fake } = await setup({ onHome: true });
-  await client.sample.create.mutate({ title: "How to brew coffee" });
+  await createFixture(client, { title: "How to brew coffee" });
   fake.queue(JSON.stringify({ answer: "Grind, bloom, pour.", used: [] }));
   await ask("how to brew coffee");
   await screen.findByText("Answer");
@@ -577,7 +586,7 @@ test("on Home, ↵ typed before search settles asks no AI; once rows arrive it o
 
 test("on an item, ↵ typed before search settles does not run a Do", async () => {
   const { client, fake, title } = await setup();
-  await client.sample.create.mutate({ title: "Rename budget" });
+  await createFixture(client, { title: "Rename budget" });
   fake.queue(JSON.stringify({ title: "Budget" }));
   await ask("rename budget");
   await screen.findByText("Rename");
@@ -598,7 +607,7 @@ test("on an item, ↵ typed before search settles does not run a Do", async () =
 
 test("mod+↵ right after typing a matched request asks AI without waiting for search", async () => {
   const { client, fake } = await setup({ onHome: true });
-  await client.sample.create.mutate({ title: "How to brew coffee" });
+  await createFixture(client, { title: "How to brew coffee" });
   fake.queue(JSON.stringify({ answer: "Grind, bloom, pour.", used: [] }));
   await ask("how to brew coffee");
   await screen.findByText("Answer");
@@ -612,7 +621,7 @@ test("mod+↵ right after typing a matched request asks AI without waiting for s
 
 test("mod+↵ before the request is understood does nothing", async () => {
   const { client, fake } = await setup({ onHome: true });
-  await client.sample.create.mutate({ title: "How to brew coffee" });
+  await createFixture(client, { title: "How to brew coffee" });
   const input = await ask("how to brew coffee");
   await screen.findByText("Answer");
   await screen.findByRole("option", { name: /How to brew coffee/ });
