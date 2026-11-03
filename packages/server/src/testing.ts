@@ -96,6 +96,7 @@ export function testDeps(
         : Object.entries(opts.deleteWith ?? {}),
     ),
     operations: opts.operations ?? new Map(),
+    moduleConfig: new Map(),
     fakeProvider,
     setNow(date) {
       clock = date;

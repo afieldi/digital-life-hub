@@ -29,6 +29,8 @@ export type CoreDeps = {
   deleteWith: ReadonlyMap<string, DeleteWith>;
   /** Operation id -> module operation, for `ops.undo`. */
   operations: ReadonlyMap<string, ImplementedOperation>;
+  /** Module id -> its checked config (`configFor`), for modules that declare one. */
+  moduleConfig: ReadonlyMap<string, unknown>;
 };
 
 /** Augmented by apps/api (`declare module "@dlh/server"`) with its own deps. */
