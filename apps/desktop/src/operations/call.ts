@@ -1,11 +1,9 @@
 import type { AppRouter } from "@dlh/api/router";
+import type { UndoToken } from "@dlh/client";
 import type { OperationDescription } from "@dlh/core";
-import { type TRPCClient, TRPCClientError } from "@trpc/client";
+import type { TRPCClient } from "@trpc/client";
 
 type Client = TRPCClient<AppRouter>;
-
-/** What a mutation hands back to undo it, as `ops.undo` takes it. */
-export type UndoToken = Parameters<Client["ops"]["undo"]["mutate"]>[0]["token"];
 
 type Procedure = {
   query: (input: unknown) => Promise<unknown>;
@@ -45,11 +43,6 @@ export async function undoOperation(
 ): Promise<string> {
   const { summary } = await client.ops.undo.mutate({ id, token });
   return summary;
-}
-
-/** A write refused because the item changed since it was read. */
-export function isConflict(err: unknown): err is TRPCClientError<AppRouter> {
-  return err instanceof TRPCClientError && err.data?.code === "CONFLICT";
 }
 
 /** Whether a mutation's result carries an `undo` token to send back to `ops.undo`. */

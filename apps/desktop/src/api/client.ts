@@ -1,4 +1,5 @@
 import type { AppRouter as ApiRouter } from "@dlh/api/router";
+import { isTransient } from "@dlh/client";
 import { QueryClient } from "@tanstack/react-query";
 import {
   createTRPCClient,
@@ -46,8 +47,9 @@ export function createApi(opts: {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        // Retrying cannot fix a rejected session; let it sign out at once.
-        retry: (failureCount, err) => !isUnauthorized(err) && failureCount < 3,
+        // Only a failure that may pass: retrying can't bring back a deleted
+        // item, fix a refused input or a rejected session (which signs out).
+        retry: (failureCount, err) => isTransient(err) && failureCount < 3,
       },
     },
   });

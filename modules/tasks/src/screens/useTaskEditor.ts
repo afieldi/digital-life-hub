@@ -1,3 +1,4 @@
+import type { ApiErrorKind } from "@dlh/client";
 import { dayOfDue, deviceTimeZone } from "@dlh/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { taskOps } from "../operations";
@@ -18,9 +19,11 @@ export const SAVE_PAUSE_MS = 500;
 /**
  * Edits to one task, saved with `update` after a pause in typing (or at once
  * with `now`), always with the newest version. `draft` holds what is shown
- * until the save is back; a refused save keeps it and is sent again once the
- * task is reloaded (and with the next edit after that). Unmounting saves what is still waiting. Notes save
- * quietly; a due or priority change toasts with Undo.
+ * until the save is back. A save refused because the task changed is sent
+ * again once the task is reloaded; one that failed to arrive waits for the
+ * next edit; one for a deleted task is dropped; one the server refused keeps
+ * the draft without sending it again on its own. Unmounting saves what is
+ * still waiting. Notes save quietly; a due or priority change toasts with Undo.
  */
 export function useTaskEditor(
   id: string,
@@ -44,6 +47,7 @@ export function useTaskEditor(
       const row = cache.cachedRow(id);
       if (!row || Object.keys(fields).length === 0) return;
       const quiet = Object.keys(fields).every((k) => k === "notes");
+      let failure: ApiErrorKind | undefined;
       void send(id, row.updatedAt, (expectedUpdatedAt) => {
         const input = { id, expectedUpdatedAt, ...fields };
         return {
@@ -52,16 +56,27 @@ export function useTaskEditor(
           verb: "save the task",
           call: () => tasks.update.mutate(input),
           quiet,
+          onError: (kind) => {
+            failure = kind;
+          },
         };
       }).then(async (item) => {
         if (!item) {
-          // Refused (changed since, or failed): what the person typed stays on
-          // screen and waits to be sent again, behind anything typed since.
+          if (failure === "gone") {
+            // Deleted elsewhere: nothing to save it to.
+            setDraft({});
+            return;
+          }
+          // What the person typed stays on screen and waits to be sent
+          // again, behind anything typed since: with the next edit.
           waiting.current = { ...fields, ...waiting.current };
-          if (retry) return;
-          // Once, with the version the reload brings; else at the next edit.
-          await reload().catch(() => {});
-          flushRef.current(true);
+          if (failure !== "conflict" || retry) return;
+          // Changed since: once more, with the version the reload brings.
+          const reloaded = await reload().then(
+            () => true,
+            () => false,
+          );
+          if (reloaded) flushRef.current(true);
           return;
         }
         cache.patchRow(id, {

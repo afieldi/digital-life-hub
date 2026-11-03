@@ -1,4 +1,9 @@
-import { UNDO_TOAST_MS, useOpenItem } from "@dlh/client";
+import {
+  apiErrorMessage,
+  isConflict,
+  UNDO_TOAST_MS,
+  useOpenItem,
+} from "@dlh/client";
 import {
   deviceTimeZone,
   formFields,
@@ -34,7 +39,7 @@ import {
   useState,
 } from "react";
 import { useTRPC, useTRPCClient } from "../api/client";
-import { callOperation, hasUndo, isConflict, undoOperation } from "./call";
+import { callOperation, hasUndo, undoOperation } from "./call";
 import { ListResult } from "./ListResult";
 import {
   appliesTo,
@@ -67,10 +72,13 @@ type ListState = {
   list: OperationList | null;
 };
 
-/** A failed call: a conflict says what the server said; anything else is an error. */
+/**
+ * A failed call: a conflict or a refused input says what the server said;
+ * anything else is an error.
+ */
 function showError(err: unknown, fallback: string) {
-  if (isConflict(err)) toast(err.message);
-  else toast(fallback, { tone: "error" });
+  if (isConflict(err)) toast(err instanceof Error ? err.message : fallback);
+  else toast(apiErrorMessage(err, fallback), { tone: "error" });
 }
 
 /**

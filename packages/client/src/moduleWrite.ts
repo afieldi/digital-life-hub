@@ -11,13 +11,80 @@ export type UndoToken = Parameters<
 /** How long a write's toast keeps its Undo. */
 export const UNDO_TOAST_MS = 10_000;
 
+/**
+ * What went wrong with an API call, as a screen reacts to it:
+ * - `conflict`: the item changed since it was read; reload and try again.
+ * - `gone`: it doesn't exist (deleted elsewhere); retrying can't help.
+ * - `invalid`: the server refused the input; its message says why.
+ * - `forbidden` / `unauthorized`: not allowed, or signed out.
+ * - `network`: no answer from the server; it may work later.
+ * - `server`: the server failed (or the app threw); it may work later.
+ */
+export type ApiErrorKind =
+  | "conflict"
+  | "gone"
+  | "invalid"
+  | "forbidden"
+  | "unauthorized"
+  | "network"
+  | "server";
+
+/** The tRPC error code an API failure carries, if any. */
+function codeOf(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null || !("data" in err)) return;
+  const { data } = err;
+  if (typeof data !== "object" || data === null || !("code" in data)) return;
+  return typeof data.code === "string" ? data.code : undefined;
+}
+
+export function apiErrorKind(err: unknown): ApiErrorKind {
+  switch (codeOf(err)) {
+    case "CONFLICT":
+      return "conflict";
+    case "NOT_FOUND":
+      return "gone";
+    case "BAD_REQUEST":
+    case "PARSE_ERROR":
+    case "UNPROCESSABLE_CONTENT":
+    case "PAYLOAD_TOO_LARGE":
+    case "PRECONDITION_FAILED":
+      return "invalid";
+    case "FORBIDDEN":
+      return "forbidden";
+    case "UNAUTHORIZED":
+      return "unauthorized";
+    case undefined:
+      // A tRPC error with no code never reached the server.
+      return err instanceof Error && err.name === "TRPCClientError"
+        ? "network"
+        : "server";
+    default:
+      return "server";
+  }
+}
+
+/** Whether trying the same call again may work: no answer, or a server failure. */
+export function isTransient(err: unknown): boolean {
+  const kind = apiErrorKind(err);
+  return kind === "network" || kind === "server";
+}
+
+/**
+ * The server's own words for a refused input ("title must be 1 to 500
+ * characters"), else `fallback`. A schema failure's message is the raw issue
+ * list, so it gets the fallback too.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (apiErrorKind(err) !== "invalid" || !(err instanceof Error)) {
+    return fallback;
+  }
+  const message = err.message.trim();
+  return message && !message.startsWith("[") ? message : fallback;
+}
+
 /** A write refused because the item changed since it was read. */
 export function isConflict(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { data?: { code?: string } }).data?.code === "CONFLICT"
-  );
+  return apiErrorKind(err) === "conflict";
 }
 
 /**
@@ -49,6 +116,8 @@ export type ModuleWrite<T> = {
   call: () => Promise<{ result: T; undo?: unknown }>;
   /** No success toast, e.g. for notes saved as you type. Failures still toast. */
   quiet?: boolean;
+  /** Called with what went wrong when the write fails, after the toast. */
+  onError?: (kind: ApiErrorKind) => void;
 };
 
 export type ModuleWriteOptions = {
@@ -80,10 +149,17 @@ export function useModuleWrite({
     );
   }, [queryClient, itemsChanged, queryKeys]);
   const failed = useCallback(
-    (err: unknown, verb: string) => {
-      if (isConflict(err)) toast(conflictMessage);
-      else toast(`Couldn't ${verb}`, { tone: "error" });
+    (err: unknown, verb: string): ApiErrorKind => {
+      const kind = apiErrorKind(err);
+      if (kind === "conflict") toast(conflictMessage);
+      else if (kind === "gone") {
+        toast(`Couldn't ${verb}: it was deleted`, { tone: "error" });
+      } else {
+        const why = apiErrorMessage(err, "");
+        toast(`Couldn't ${verb}${why ? `: ${why}` : ""}`, { tone: "error" });
+      }
       void refresh();
+      return kind;
     },
     [refresh, conflictMessage],
   );
@@ -95,12 +171,15 @@ export function useModuleWrite({
       verb,
       call,
       quiet,
+      onError,
     }: ModuleWrite<T>): Promise<T | null> => {
       let res: { result: T; undo?: unknown };
       try {
         res = await call();
       } catch (err) {
-        failed(err, verb);
+        // Not `onError?.(failed(...))`: that skips `failed` without an onError.
+        const kind = failed(err, verb);
+        onError?.(kind);
         return null;
       }
       void refresh();

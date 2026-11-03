@@ -679,3 +679,19 @@ describe("Detail", () => {
     expect(within(linked).getByText("Task · links here")).toBeInTheDocument();
   });
 });
+
+test("a deleted task's page says so at once, with no Retry", async () => {
+  const { renderApp, client, router } = await setup("/tasks");
+  const { result: task } = await client.tasks.create.mutate({ title: "Gone" });
+  await client.items.delete.mutate({
+    id: task.id,
+    expectedUpdatedAt: task.updatedAt,
+  });
+  renderApp();
+  const started = Date.now();
+  await router.navigate({ to: `/tasks/${task.id}` });
+  expect(await screen.findByText("This task was deleted")).toBeInTheDocument();
+  // NOT_FOUND isn't retried: no backoff before the message.
+  expect(Date.now() - started).toBeLessThan(900);
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+});
