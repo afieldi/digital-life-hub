@@ -373,8 +373,10 @@ async function finish(
 }
 
 /**
- * Each option with the items it names resolved; an ambiguous one becomes its
- * matches, and at most three are kept.
+ * Each option with the items it names resolved. An option naming nothing that
+ * exists is skipped; `not_found` only when every option is. Each option keeps
+ * its best match first, then ambiguous ones fill the rest with their other
+ * matches, at most three in all.
  */
 async function resolveAll(
   deps: CoreDeps,
@@ -384,16 +386,32 @@ async function resolveAll(
 ): Promise<Record<string, unknown>[]> {
   const { resolve } = runner;
   if (!resolve) return options;
-  const all: Record<string, unknown>[] = [];
+  const best: Record<string, unknown>[] = [];
+  const others: Record<string, unknown>[] = [];
+  let missing: AiError | undefined;
   for (const o of options) {
-    const r = await resolve.call(runner, deps, o, { timeZone });
-    if ("out" in r) all.push(r.out as Record<string, unknown>);
-    else
-      all.push(
-        ...r.options.map((m) => ({ ...(m.out as object), label: m.label })),
-      );
+    let r: Awaited<ReturnType<typeof resolve>>;
+    try {
+      r = await resolve.call(runner, deps, o, { timeZone });
+    } catch (e) {
+      if (e instanceof AiError && e.code === "not_found") {
+        missing ??= e;
+        continue;
+      }
+      throw e;
+    }
+    if ("out" in r) best.push(r.out as Record<string, unknown>);
+    else {
+      const [first, ...rest] = r.options.map((m) => ({
+        ...(m.out as object),
+        label: m.label,
+      }));
+      if (first) best.push(first);
+      others.push(...rest);
+    }
   }
-  return all.slice(0, MAX_OPTIONS);
+  if (best.length === 0 && missing) throw missing;
+  return [...best, ...others].slice(0, MAX_OPTIONS);
 }
 
 /** Stores the options for `apply` and shows their labels. */
