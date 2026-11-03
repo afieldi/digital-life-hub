@@ -1,6 +1,6 @@
 import { coreAiRunners, scopedWriter, writeItems } from "../src";
 import { itemContext } from "../src/ai/context";
-import { freshTestDb, testDeps } from "../src/testing";
+import { freshTestDb, noTools, testDeps } from "../src/testing";
 
 const runner = (id: string) => {
   const r = coreAiRunners.find((x) => x.action.id === id);
@@ -40,6 +40,7 @@ test("retitle apply renames and undo restores", async () => {
       scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
       { title: "New" },
       ctx,
+      noTools,
     ),
   );
   expect((await itemContext(deps, item.id)).item?.title).toBe("New");
@@ -49,6 +50,7 @@ test("retitle apply renames and undo restores", async () => {
       r,
       scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
       record,
+      noTools,
     ),
   );
   expect((await itemContext(deps, item.id)).item?.title).toBe("Old");
@@ -66,6 +68,7 @@ test("retitle undo after an intervening edit conflicts", async () => {
       scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
       { title: "New" },
       ctx,
+      noTools,
     ),
   );
   const mid = await itemContext(deps, item.id);
@@ -84,6 +87,7 @@ test("retitle undo after an intervening edit conflicts", async () => {
         r,
         scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
         record,
+        noTools,
       ),
     ),
   ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -100,6 +104,7 @@ test("undo rejects a malformed record", async () => {
         r,
         scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
         { nope: 1 },
+        noTools,
       ),
     ),
   ).rejects.toThrow();
@@ -117,6 +122,7 @@ test("delete apply soft-deletes and undo restores", async () => {
       scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
       {},
       ctx,
+      noTools,
     ),
   );
   await expect(itemContext(deps, item.id)).rejects.toBeDefined();
@@ -126,6 +132,7 @@ test("delete apply soft-deletes and undo restores", async () => {
       r,
       scopedWriter(w, { effects: r.action.effects, itemId: item.id }),
       record,
+      noTools,
     ),
   );
   expect((await itemContext(deps, item.id)).item?.title).toBe("Old");

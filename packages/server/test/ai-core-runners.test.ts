@@ -1,5 +1,6 @@
 import { coreAiRunners } from "../src";
 import type { AiContext } from "../src/ai/context";
+import { noTools } from "../src/testing";
 
 const runner = (id: string) => {
   const r = coreAiRunners.find((x) => x.action.id === id);
@@ -89,16 +90,16 @@ test("apply and undo throw when the writer lacks the method they need", async ()
   >[0];
   const retitle = runner("retitle");
   const del = runner("delete");
-  await expect(retitle.apply?.(none, { title: "New" }, ctx)).rejects.toThrow(
-    "retitle needs updateItem",
+  await expect(
+    retitle.apply?.(none, { title: "New" }, ctx, noTools),
+  ).rejects.toThrow("retitle needs updateItem");
+  await expect(
+    retitle.undo?.(none, { id: "i", updatedAt: "v", title: "Old" }, noTools),
+  ).rejects.toThrow("retitle needs updateItem");
+  await expect(del.apply?.(none, {}, ctx, noTools)).rejects.toThrow(
+    "delete needs setDeleted",
   );
   await expect(
-    retitle.undo?.(none, { id: "i", updatedAt: "v", title: "Old" }),
-  ).rejects.toThrow("retitle needs updateItem");
-  await expect(del.apply?.(none, {}, ctx)).rejects.toThrow(
-    "delete needs setDeleted",
-  );
-  await expect(del.undo?.(none, { id: "i", updatedAt: "v" })).rejects.toThrow(
-    "delete needs setDeleted",
-  );
+    del.undo?.(none, { id: "i", updatedAt: "v" }, noTools),
+  ).rejects.toThrow("delete needs setDeleted");
 });

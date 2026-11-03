@@ -7,7 +7,6 @@ import {
   itemContext,
   MAX_CONTEXT_CHARS,
   PREAMBLE,
-  type RunnerTools,
 } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -15,12 +14,6 @@ import { tasksAiActions } from "../ai";
 import { hasTaskParent } from "./links";
 import { dueBetweenRows, rowsByIds } from "./reads";
 import { create, update } from "./writes";
-
-/** Hand-written runners write through Core's tools, which `runApply` and `undo` always pass. */
-function needTools(tools: RunnerTools | undefined): RunnerTools {
-  if (!tools) throw new Error("Tasks AI runners need Core's RunnerTools");
-  return tools;
-}
 
 function onScreen(ctx: { item: { id: string } | null }): string {
   if (!ctx.item) throw new Error("No task on screen");
@@ -55,7 +48,7 @@ Break the task into 3 to 7 concrete subtasks, each a short title that starts wit
   },
   /** Do creates every subtask; a suggestion creates the ticked ones, in one go. */
   async apply(_w, out, ctx, tools) {
-    const { mutate } = needTools(tools);
+    const { mutate } = tools;
     const parentId = onScreen(ctx);
     for (const title of titlesOf(out)) {
       await mutate(create, { title, parentId });
@@ -99,7 +92,7 @@ Rewrite the task's notes (the item's body) so they are clearer and easier to sca
       .strict(),
   },
   async apply(_w, out, ctx, tools) {
-    const { mutate } = needTools(tools);
+    const { mutate } = tools;
     const { undo } = await mutate(update, {
       id: onScreen(ctx),
       expectedUpdatedAt: ctx.version,
@@ -108,7 +101,7 @@ Rewrite the task's notes (the item's body) so they are clearer and easier to sca
     return { record: undo.record };
   },
   async undo(_w, record, tools) {
-    await needTools(tools).revert(update, rewriteUndo.parse(record).record);
+    await tools.revert(update, rewriteUndo.parse(record).record);
   },
   // Each version's text, so the person reads both before picking.
   preview: (option) =>

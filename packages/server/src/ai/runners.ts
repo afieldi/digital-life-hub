@@ -43,9 +43,9 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
     w: ScopedWriter,
     out: unknown,
     ctx: AiContext,
-    tools?: RunnerTools,
+    tools: RunnerTools,
   ): Promise<unknown>;
-  undo?(w: ScopedWriter, record: unknown, tools?: RunnerTools): Promise<void>;
+  undo?(w: ScopedWriter, record: unknown, tools: RunnerTools): Promise<void>;
   summary?(out: unknown, ctx: AiContext): string;
   /** Ask only: answers with rows from the model's output, with no second call. */
   list?(

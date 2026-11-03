@@ -125,3 +125,18 @@ export async function subtaskIds(
     ${onlyUnshared ? unshared : sql``}`);
   return rows.map((r) => r.id);
 }
+
+/** Whether a live task that contains `id` is itself inside a live task. */
+export async function hasTaskGrandparent(tx: Tx, id: string): Promise<boolean> {
+  const rows = await tx.execute<{ found: boolean }>(sql`
+    select exists (
+      select 1 from links l
+      join items p on p.id = l.from_id and p.deleted_at is null
+      join tasks t on t.item_id = p.id
+      join links l2 on l2.to_id = p.id and l2.kind = 'contains'
+      join items g on g.id = l2.from_id and g.deleted_at is null
+      join tasks tg on tg.item_id = g.id
+      where l.to_id = ${id} and l.kind = 'contains'
+    ) as found`);
+  return rows[0]?.found ?? false;
+}
