@@ -64,8 +64,9 @@ export function changesHandler(
           if (closed) return;
           if (!row) close();
           else void stream.write(": ping\n\n");
-        } catch {
+        } catch (err) {
           // The store failed; end the stream so the client reconnects.
+          console.error("changes: session check failed", err);
           close();
         }
       }, heartbeatMs);

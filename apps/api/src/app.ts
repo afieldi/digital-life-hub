@@ -33,7 +33,7 @@ export function createApp(deps: AppDeps): Hono {
           error.code === "INTERNAL_SERVER_ERROR" ||
           error.code === "BAD_GATEWAY"
         ) {
-          console.error(`tRPC ${error.code} on ${path ?? "<unknown>"}`);
+          console.error(`tRPC ${error.code} on ${path ?? "<unknown>"}`, error);
         }
       },
       createContext: (_opts, c) =>
