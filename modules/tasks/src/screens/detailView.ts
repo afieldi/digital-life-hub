@@ -1,5 +1,4 @@
-import type { ItemSummary, Link } from "@dlh/core";
-import { type Day, formatWhen } from "../dates";
+import { type Day, formatWhen, type ItemSummary, type Link } from "@dlh/core";
 
 /** "Created Oct 28 · edited Today 14:05", 24-hour in `tz`. */
 export function editedLine(

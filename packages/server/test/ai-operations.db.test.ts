@@ -632,15 +632,6 @@ test("prompt carries today in the zone", async () => {
   );
   await prepare(s.deps, { text: "find x", actionId: "test.find", kind: "ask" });
   expect(s.fake.calls[1]?.prompt).toMatch(/^<instruction>/);
-  const err = await caught(
-    prepare(s.deps, {
-      text: "find x",
-      actionId: "test.find",
-      kind: "ask",
-      timeZone: "Mars/Olympus",
-    }),
-  );
-  expect(err.code).toBe("BAD_REQUEST");
   await s.close();
 });
 

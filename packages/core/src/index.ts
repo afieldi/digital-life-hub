@@ -77,3 +77,24 @@ export type { FieldSpec } from "./operations/fields";
 export { fields, formFields, OperationError } from "./operations/fields";
 export type { ModuleRegistry, ReservedShell } from "./registry";
 export { collectModules, ModuleRegistryError } from "./registry";
+export type { Day } from "./time";
+export {
+  addDays,
+  clock,
+  dayLabel,
+  dayLabelYear,
+  dayOfDue,
+  dayValue,
+  deviceTimeZone,
+  formatDue,
+  formatWhen,
+  fullDayLabel,
+  instantBounds,
+  isTimeZone,
+  moveToDay,
+  timeZoneValue,
+  todayIn,
+  utcNoon,
+  weekdayShort,
+  weekStartOf,
+} from "./time";

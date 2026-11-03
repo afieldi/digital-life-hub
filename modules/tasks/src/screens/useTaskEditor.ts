@@ -1,8 +1,8 @@
+import { dayOfDue, deviceTimeZone } from "@dlh/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dayOfDue } from "../dates";
 import { taskOps } from "../operations";
 import type { Due, Priority } from "../schema";
-import { deviceTimeZone, useTasksApi } from "./api";
+import { useTasksApi } from "./api";
 import { type RowCache, useVersionedWrite } from "./rowWrites";
 
 /** The fields the Detail panel edits in place. */

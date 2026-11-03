@@ -1,5 +1,6 @@
 import { UNDO_TOAST_MS, useOpenItem } from "@dlh/client";
 import {
+  deviceTimeZone,
   formFields,
   type ItemSummary,
   type ModuleRegistry,
@@ -49,8 +50,6 @@ import {
 
 /** Query keys for palette `load`s; every write refreshes them. */
 const LOAD_KEY = ["palette-load"] as const;
-
-const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const GROUP_LABELS: Record<OperationGroupId, string> = {
   create: "Create",

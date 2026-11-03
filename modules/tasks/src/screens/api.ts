@@ -17,9 +17,6 @@ export const TASKS_KEY = ["tasks"] as const;
 /** A task's page: the Detail panel. */
 export const taskHref = (id: string) => `/tasks/${id}`;
 
-export const deviceTimeZone = () =>
-  Intl.DateTimeFormat().resolvedOptions().timeZone;
-
 /** What a Tasks write refreshes, and what a conflict says. */
 const TASK_WRITE: ModuleWriteOptions = {
   queryKeys: [TASKS_KEY],

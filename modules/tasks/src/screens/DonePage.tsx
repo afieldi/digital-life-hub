@@ -1,3 +1,4 @@
+import { deviceTimeZone, todayIn, weekStartOf } from "@dlh/core";
 import {
   Button,
   Caption,
@@ -14,9 +15,8 @@ import {
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { CircleAlert, ListChecks, Sun } from "lucide-react";
 import type { ReactNode } from "react";
-import { todayIn, weekStartOf } from "../dates";
 import type { TaskRow } from "../schema";
-import { deviceTimeZone, taskHref, useTasksApi } from "./api";
+import { taskHref, useTasksApi } from "./api";
 import { dayBars, doneMeta, groupDone } from "./doneView";
 import type { ListSearch } from "./lastList";
 import { taskKeys, useOpenList, useWeekStats } from "./queries";

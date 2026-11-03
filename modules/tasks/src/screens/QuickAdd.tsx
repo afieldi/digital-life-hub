@@ -1,10 +1,10 @@
-import type { Item } from "@dlh/core";
+import { deviceTimeZone, type Item } from "@dlh/core";
 import { CaptureField, Kbd, TypeTile } from "@dlh/ui";
 import { type Ref, useMemo, useState } from "react";
 import { parseTaskInput } from "../capture";
 import { taskOps } from "../operations";
 import type { Due } from "../schema";
-import { deviceTimeZone, useTasksApi, useTaskWrite } from "./api";
+import { useTasksApi, useTaskWrite } from "./api";
 
 export type QuickAddProps = {
   /** Used when the text names no date, e.g. the day an Add button sits on. */

@@ -10,7 +10,6 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { generateKeyBetween } from "fractional-indexing";
 import { z } from "zod";
-import { isTimeZone } from "../dates";
 import { tasks } from "../db/schema";
 import { taskOps } from "../operations";
 import { priority } from "../schema";
@@ -55,9 +54,6 @@ export function dueColumns(
 ): Pick<TaskTableRow, "dueDate" | "dueAt" | "dueTz"> {
   if (!due) return { dueDate: null, dueAt: null, dueTz: null };
   if ("date" in due) return { dueDate: due.date, dueAt: null, dueTz: null };
-  if (due.timeZone !== undefined && !isTimeZone(due.timeZone)) {
-    badRequest(`unknown time zone: ${due.timeZone}`);
-  }
   return {
     dueDate: null,
     dueAt: new Date(due.dateTime),

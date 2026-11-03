@@ -306,9 +306,6 @@ importers:
       '@trpc/server':
         specifier: ^11.22.1
         version: 11.22.1(typescript@5.9.3)
-      chrono-node:
-        specifier: ^2.10.3
-        version: 2.10.3
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(postgres@4.0.0)
@@ -399,6 +396,12 @@ importers:
 
   packages/core:
     dependencies:
+      '@internationalized/date':
+        specifier: ^3.12.4
+        version: 3.12.4
+      chrono-node:
+        specifier: ^2.10.3
+        version: 2.10.3
       react:
         specifier: ^19
         version: 19.3.1
