@@ -32,16 +32,10 @@ export async function purgeExpired(deps: CoreDeps): Promise<PurgeResult> {
   const undoCutoff = new Date(now - AI_UNDO_RETENTION_DAYS * DAY_MS);
   const pendingCutoff = new Date(now - AI_PENDING_EXPIRY_MS);
   const suggestedCutoff = new Date(now - AI_SUGGESTED_EXPIRY_MS);
-  return deps.db.transaction(async (tx) => {
-    const views = await tx
-      .delete(itemViews)
-      .where(lt(itemViews.viewedAt, viewCutoff))
-      .returning({ id: itemViews.id });
-    const removed = await tx
-      .delete(items)
-      .where(and(isNotNull(items.deletedAt), lt(items.deletedAt, itemCutoff)))
-      .returning({ id: items.id });
-    const aiExpired = await tx
+  // AI housekeeping commits on its own first: a module table whose rows block
+  // an item's delete then fails only the item purge.
+  const ai = await deps.db.transaction(async (tx) => {
+    const expired = await tx
       .update(aiRequests)
       .set({ status: "expired", output: null, finishedAt: nowDate })
       .where(
@@ -75,11 +69,21 @@ export async function purgeExpired(deps: CoreDeps): Promise<PurgeResult> {
       .where(lt(aiRequests.createdAt, aiCutoff))
       .returning({ id: aiRequests.id });
     return {
-      items: removed.length,
-      views: views.length,
       aiRequests: aiDeleted.length,
       aiUndoCleared: aiUndoCleared.length,
-      aiExpired: aiExpired.length,
+      aiExpired: expired.length,
     };
   });
+  const removed = await deps.db.transaction(async (tx) => {
+    const views = await tx
+      .delete(itemViews)
+      .where(lt(itemViews.viewedAt, viewCutoff))
+      .returning({ id: itemViews.id });
+    const deleted = await tx
+      .delete(items)
+      .where(and(isNotNull(items.deletedAt), lt(items.deletedAt, itemCutoff)))
+      .returning({ id: items.id });
+    return { items: deleted.length, views: views.length };
+  });
+  return { ...removed, ...ai };
 }

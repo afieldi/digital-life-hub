@@ -1,5 +1,5 @@
 import { aiRequests, items, itemViews } from "@dlh/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { purgeExpired } from "../src/items/purge";
 import { freshTestDb, testDeps } from "../src/testing";
 
@@ -147,5 +147,23 @@ test("purging an item sets ai_requests.item_id to null", async () => {
   const res = await purgeExpired(deps);
   expect(res.items).toBe(1);
   expect((await get(id))!.itemId).toBeNull();
+  await close();
+});
+
+test("a table blocking an item's delete fails the item purge only; AI expiry still commits", async () => {
+  const { db, deps, req, get, close } = await setup();
+  const [old] = await db
+    .insert(items)
+    .values({ type: "t", title: "old", deletedAt: ago(31 * DAY) })
+    .returning();
+  // A module table whose foreign key forgot ON DELETE CASCADE.
+  await db.execute(
+    sql`create table blocker (item_id uuid not null references items(id))`,
+  );
+  await db.execute(sql`insert into blocker values (${old!.id})`);
+  const stale = await req({ status: "pending", createdAt: ago(10 * MIN) });
+  await expect(purgeExpired(deps)).rejects.toThrow();
+  expect((await get(stale))?.status).toBe("expired");
+  expect(await db.select().from(items)).toHaveLength(1);
   await close();
 });
