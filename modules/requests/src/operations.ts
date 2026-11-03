@@ -79,7 +79,10 @@ const resolve = describeOperation({
     params: z.object({
       outcome: z.enum(["handled", "not_for_me"]).describe("Outcome"),
     }),
-    prefill: (ctx) => ({ outcome: outcomeIn(ctx.text) }),
+    // ⌘K takes the word it matched ("not for me") out of the text.
+    prefill: (ctx) => ({
+      outcome: outcomeIn(ctx.name ?? "") ?? outcomeIn(ctx.text),
+    }),
     toInput: (ctx, params) => ({ ...onScreen(ctx), outcome: params.outcome }),
   },
 });

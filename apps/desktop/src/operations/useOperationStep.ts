@@ -374,9 +374,11 @@ export function useOperationStep({
 
   let groups: CommandGroup[] | undefined;
   if (active) {
-    const ctx = {
+    const match = operationText(active, query);
+    const ctx: PaletteContext = {
       ...baseCtx(),
-      text: operationText(active, query)?.text ?? query.trim(),
+      text: match?.text ?? query.trim(),
+      ...(match ? { name: match.name } : {}),
     };
     const plan = planOperation(active, ctx, loaded[active.id]);
     const group = active.group ?? "actions";

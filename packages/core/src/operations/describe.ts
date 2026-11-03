@@ -9,6 +9,11 @@ export type PaletteContext = {
   item?: { id: string; type: string; updatedAt: string };
   /** What was typed after the action's name. */
   text: string;
+  /**
+   * The action's name as ⌘K matched it, lowercased: its label or one of its
+   * `words` ("not for me"), which `text` no longer holds.
+   */
+  name?: string;
   now: Date;
   /** The device's IANA zone. */
   timeZone: string;

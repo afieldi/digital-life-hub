@@ -57,8 +57,15 @@ export function appliesTo(
     : scopes.includes("*") || scopes.includes(itemType);
 }
 
-/** How the query named an operation: by its label, or only by one of its `words`. */
-export type OperationMatch = { text: string; by: "label" | "word" };
+/**
+ * How the query named an operation: `by` its label or only by one of its
+ * `words`, the `name` it matched (lowercased) and the `text` after it.
+ */
+export type OperationMatch = {
+  text: string;
+  by: "label" | "word";
+  name: string;
+};
 
 /**
  * The text typed after the operation's name: the query starts with its label
@@ -84,9 +91,10 @@ export function operationText(
     return {
       text: q.slice(name.length).trim(),
       by: byLabel ? "label" : "word",
+      name,
     };
   }
-  return byLabel ? { text: "", by: "label" } : null;
+  return byLabel ? { text: "", by: "label", name: label } : null;
 }
 
 /**
@@ -253,8 +261,8 @@ export function operationRow(
  * ⌘K rows for the operations that apply to the item on screen and that the
  * query names, by group: those named by their label first, then those named
  * only by a word ("due friday" lists before it reschedules), each in registry
- * order. Choosing one passes its context, with `text` set to what was typed
- * after its name.
+ * order. Choosing one passes its context, with `name` set to the name it
+ * matched and `text` to what was typed after it.
  */
 export function operationRows(
   ops: readonly OperationDescription[],
@@ -282,7 +290,7 @@ export function operationRows(
     (a, b) => Number(a.match.by === "word") - Number(b.match.by === "word"),
   );
   for (const { op, match } of matched) {
-    const full = { ...ctx, text: match.text };
+    const full = { ...ctx, text: match.text, name: match.name };
     const plan = planOperation(op, full, loaded[op.id]);
     rows[op.group ?? "actions"].push(
       operationRow(op, plan, () => onChoose(op, full)),
