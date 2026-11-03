@@ -1,6 +1,7 @@
 import {
   apiErrorMessage,
   isConflict,
+  queueVersioned,
   UNDO_TOAST_MS,
   useOpenItem,
 } from "@dlh/client";
@@ -71,6 +72,27 @@ type ListState = {
   query: string;
   list: OperationList | null;
 };
+
+/**
+ * Runs a write to the item `input` names (`id` and `expectedUpdatedAt`) behind
+ * that item's other writes, screens' included, with the newest version known.
+ * Other inputs run as they are.
+ */
+function versioned<T>(input: unknown, run: (input: unknown) => Promise<T>) {
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "id" in input &&
+    typeof input.id === "string" &&
+    "expectedUpdatedAt" in input &&
+    typeof input.expectedUpdatedAt === "string"
+  ) {
+    return queueVersioned(input.id, input.expectedUpdatedAt, (v) =>
+      run({ ...input, expectedUpdatedAt: v }),
+    );
+  }
+  return run(input);
+}
 
 /**
  * A failed call: a conflict or a refused input says what the server said;
@@ -224,7 +246,7 @@ export function useOperationStep({
     async (op: OperationDescription, input: unknown, label?: string) => {
       setOpen(false);
       try {
-        const res = await callOperation(client, op, input);
+        const res = await versioned(input, (i) => callOperation(client, op, i));
         const undo = hasUndo(res) ? res.undo : null;
         refresh();
         toast(label ?? op.summary(input as never), {

@@ -1,3 +1,4 @@
+import { queueVersioned as queueItemWrite } from "@dlh/client";
 import { deviceTimeZone } from "@dlh/core";
 import { toast } from "@dlh/ui";
 import { type QueryKey, useQueryClient } from "@tanstack/react-query";
@@ -5,39 +6,6 @@ import { useCallback, useMemo } from "react";
 import { taskOps } from "../operations";
 import type { TaskRow } from "../schema";
 import { type TaskWrite, useTasksApi, useTaskWrite } from "./api";
-
-/**
- * Writes for one task run one after another, whichever screen sends them, so
- * a quick second change goes out with the version the first one wrote.
- */
-const queues = new Map<string, Promise<void>>();
-
-/** The newest version a write of ours got back, per task. */
-const versions = new Map<string, string>();
-
-function enqueue<T>(id: string, run: () => Promise<T>): Promise<T> {
-  const next = (queues.get(id) ?? Promise.resolve()).then(run);
-  const settled = next.then(
-    () => {},
-    () => {},
-  );
-  queues.set(id, settled);
-  void settled.then(() => {
-    if (queues.get(id) === settled) queues.delete(id);
-  });
-  return next;
-}
-
-/** `seen` (what a cache holds), unless one of our writes has since moved past it. */
-function freshest(id: string, seen: string): string {
-  const ours = versions.get(id);
-  return ours && ours > seen ? ours : seen;
-}
-
-function noteVersion(id: string, updatedAt: string) {
-  const ours = versions.get(id);
-  if (!ours || updatedAt > ours) versions.set(id, updatedAt);
-}
 
 /** The new version in a write's result: the item, or `complete`'s `task`. */
 function versionIn(result: unknown): string | undefined {
@@ -48,21 +16,16 @@ function versionIn(result: unknown): string | undefined {
 }
 
 /**
- * Runs `run` for task `id` behind that task's other writes, with the newest
- * version we know of (the cache's `seen`, or a later one our writes got back),
- * and remembers the version its result carries.
+ * Runs `run` for task `id` behind that task's other writes (screens' and
+ * ⌘K's), with the newest version we know of, and remembers the version its
+ * result carries.
  */
 export function queueVersioned<T>(
   id: string,
   seen: string,
   run: (expectedUpdatedAt: string) => Promise<T>,
 ): Promise<T> {
-  return enqueue(id, async () => {
-    const result = await run(freshest(id, seen));
-    const version = versionIn(result);
-    if (version) noteVersion(id, version);
-    return result;
-  });
+  return queueItemWrite(id, seen, run, versionIn);
 }
 
 /**
