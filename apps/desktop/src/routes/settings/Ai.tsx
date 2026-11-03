@@ -14,7 +14,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { type Key, useState } from "react";
+import { type Key, useRef, useState } from "react";
 import { ALL_ACTIONS } from "../../ai/actions";
 import {
   type CliProviderId,
@@ -238,6 +238,9 @@ export function Ai() {
   const trpc = useTRPC();
   const settings = useQuery(trpc.ai.settings.get.queryOptions());
   const [error, setError] = useState<string | null>(null);
+  // The model as the field held it on focus. Blur saves when it differs: the
+  // loaded settings can lag a save still refetching, so they can't decide.
+  const modelOnFocus = useRef<string | null>(null);
   const save = useMutation(
     trpc.ai.settings.set.mutationOptions({
       onMutate: () => setError(null),
@@ -299,9 +302,12 @@ export function Ai() {
               label="OpenRouter model"
               description="Leave empty to use the server's default."
               defaultValue={data.openrouterModel ?? ""}
+              onFocus={(e) => {
+                modelOnFocus.current = e.target.value.trim() || null;
+              }}
               onBlur={(e) => {
                 const value = e.target.value.trim() || null;
-                if (value !== data.openrouterModel) {
+                if (value !== modelOnFocus.current) {
                   save.mutate({ openrouterModel: value });
                 }
               }}

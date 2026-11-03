@@ -44,7 +44,12 @@ function fakeStatus(
 
 type Seeded = Awaited<ReturnType<typeof seeded>>;
 
-async function seeded(opts: { noOpenRouter?: boolean }) {
+type SeedOpts = {
+  noOpenRouter?: boolean;
+  wrapFetch?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch;
+};
+
+async function seeded(opts: SeedOpts) {
   const t = await freshApiDb();
   closers.push(t.close);
   const app = await signedInApp("/settings", { db: t.db, ...opts });
@@ -55,7 +60,7 @@ async function seeded(opts: { noOpenRouter?: boolean }) {
 
 /** Starts the app on Settings; `seed` runs before it renders. */
 async function setup(
-  opts: { noOpenRouter?: boolean; seed?: (s: Seeded) => Promise<void> } = {},
+  opts: SeedOpts & { seed?: (s: Seeded) => Promise<void> } = {},
 ) {
   const s = await seeded(opts);
   await opts.seed?.(s);
@@ -181,6 +186,41 @@ test("the OpenRouter model is saved, and emptied it becomes unset", async () => 
   );
   await userEvent.clear(model);
   await userEvent.tab();
+  await waitFor(async () =>
+    expect((await client.ai.settings.get.query()).openrouterModel).toBeNull(),
+  );
+});
+
+test("clearing the model before the screen refetches still unsets it", async () => {
+  fakeStatus();
+  // After the first save, hold the screen's settings refetch until released,
+  // so the field is cleared while the screen still shows the old settings.
+  let saved = false;
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => {
+    release = r;
+  });
+  const { client } = await setup({
+    wrapFetch: (inner) => async (input, init) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("ai.settings.set")) saved = true;
+      else if (saved && url.includes("ai.settings.get")) await held;
+      return inner(input, init);
+    },
+  });
+  const model = await screen.findByRole("textbox", {
+    name: "OpenRouter model",
+  });
+  await userEvent.type(model, "acme/some-model");
+  await userEvent.tab();
+  await waitFor(async () =>
+    expect((await client.ai.settings.get.query()).openrouterModel).toBe(
+      "acme/some-model",
+    ),
+  );
+  await userEvent.clear(model);
+  await userEvent.tab();
+  release();
   await waitFor(async () =>
     expect((await client.ai.settings.get.query()).openrouterModel).toBeNull(),
   );
