@@ -1,6 +1,8 @@
 # Queue — Deep-dive Spec
 
-Nov 2, 2026 · Arek · Draft
+Nov 2, 2026 · Arek · Implemented
+
+**Status:** implemented (Nov 2026); the manual Done check is pending.
 
 ## Scope
 
@@ -138,9 +140,9 @@ Every Queue operation marked ✓ is an AI action through the operation adapter. 
 **Shell**
 
 - Nav slot "Queue", `g q`. The open count shows as a quiet number beside it, only when above 0.
-- Item type colour `--color-type-request`, chosen in the design pass to stand apart from the five existing colours.
+- Item type colour `--color-type-request`, chosen in the design pass to stand apart from the five existing colours. Provisionally `#8fd3cf` until that pass.
 
-**Home widget.** The manifest declares `homeWidgets: [needsYou]`: the open count and the three oldest requests with their outcome actions. It renders once Home exists; Home's spec defines `HomeWidget`, and this is its first user.
+**Home widget.** The manifest declares `homeWidgets: [needsYou]`: the open count and the three oldest requests with their outcome actions. It renders nothing at 0 open, and Home will place it once it exists; Home's spec defines `HomeWidget`, and this is its first user.
 
 **States.** Empty: Open "Nothing waiting on you"; Resolved "Nothing resolved yet". Loading: skeleton rows. Error: `EmptyState` with Retry. A conflicting write refetches and shows "It changed elsewhere; try again".
 
@@ -176,5 +178,5 @@ One milestone, one PR:
 
 ## Open questions
 
-- [ ] The request colour token's value (design pass).
+- [ ] The request colour token's final value (design pass). `--color-type-request` is provisionally `#8fd3cf`.
 - [ ] Whether Resolved needs more than 30 days once Slack fills the queue.

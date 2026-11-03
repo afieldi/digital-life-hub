@@ -2,6 +2,7 @@ import { defineModule } from "@dlh/core";
 import { createRoute } from "@tanstack/react-router";
 import { requestOps } from "./operations";
 import { DetailRoute } from "./screens/DetailRoute";
+import { NeedsYou } from "./screens/NeedsYou";
 import { OpenCount } from "./screens/OpenCount";
 import { OpenPage } from "./screens/OpenPage";
 import { parseQueueSearch } from "./screens/QueueHeader";
@@ -42,5 +43,6 @@ export default defineModule({
       component: DetailRoute,
     }),
   ],
+  homeWidgets: [{ id: "needsYou", label: "Needs you", component: NeedsYou }],
   operations: Object.values(requestOps),
 });

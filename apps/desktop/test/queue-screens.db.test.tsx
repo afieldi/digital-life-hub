@@ -1,4 +1,10 @@
 import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  type RouterHistory,
+} from "@tanstack/react-router";
+import {
   cleanup,
   fireEvent,
   screen,
@@ -7,6 +13,9 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach } from "vitest";
+import { registry } from "../src/modules";
+import type { AppRouter } from "../src/router";
+import { Shell } from "../src/shell/Shell";
 import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
@@ -426,5 +435,75 @@ describe("Detail", () => {
       await within(p).findByRole("button", { name: "Handled" }),
     ).toBeInTheDocument();
     expect(within(p).queryByText("Task deleted")).toBeNull();
+  });
+});
+
+describe("Needs you", () => {
+  /** The widget as the manifest declares it, alone in the shell, as Home will place it. */
+  const widgetRouter = (history: RouterHistory) => {
+    const widget = registry.modules
+      .find((m) => m.id === "requests")
+      ?.homeWidgets?.find((w) => w.id === "needsYou");
+    if (!widget) throw new Error("requests declares no needsYou widget");
+    const Widget = widget.component;
+    const root = createRootRoute({ component: Shell });
+    return createRouter({
+      history,
+      routeTree: root.addChildren([
+        createRoute({
+          getParentRoute: () => root,
+          path: "/",
+          component: () => <Widget />,
+        }),
+      ]),
+    }) as unknown as AppRouter;
+  };
+
+  test("NeedsYou shows the count and the three oldest", async () => {
+    const { renderApp, client } = await setup("/", {
+      createRouter: widgetRouter,
+    });
+    for (const [title, h] of [
+      ["Ask D", 1],
+      ["Ask C", 20],
+      ["Ask A", 40],
+      ["Ask B", 30],
+    ] as const) {
+      await file(client, { title, receivedAt: hoursAgo(h) });
+    }
+    renderApp();
+    const widget = await screen.findByRole("region", { name: "Needs you" });
+    expect(await within(widget).findByText("4 open")).toBeVisible();
+    expect(
+      within(widget)
+        .getAllByRole("link")
+        .map((l) => l.textContent),
+    ).toEqual(["Ask A", "Ask B", "Ask C"]);
+
+    await userEvent.click(
+      within(widget).getByRole("button", { name: "Handled: Ask A" }),
+    );
+    // The next oldest takes its place.
+    await within(widget).findByRole("link", { name: "Ask D" });
+    expect(within(widget).getByText("3 open")).toBeVisible();
+    expect(within(widget).queryByRole("link", { name: "Ask A" })).toBeNull();
+  });
+
+  test("NeedsYou shows nothing at 0 open", async () => {
+    const { renderApp, client } = await setup("/", {
+      createRouter: widgetRouter,
+    });
+    const only = await file(client, { title: "Only ask" });
+    await client.requests.resolve.mutate({
+      id: only.id,
+      expectedUpdatedAt: only.updatedAt,
+      outcome: "handled",
+    });
+    renderApp();
+    await screen.findByRole("navigation", { name: "Primary" });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
+    expect(screen.queryByText(/ open$/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Only ask" })).toBeNull();
   });
 });
