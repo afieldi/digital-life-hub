@@ -91,6 +91,7 @@ export function createTestApi(
     devErrors: devAuth,
     config: {
       port: 0,
+      host: "127.0.0.1",
       databaseUrl: "",
       google: { clientId: "test", clientSecret: "test" },
       allowedEmail,

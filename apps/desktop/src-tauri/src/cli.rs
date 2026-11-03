@@ -994,3 +994,46 @@ head -c 2048 /dev/zero > "$out""#;
         assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"code":"timeout","message":"m"}"#);
     }
 }
+
+// Windows has no process groups here: `kill_all` falls back to `Child::kill`, and
+// `poll_exit` to `try_wait`. These check that path on the Windows CI runner.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    fn ping() -> PathBuf {
+        let root = std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from(r"C:\Windows"));
+        PathBuf::from(root).join("System32").join("PING.EXE")
+    }
+
+    fn long_run(limits: Limits, cancel: &AtomicBool) -> Result<Finished, CliError> {
+        let dir = tempfile::tempdir().unwrap();
+        let args = ["-n", "30", "127.0.0.1"].map(OsString::from);
+        run_process(&ping(), &args, Vec::new(), dir.path(), limits, cancel)
+    }
+
+    #[test]
+    fn timeout_kills_the_process() {
+        let began = Instant::now();
+        let limits = Limits { timeout: Duration::from_millis(500), max_output: 1 << 20 };
+        let err = long_run(limits, &AtomicBool::new(false)).err().expect("timed out");
+        assert_eq!(err.code, "timeout");
+        assert!(began.elapsed() < Duration::from_secs(5), "took {:?}", began.elapsed());
+    }
+
+    #[test]
+    fn cancel_kills_the_process() {
+        let began = Instant::now();
+        let limits = Limits { timeout: Duration::from_secs(60), max_output: 1 << 20 };
+        let err = long_run(limits, &AtomicBool::new(true)).err().expect("cancelled");
+        assert_eq!(err.code, "cancelled");
+        assert!(began.elapsed() < Duration::from_secs(5), "took {:?}", began.elapsed());
+    }
+
+    #[test]
+    fn output_over_the_cap_kills_the_process() {
+        let limits = Limits { timeout: Duration::from_secs(60), max_output: 16 };
+        let err = long_run(limits, &AtomicBool::new(false)).err().expect("too large");
+        assert_eq!(err.code, "too_large");
+    }
+}

@@ -93,7 +93,13 @@ test("internal errors carry no stack when devAuth is off", async () => {
   expect((err as { data: Record<string, unknown> }).data).not.toHaveProperty(
     "stack",
   );
-  expect(log).toHaveBeenCalled();
+  // The server log keeps what the client doesn't get: the cause and its stack.
+  const logged = log.mock.calls.find((c) =>
+    String(c[0]).includes("INTERNAL_SERVER_ERROR on devices.list"),
+  );
+  expect((logged?.[1] as Error | undefined)?.cause).toMatchObject({
+    message: "db exploded",
+  });
   log.mockRestore();
 });
 

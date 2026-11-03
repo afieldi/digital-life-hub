@@ -90,7 +90,6 @@ const deps = {
 const app = createApp(deps);
 startPurgeJob(deps);
 
-const hostname = process.env.HOST || "127.0.0.1";
-serve({ fetch: app.fetch, port: config.port, hostname }, () => {
-  console.log(`API listening on http://${hostname}:${config.port}`);
+serve({ fetch: app.fetch, port: config.port, hostname: config.host }, () => {
+  console.log(`API listening on http://${config.host}:${config.port}`);
 });
