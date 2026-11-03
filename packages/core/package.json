@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./capture": "./src/capture.ts",
+    "./fixture": "./src/fixture.ts",
     "./testing": "./src/ai/suite.ts"
   },
   "scripts": {

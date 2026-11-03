@@ -1,17 +1,18 @@
 import type { DeviceInput } from "@dlh/api-contract";
 import type { Db } from "@dlh/db";
-import { createCoreDeps } from "@dlh/server";
+import { createCoreDeps, type ServerModule } from "@dlh/server";
 import { FakeProvider } from "@dlh/server/testing";
 
 export { freshModuleDb } from "@dlh/server/testing";
 export { serverModules };
 
 import { createTRPCClient, httpLink, type TRPCClient } from "@trpc/client";
+import type { AnyRouter } from "@trpc/server";
 import { createApp } from "./app";
 import type { GoogleOAuth } from "./auth/google";
 import { memoryAuthStore } from "./auth/memoryStore";
 import { serverModules } from "./modules.gen";
-import { type AppRouter, composed } from "./router";
+import { type AppRouter, composeApi } from "./router";
 
 export class FakeGoogle implements GoogleOAuth {
   identity: { email: string; emailVerified: boolean };
@@ -49,8 +50,15 @@ function noDb(): Db {
   });
 }
 
+/** The router `createTestApi({ modules })` serves: the API's modules, then `Extra`. */
+export type TestApiRouter<Extra extends readonly ServerModule[]> = ReturnType<
+  typeof composeApi<[...typeof serverModules, ...Extra]>
+>["router"];
+
 export function createTestApi(
   opts: {
+    /** Modules mounted beside the API's own, e.g. `fixtureServer`; reach them with `clientAs`. */
+    modules?: readonly ServerModule[];
     devAuth?: boolean;
     allowedEmail?: string;
     db?: Db;
@@ -72,7 +80,8 @@ export function createTestApi(
   const devAuth = opts.devAuth ?? false;
   // OpenRouter in tests: queue model outputs on `ai`.
   const ai = opts.aiProvider ?? new FakeProvider();
-  const core = createCoreDeps(composed, {
+  const api = composeApi([...serverModules, ...(opts.modules ?? [])]);
+  const core = createCoreDeps(api.composed, {
     db: opts.db ?? noDb(),
     now: clock.now,
     devErrors: devAuth,
@@ -96,21 +105,23 @@ export function createTestApi(
     store,
     google,
   };
-  const app = createApp(deps);
+  const app = createApp(deps, api.router);
 
   const fetchApi: typeof fetch = (input, init) =>
     Promise.resolve(app.fetch(new Request(input, init)));
 
+  const links = (token?: string) => [
+    httpLink({
+      url: "http://api.test/trpc",
+      fetch: fetchApi,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+  ];
   const client = (token?: string): TRPCClient<AppRouter> =>
-    createTRPCClient<AppRouter>({
-      links: [
-        httpLink({
-          url: "http://api.test/trpc",
-          fetch: fetchApi,
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }),
-      ],
-    });
+    createTRPCClient<AppRouter>({ links: links(token) });
+  /** A client typed for the extra `modules`: `clientAs<TestApiRouter<[typeof m]>>(token)`. */
+  const clientAs = <R extends AnyRouter>(token?: string): TRPCClient<R> =>
+    createTRPCClient<R>({ links: links(token) });
 
   const signIn = async (device: DeviceInput = DEFAULT_DEVICE) => {
     const c = client();
@@ -132,6 +143,7 @@ export function createTestApi(
     clock,
     fetch: fetchApi,
     client,
+    clientAs,
     signIn,
   };
 }

@@ -1,9 +1,9 @@
 import { writeItems } from "@dlh/server";
-import { freshModuleDb } from "@dlh/server/testing";
+import { fixtureServer, freshModuleDb } from "@dlh/server/testing";
 import { TRPCClientError } from "@trpc/client";
 import { seedMissing } from "../src/cli/seed";
 import { serverModules } from "../src/modules.gen";
-import { createTestApi } from "../src/testing";
+import { createTestApi, type TestApiRouter } from "../src/testing";
 
 async function setup() {
   // Module tables too: the seed writes through every module.
@@ -180,12 +180,15 @@ test("outputs never contain searchText", async () => {
   await close();
 });
 
-test("sample.create is reachable through the app router", async () => {
-  const { c, close } = await setup();
-  const item = await c.sample.create.mutate({ title: " From the app " });
-  expect(item).toMatchObject({ type: "sample", title: "From the app" });
-  expect((await c.items.get.query({ id: item.id })).id).toBe(item.id);
-  await close();
+test("a module passed to createTestApi is mounted and its items readable", async () => {
+  const t = await freshModuleDb(serverModules);
+  const api = createTestApi({ db: t.db, modules: [fixtureServer] });
+  const token = await api.signIn();
+  const c = api.clientAs<TestApiRouter<[typeof fixtureServer]>>(token);
+  const { result } = await c.fixture.create.mutate({ title: " From the app " });
+  expect(result).toMatchObject({ type: "fixture", title: "From the app" });
+  expect((await c.items.get.query({ id: result.id })).id).toBe(result.id);
+  await t.close();
 });
 
 test("seedMissing seeds each module once, including one added later", async () => {
