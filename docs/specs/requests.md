@@ -52,7 +52,7 @@ Make task has to create a task, and the Tasks table belongs to Tasks. So one ope
 
 - A description lists what it may call: `calls: [tasksOps.create]`. Its implementation runs `await w.call(tasksOps.create, input)`, which returns that operation's result.
 - The call runs in the caller's transaction, through the callee's own `run`, input schema and rules. The callee's effects are checked against the callee's description; the caller needs no extra effects for them.
-- Undo is one record. Items the call created are recorded by the writer like the caller's own, so Core's created-item undo soft-deletes them; the caller's `undo` then reverses its own part.
+- Undo is the caller's record. Items the call created join the caller's undo token like its own, so Core soft-deletes them on undo, and the caller's `undo` then reverses its own part. The callee's undo record is dropped: its other effects (an update, a link) are not reverted by the caller's undo. So a request's `actions` whose operation calls `requests.resolve` need callee undo records before they can offer Undo; the [Agent hub](agent-hub.md) adds them.
 - A called operation may be a mutation or a query of a registered module. Registration fails otherwise, or if the caller calls itself. Calls one level deep only: a called operation may not make calls.
 - The Agent hub uses the same mechanism later, through the API.
 

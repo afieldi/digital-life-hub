@@ -12,7 +12,7 @@ The heavy kind of AI. You mark a task as an AI task and the agent picks it up, w
 - `apps/agent`: a worker service next to `apps/api` that claims runs, starts containers, holds connection secrets and relays model calls
 - `packages/agent-runner`: what runs inside a container. An Agent SDK session, the permission hook, the hub MCP server, grants, suspend and resume
 - Connections (GitHub, AWS, Slack, Linear, Google Drive, any MCP server, plain environment variables), given to a run least-privilege and granted mid-run on request
-- Core: service tokens, and operation calls that may call queries
+- Core: service tokens, operation calls that may call queries, and callee undo records in the undo token, reverted after the caller's own undo in reverse order
 - Queue: the `agent` source and actions on requests
 
 **Out of scope**

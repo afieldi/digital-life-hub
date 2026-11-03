@@ -80,8 +80,9 @@ export function implementOperation(
  * Runs a mutation in `w`'s transaction with Core's scoped writer: only the
  * methods its effects allow, on `subject(input)` unless it declares
  * `writeOtherItems`. The token lists the items it created, including those
- * created by operations it called; a callee's own undo record is dropped, so
- * `ops.undo` soft-deletes its items and the caller's `undo` reverses the rest.
+ * created by operations it called, and `ops.undo` soft-deletes them all. A
+ * callee's own undo record is dropped: its other effects (an update, a link)
+ * are not reverted by the caller's undo.
  */
 export async function runMutationIn<D extends OperationDescription, O>(
   w: ItemWriter,
