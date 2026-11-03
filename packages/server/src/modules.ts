@@ -12,6 +12,7 @@ import {
   collectAiRunners,
 } from "./ai/runners";
 import type { ItemWriter } from "./items/writer";
+import type { ModuleConfig } from "./moduleConfig";
 import type { ImplementedOperation, Operations } from "./operations/implement";
 import { operationsRouter } from "./operations/router";
 import type { DeleteWith } from "./trpc";
@@ -45,6 +46,8 @@ export type ServerModule<
   aiRunners?: AiRunner[];
   /** Items to delete or restore together with an item of this module's types. */
   deleteWith?: DeleteWith;
+  /** Settings or secrets from the API's environment; read them with `configFor`. */
+  config?: ModuleConfig;
 };
 
 export class ServerModuleError extends Error {

@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { defineServerModule, moduleConfigKeys } from "@dlh/server";
+import { z } from "zod";
 import {
   ConfigError,
   databaseSection,
@@ -5,6 +9,7 @@ import {
   must,
   openrouterSection,
 } from "../src/config";
+import { serverModules } from "../src/modules.gen";
 
 const base = {
   GOOGLE_CLIENT_ID: "id",
@@ -132,4 +137,37 @@ test("a CLI loads only the sections it needs", () => {
     apiKey: "k",
     defaultModel: null,
   });
+});
+
+test("modules' variables are checked with the API's, in one error", () => {
+  const notes = defineServerModule({
+    id: "notes",
+    itemTypes: [],
+    operations: {},
+    config: { prefix: "NOTES_", schema: z.object({ BUCKET: z.string() }) },
+  });
+  try {
+    loadConfig({ GOOGLE_CLIENT_ID: "id" }, [notes]);
+    expect.unreachable();
+  } catch (e) {
+    expect((e as ConfigError).missing).toEqual([
+      "GOOGLE_CLIENT_SECRET",
+      "ALLOWED_EMAIL",
+      "NOTES_BUCKET",
+    ]);
+  }
+  const ok = loadConfig({ ...base, NOTES_BUCKET: "b" }, [notes]);
+  expect(ok.moduleConfig.get("notes")).toEqual({ BUCKET: "b" });
+});
+
+test("every module variable is listed in .env.example", () => {
+  const example = readFileSync(
+    fileURLToPath(new URL("../.env.example", import.meta.url)),
+    "utf8",
+  );
+  for (const m of serverModules) {
+    for (const key of m.config ? moduleConfigKeys(m.config) : []) {
+      expect(example, key).toMatch(new RegExp(`^#? ?${key}=`, "m"));
+    }
+  }
 });

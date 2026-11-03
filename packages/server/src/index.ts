@@ -46,6 +46,12 @@ export { getItem } from "./items/read";
 export { type ItemWriter, writeItems } from "./items/writer";
 export { migrationsRoot, moduleMigrations } from "./migrations";
 export {
+  configFor,
+  loadModuleConfigs,
+  type ModuleConfig,
+  moduleConfigKeys,
+} from "./moduleConfig";
+export {
   CORE_ROUTER_IDS,
   collectServerModules,
   defineServerModule,

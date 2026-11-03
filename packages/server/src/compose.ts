@@ -69,6 +69,8 @@ export function createCoreDeps(
     now?: () => Date;
     devErrors?: boolean;
     ai?: Pick<AiDeps, "providers" | "defaultModel">;
+    /** Each module's checked config (`loadModuleConfigs`). */
+    moduleConfig?: ReadonlyMap<string, unknown>;
   },
 ): CoreDeps {
   return {
@@ -77,6 +79,7 @@ export function createCoreDeps(
     itemTypes: composed.itemTypes,
     deleteWith: composed.deleteWith,
     operations: composed.operations,
+    moduleConfig: opts.moduleConfig ?? new Map(),
     now: opts.now ?? (() => new Date()),
     devErrors: opts.devErrors ?? false,
     ai: {

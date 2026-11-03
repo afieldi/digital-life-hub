@@ -13,7 +13,7 @@ import { composed } from "./router";
 
 function loadConfigOrExit() {
   try {
-    return loadConfig(process.env);
+    return loadConfig(process.env, serverModules);
   } catch (err) {
     if (err instanceof ConfigError) {
       console.error(
@@ -56,6 +56,7 @@ const deps = {
   ...createCoreDeps(composed, {
     db,
     devErrors: config.devAuth,
+    moduleConfig: config.moduleConfig,
     ai: config.aiFake
       ? devFakeAi
       : {

@@ -1,4 +1,5 @@
 import { DEFAULT_DATABASE_URL } from "@dlh/db";
+import { loadModuleConfigs, type ServerModule } from "@dlh/server";
 
 type Env = Record<string, string | undefined>;
 
@@ -109,19 +110,26 @@ export type Config = ReturnType<typeof serverSection>["value"] &
   ReturnType<typeof authSection>["value"] & {
     databaseUrl: string;
     openrouter: ReturnType<typeof openrouterSection>["value"];
+    /** Each module's own settings (`ServerModule.config`), checked. */
+    moduleConfig: ReadonlyMap<string, unknown>;
   };
 
-/** Everything the API reads from its environment, checked at once. */
-export function loadConfig(env: Env): Config {
+/** Everything the API and its `modules` read from the environment, checked at once. */
+export function loadConfig(
+  env: Env,
+  modules: readonly ServerModule[] = [],
+): Config {
   const auth = authSection(env);
   const server = serverSection(env);
   const database = databaseSection(env);
   const openrouter = openrouterSection(env);
+  const moduleConfig = loadModuleConfigs(modules, env);
   const missing = [
     ...auth.missing,
     ...server.missing,
     ...database.missing,
     ...openrouter.missing,
+    ...moduleConfig.missing,
   ];
   if (missing.length > 0) throw new ConfigError(missing);
   return {
@@ -129,5 +137,6 @@ export function loadConfig(env: Env): Config {
     ...auth.value,
     databaseUrl: database.value.url,
     openrouter: openrouter.value,
+    moduleConfig: moduleConfig.values,
   };
 }

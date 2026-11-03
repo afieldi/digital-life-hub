@@ -114,6 +114,7 @@ export function createTestApi(
       migrateOnStart: false,
       migrationsRoot: null,
       openrouter: { apiKey: null, defaultModel: null },
+      moduleConfig: new Map(),
     },
     store,
     google,
