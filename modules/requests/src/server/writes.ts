@@ -70,6 +70,21 @@ function searchTextOf(body: string | null, fromName: string | null) {
 }
 
 /**
+ * Locks the request's row. Every write to a request takes this lock before it
+ * writes the request's item, so two writes on one request queue rather than
+ * deadlock.
+ */
+async function lockRequest(tx: Tx, id: string): Promise<RequestTableRow> {
+  const [row] = await tx
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, id))
+    .for("update");
+  if (!row) notFound();
+  return row;
+}
+
+/**
  * The live request, read after locking its row: a write that overlaps another
  * on the same request waits for it and then reads what it committed. So a
  * second Handled sees the request handled and is a no-op, not a conflict.
@@ -78,12 +93,7 @@ async function loadRequest(
   tx: Tx,
   id: string,
 ): Promise<{ item: Item; row: RequestTableRow }> {
-  const [row] = await tx
-    .select()
-    .from(requests)
-    .where(eq(requests.itemId, id))
-    .for("update");
-  if (!row) notFound();
+  const row = await lockRequest(tx, id);
   const item = await getItem(tx, id);
   return { item, row };
 }
@@ -149,6 +159,7 @@ async function undoByReopening(
   deps: CoreDeps,
 ): Promise<void> {
   if (!r) return;
+  await lockRequest(w.tx, r.id);
   await reopenRequest(
     w,
     { id: r.id, expectedUpdatedAt: r.updatedAt },
@@ -242,6 +253,12 @@ export const resolve = implementOperation(requestOps.resolve, {
     const { item, row } = await loadRequest(w.tx, input.id);
     if (row.outcome !== null) {
       if (row.outcome !== input.outcome) conflict("Already resolved");
+      if (input.taskId !== undefined) {
+        const found = await requestTask(w.tx, input.id, row.outcome);
+        if (found?.taskId !== input.taskId) {
+          conflict("Already resolved as another task");
+        }
+      }
       // Pressed twice, or on two devices: nothing to write, whatever the version.
       return { result: toRequestRow(item, row), undo: null };
     }
@@ -274,6 +291,7 @@ export const makeTask = implementOperation(requestOps.makeTask, {
         title: input.title ?? item.title,
         due: input.due,
         priority: input.priority,
+        // Notes "" (cleared in the form) stays "": Tasks keeps it as no notes.
         notes: input.notes ?? row.body ?? undefined,
       }),
     );
@@ -323,6 +341,7 @@ export const reopen = implementOperation(requestOps.reopen, {
   },
   async undo(w, r) {
     if (!r) return;
+    await lockRequest(w.tx, r.id);
     await setOutcome(
       w,
       { id: r.id, expectedUpdatedAt: r.updatedAt },

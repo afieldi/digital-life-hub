@@ -429,6 +429,34 @@ test("resolve with another outcome is CONFLICT", async () => {
   await close();
 });
 
+test("resolve task with another taskId on a task-resolved request is CONFLICT", async () => {
+  const { deps, caller, file, mkTask, close } = await setup();
+  const r = await file("Ping");
+  const task = await mkTask("First");
+  const other = await mkTask("Second");
+  const done = await caller.requests.resolve({
+    id: r.id,
+    expectedUpdatedAt: r.updatedAt,
+    outcome: "task",
+    taskId: task.id,
+  });
+  const target = { id: r.id, expectedUpdatedAt: done.result.updatedAt };
+  await expect(
+    caller.requests.resolve({ ...target, outcome: "task", taskId: other.id }),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  // The same task again is a no-op.
+  const again = await caller.requests.resolve({
+    ...target,
+    outcome: "task",
+    taskId: task.id,
+  });
+  expect(again.undo).toEqual({ record: null, created: [] });
+  expect(await relatesFrom(deps, r.id)).toMatchObject([
+    { to_id: task.id, context: "outcome" },
+  ]);
+  await close();
+});
+
 test("makeTask creates the task through tasks.create", async () => {
   const { deps, caller, file, close } = await setup();
   const r = await file("Review the deck", { body: "Slides 4-9" });
@@ -478,6 +506,24 @@ test("makeTask creates the task through tasks.create", async () => {
     due_date: "2026-11-06",
     priority: "high",
     notes: "Ask about parking",
+  });
+  await close();
+});
+
+test('makeTask with notes "" makes a task with no notes', async () => {
+  const { deps, caller, file, close } = await setup();
+  const r = await file("Review the deck", { body: "Slides 4-9" });
+  const out = await caller.requests.makeTask({
+    id: r.id,
+    expectedUpdatedAt: r.updatedAt,
+    notes: "",
+  });
+  const [taskRow] = await deps.db.execute<{ notes: string | null }>(
+    sql`select notes from tasks where item_id = ${out.result.task.id}`,
+  );
+  expect(taskRow).toEqual({ notes: null });
+  expect(await itemRow(deps, out.result.task.id)).toMatchObject({
+    search_text: null,
   });
   await close();
 });
@@ -724,6 +770,86 @@ test("each mutation of a request moves updated_at and publishes it", async () =>
   );
   // Filing changes no existing row, so it only publishes.
   await expectTracked(deps, {}, () => file("New"));
+  await close();
+});
+
+/**
+ * Whether the request's item row is locked by another transaction while `run`
+ * waits behind a lock this test holds on its `requests` row, as a forward
+ * write would.
+ */
+async function locksItemFirst(
+  deps: CoreDeps,
+  id: string,
+  run: () => Promise<unknown>,
+): Promise<boolean> {
+  let pending: Promise<unknown> = Promise.resolve();
+  let itemLocked = false;
+  await deps.db.transaction(async (tx) => {
+    await tx
+      .select()
+      .from(requests)
+      .where(eq(requests.itemId, id))
+      .for("update");
+    pending = run().catch(() => {});
+    await new Promise((r) => setTimeout(r, 300));
+    try {
+      await deps.db.transaction((probe) =>
+        probe.execute(
+          sql`select 1 from items where id = ${id} for update nowait`,
+        ),
+      );
+    } catch {
+      itemLocked = true;
+    }
+  });
+  await pending;
+  return itemLocked;
+}
+
+test("undo locks the request row before its item, as forward writes do", async () => {
+  const { deps, caller, file, close } = await setup();
+  const r = await file("Ping");
+  const done = await caller.requests.resolve({
+    id: r.id,
+    expectedUpdatedAt: r.updatedAt,
+    outcome: "handled",
+  });
+  expect(
+    await locksItemFirst(deps, r.id, () =>
+      caller.ops.undo({ id: "requests.resolve", token: done.undo }),
+    ),
+  ).toBe(false);
+  expect((await requestRow(deps, r.id)).outcome).toBeNull();
+
+  const s = await file("Pong");
+  const made = await caller.requests.makeTask({
+    id: s.id,
+    expectedUpdatedAt: s.updatedAt,
+  });
+  expect(
+    await locksItemFirst(deps, s.id, () =>
+      caller.ops.undo({ id: "requests.makeTask", token: made.undo }),
+    ),
+  ).toBe(false);
+  expect((await requestRow(deps, s.id)).outcome).toBeNull();
+
+  const t = await file("Pang");
+  const resolved = await caller.requests.resolve({
+    id: t.id,
+    expectedUpdatedAt: t.updatedAt,
+    outcome: "not_for_me",
+  });
+  const reopened = await caller.requests.reopen({
+    id: t.id,
+    expectedUpdatedAt: resolved.result.updatedAt,
+  });
+  expect(
+    await locksItemFirst(deps, t.id, () =>
+      caller.ops.undo({ id: "requests.reopen", token: reopened.undo }),
+    ),
+  ).toBe(false);
+  expect((await requestRow(deps, t.id)).outcome).toBe("not_for_me");
   await close();
 });
 
