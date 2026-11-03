@@ -90,6 +90,10 @@ jobs:
       # (beforeBuildCommand).
       - run: pnpm --filter @dlh/desktop exec tauri build --no-bundle ${{ github.event_name == 'pull_request' && '--debug' || '' }}
 
+      # The OAuth loopback, CLI resolve and process-kill tests. Runs after the
+      # build, which writes the dist folder the Tauri context embeds.
+      - run: pnpm --filter @dlh/desktop test:rust
+
   server:
     timeout-minutes: 30
     runs-on: ubuntu-latest
