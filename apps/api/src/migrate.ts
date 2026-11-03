@@ -8,17 +8,18 @@ import {
 
 /**
  * Core's migrations, then each module's in registry order, every module with
- * its own journal table. `root` holds each module's `modules/<id>/drizzle`
- * (default `MIGRATIONS_ROOT`, else the repo root); Core's folder always comes
- * from `MIGRATIONS_ROOT` or the repo root.
+ * its own journal table. `root` holds `packages/db/drizzle` (default: the repo
+ * root; a bundled server passes its own); `modulesRoot` holds each module's
+ * `modules/<id>/drizzle` (default: `root`).
  */
 export async function migrateAll(
   url: string,
   modules: readonly ServerModule[],
-  root: string = migrationsRoot(),
+  opts: { root?: string; modulesRoot?: string } = {},
 ): Promise<void> {
-  await migrate(url, join(migrationsRoot(), "packages", "db", "drizzle"));
-  for (const m of moduleMigrations(modules, root)) {
+  const root = opts.root ?? migrationsRoot();
+  await migrate(url, join(root, "packages", "db", "drizzle"));
+  for (const m of moduleMigrations(modules, opts.modulesRoot ?? root)) {
     await migrate(url, m.folder, { table: m.table });
   }
 }

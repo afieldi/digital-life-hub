@@ -1,13 +1,12 @@
-import { createDb, DEFAULT_DATABASE_URL } from "@dlh/db";
+import { createDb } from "@dlh/db";
 import { drizzleAuthStore } from "../auth/drizzleStore";
+import { databaseSection, must } from "../config";
 
 const USAGE =
   "Usage: sessions list | sessions revoke <id> | sessions revoke --all";
 
 const [command, arg] = process.argv.slice(2);
-const { db, close } = createDb(
-  process.env.DATABASE_URL || DEFAULT_DATABASE_URL,
-);
+const { db, close } = createDb(must(databaseSection(process.env)).url);
 const store = drizzleAuthStore(db);
 const now = new Date();
 

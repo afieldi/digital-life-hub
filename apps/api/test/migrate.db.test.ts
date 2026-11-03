@@ -45,7 +45,7 @@ afterAll(async () => {
 
 describe("migrateAll", () => {
   it("applies Core then modules", async () => {
-    await migrateAll(url, [demo], root);
+    await migrateAll(url, [demo], { modulesRoot: root });
     const { db, close } = createDb(url);
     try {
       const tables = await db.execute(
@@ -63,7 +63,7 @@ describe("migrateAll", () => {
 
   it("module journals are separate", async () => {
     const core = await count("__drizzle_migrations");
-    await migrateAll(url, [demo], root);
+    await migrateAll(url, [demo], { modulesRoot: root });
     expect(await count("__drizzle_migrations")).toBe(core);
     expect(await count("__drizzle_migrations_demo")).toBe(1);
   });

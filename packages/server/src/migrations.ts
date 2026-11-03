@@ -2,12 +2,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerModule } from "./modules";
 
-/** Where `packages/db/drizzle` and `modules/<id>/drizzle` live: `MIGRATIONS_ROOT`, else the repo root. */
+/**
+ * The repo root, where `packages/db/drizzle` and `modules/<id>/drizzle` live
+ * in a checkout. A bundled server (the Docker image) passes its own root.
+ */
 export function migrationsRoot(): string {
-  return (
-    process.env.MIGRATIONS_ROOT ??
-    fileURLToPath(new URL("../../..", import.meta.url))
-  );
+  return fileURLToPath(new URL("../../..", import.meta.url));
 }
 
 /** One migration folder and journal table per module that has migrations, in registry order. */

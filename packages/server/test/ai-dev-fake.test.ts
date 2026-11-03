@@ -10,21 +10,10 @@ import {
 import { operationAiRunner } from "../src/ai/operation-runner";
 import { implementOperation } from "../src/operations/implement";
 
-describe("devFakeAi", () => {
-  it("is on only for AI_FAKE_PROVIDER=1 in development", () => {
-    expect(
-      devFakeAi({ AI_FAKE_PROVIDER: "1", NODE_ENV: "development" }),
-    ).toMatchObject({
-      defaultModel: "fake-model",
-    });
-    expect(
-      devFakeAi({ AI_FAKE_PROVIDER: "1", NODE_ENV: "production" }),
-    ).toBeNull();
-    expect(devFakeAi({ AI_FAKE_PROVIDER: "1" })).toBeNull();
-    expect(devFakeAi({ NODE_ENV: "development" })).toBeNull();
-    expect(
-      devFakeAi({ AI_FAKE_PROVIDER: "0", NODE_ENV: "development" }),
-    ).toBeNull();
+test("devFakeAi answers as OpenRouter with the fake model", () => {
+  expect(devFakeAi).toMatchObject({
+    defaultModel: "fake-model",
+    providers: { openrouter: scriptedFakeProvider },
   });
 });
 

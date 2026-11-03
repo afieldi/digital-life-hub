@@ -46,24 +46,28 @@ try {
   process.exit(1);
 }
 
-if (process.env.MIGRATE_ON_START === "1") {
-  await migrateAll(
-    config.databaseUrl,
-    serverModules,
-    process.env.MIGRATIONS_ROOT,
-  );
+if (config.migrateOnStart) {
+  await migrateAll(config.databaseUrl, serverModules, {
+    ...(config.migrationsRoot ? { root: config.migrationsRoot } : {}),
+  });
 }
 
 const deps = {
   ...createCoreDeps(composed, {
     db,
     devErrors: config.devAuth,
-    ai: devFakeAi(process.env) ?? {
-      providers: config.openrouter.apiKey
-        ? { openrouter: createOpenRouter({ apiKey: config.openrouter.apiKey }) }
-        : {},
-      defaultModel: config.openrouter.defaultModel,
-    },
+    ai: config.aiFake
+      ? devFakeAi
+      : {
+          providers: config.openrouter.apiKey
+            ? {
+                openrouter: createOpenRouter({
+                  apiKey: config.openrouter.apiKey,
+                }),
+              }
+            : {},
+          defaultModel: config.openrouter.defaultModel,
+        },
   }),
   config,
   store: drizzleAuthStore(db),
