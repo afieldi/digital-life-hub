@@ -99,6 +99,20 @@ test("open lists oldest received first and hides resolved and deleted", async ()
   await close();
 });
 
+test("open hides archived requests", async () => {
+  const { caller, file, close } = await setup();
+  const kept = await file("kept", ago(2));
+  const shelved = await file("shelved", ago(1));
+  await caller.items.archive({
+    id: shelved.id,
+    expectedUpdatedAt: shelved.updatedAt,
+  });
+
+  const out = await caller.requests.open({});
+  expect(out.items.map((r) => r.id)).toEqual([kept.id]);
+  await close();
+});
+
 test("open breaks ties by id", async () => {
   const { caller, file, close } = await setup();
   const at = ago(2);

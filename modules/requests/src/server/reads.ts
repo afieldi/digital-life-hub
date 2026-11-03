@@ -97,7 +97,7 @@ export const open = implementOperation(requestOps.open, {
   async run(deps) {
     const rows = await deps.db.execute<RawRow>(
       rowsQuery(
-        sql`r.resolved_at is null`,
+        sql`r.resolved_at is null and i.archived_at is null`,
         sql`order by r.received_at, r.item_id`,
       ),
     );
