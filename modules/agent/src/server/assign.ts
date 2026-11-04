@@ -7,11 +7,13 @@ import { z } from "zod";
 import { agentAssignments, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
 import {
+  ALREADY_LIVE,
   allowed,
   cancelRecord,
   cancelRun,
   cancelUndo,
   conflict,
+  holdingSlot,
   liveRun,
   toRunRow,
   uncancel,
@@ -30,7 +32,7 @@ type AssignRecord = z.infer<typeof assignRecord>;
 
 /** Refuses a task that already has a live run: it has the task's one slot. */
 async function refuseLive(tx: Tx, taskId: string) {
-  if (await liveRun(tx, taskId)) conflict("The agent already has this task");
+  if (await liveRun(tx, taskId)) conflict(ALREADY_LIVE);
 }
 
 /**
@@ -57,10 +59,12 @@ async function queue(
       // A task given from a request keeps its request when assigned again.
       set: { connectionIds },
     });
-  const [run] = await tx
-    .insert(agentRuns)
-    .values({ taskId, status: "queued", connectionIds })
-    .returning();
+  const [run] = await holdingSlot(() =>
+    tx
+      .insert(agentRuns)
+      .values({ taskId, status: "queued", connectionIds })
+      .returning(),
+  );
   if (!run) throw new Error("run not written");
   return { run: toRunRow(run), before: before?.connectionIds ?? null };
 }

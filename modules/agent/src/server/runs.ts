@@ -1,4 +1,5 @@
 import { requestOps } from "@dlh/module-requests/operations";
+import { taskOps } from "@dlh/module-tasks/operations";
 import {
   implementOperation,
   revokeRunTokens,
@@ -45,6 +46,39 @@ export function toRunRow(row: RunTableRow): RunRow {
   });
 }
 
+/** The copy for a task whose one live-run slot is taken. */
+export const ALREADY_LIVE = "The agent already has this task";
+
+/** Postgres's unique violation on the one-live-run-per-task index. */
+const liveRunClash = z.object({
+  code: z.literal("23505"),
+  constraint_name: z.literal("agent_runs_active_task_idx"),
+});
+const withCause = z.object({ cause: z.unknown() });
+
+function isLiveRunClash(e: unknown): boolean {
+  // Drizzle wraps the driver's error in `cause`.
+  for (let c = e, depth = 0; c && depth < 4; depth++) {
+    if (liveRunClash.safeParse(c).success) return true;
+    c = withCause.safeParse(c).data?.cause;
+  }
+  return false;
+}
+
+/**
+ * Runs a write that makes a run live. Two writers can both find no live run
+ * (a lock on no rows locks nothing); the unique index stops the second, and
+ * this gives it the copy rather than a database error.
+ */
+export async function holdingSlot<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (e) {
+    if (isLiveRunClash(e)) conflict(ALREADY_LIVE);
+    throw e;
+  }
+}
+
 /** The task's live run, locked, if it has one. */
 export async function liveRun(
   tx: Tx,
@@ -61,7 +95,7 @@ export async function liveRun(
 }
 
 /** The task's most recent run, locked. */
-async function latestRun(tx: Tx, taskId: string): Promise<RunTableRow> {
+export async function latestRun(tx: Tx, taskId: string): Promise<RunTableRow> {
   const [row] = await tx
     .select()
     .from(agentRuns)
@@ -170,18 +204,24 @@ export async function uncancel(w: ScopedWriter, r: CancelRecord) {
   if (run?.status !== "cancelled" || iso(run.heartbeatAt) !== r.heartbeatAt) {
     conflict("Changed since");
   }
-  // The task has a live run of its own since (assigned again): it holds the one slot.
+  // A run since (assigned again) holds the task's slot, or has ended and is
+  // what cancel and retry act on: only the latest run comes back.
+  if ((await latestRun(w.tx, r.taskId)).id !== r.runId) {
+    conflict("Changed since");
+  }
   if (await liveRun(w.tx, r.taskId)) conflict("Changed since");
-  await w.tx
-    .update(agentRuns)
-    .set({
-      // A running run's container stopped when it was cancelled, so it goes
-      // back to the queue and the next claim resumes its session.
-      status: r.status === "running" ? "queued" : r.status,
-      pending: r.pending,
-      finishedAt: r.finishedAt === null ? null : new Date(r.finishedAt),
-    })
-    .where(eq(agentRuns.id, r.runId));
+  await holdingSlot(() =>
+    w.tx
+      .update(agentRuns)
+      .set({
+        // A running run's container stopped when it was cancelled, so it goes
+        // back to the queue and the next claim resumes its session.
+        status: r.status === "running" ? "queued" : r.status,
+        pending: r.pending,
+        finishedAt: r.finishedAt === null ? null : new Date(r.finishedAt),
+      })
+      .where(eq(agentRuns.id, r.runId)),
+  );
   if (r.touch) await allowed(w.touchItem)(r.taskId);
 }
 
@@ -219,26 +259,38 @@ const retryRecord = z.object({
   heartbeatAt: z.iso.datetime().nullable(),
 });
 
+/** What retry needs of `tasks.get`'s result. */
+const taskView = z.object({
+  task: z.object({ assignee: z.enum(["me", "agent"]) }),
+});
+
 export const retry = implementOperation(agentOps.retry, {
   async run(w, input) {
     const run = await latestRun(w.tx, input.id);
     if (run.status !== "failed" && run.status !== "cancelled") {
       conflict("Only a failed or cancelled run can be retried");
     }
+    const { task } = taskView.parse(
+      await allowed(w.call)(taskOps.get, { id: input.id }),
+    );
+    if (task.assignee !== "agent") conflict("This task is back with you");
+    if (await liveRun(w.tx, input.id)) conflict(ALREADY_LIVE);
     if (run.pending?.kind === "failure") {
       await resolveRequest(w, run.pending.requestId);
     }
-    const [row] = await w.tx
-      .update(agentRuns)
-      .set({
-        status: "queued",
-        pending: null,
-        finishedAt: null,
-        failureCode: null,
-        failureMessage: null,
-      })
-      .where(eq(agentRuns.id, run.id))
-      .returning();
+    const [row] = await holdingSlot(() =>
+      w.tx
+        .update(agentRuns)
+        .set({
+          status: "queued",
+          pending: null,
+          finishedAt: null,
+          failureCode: null,
+          failureMessage: null,
+        })
+        .where(eq(agentRuns.id, run.id))
+        .returning(),
+    );
     if (!row) notFound("No run");
     await allowed(w.touchItem)(input.id);
     return {

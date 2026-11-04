@@ -226,8 +226,8 @@ const retry = describeOperation({
   input: z.object({ id: taskId }),
   subject: (input) => input.id,
   effects: ["touchItems"],
-  // `requests.get` reads the failure request's version to resolve it.
-  calls: [requestOps.get, requestOps.resolve],
+  // `tasks.get` reads the assignee; `requests.get` the failure request's version to resolve it.
+  calls: [taskOps.get, requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Retry run",
 });

@@ -9,7 +9,8 @@ import {
   agentRunMessages,
   agentRuns,
 } from "../src/db/schema";
-import { setup } from "./setup";
+import { ALREADY_LIVE, holdingSlot } from "../src/server/runs";
+import { setup, version } from "./setup";
 
 /** A task with one run in `status`, written directly as the worker would leave it. */
 async function withRun(
@@ -18,6 +19,10 @@ async function withRun(
   extra: Partial<typeof agentRuns.$inferInsert> = {},
 ) {
   const task = await s.mkTask();
+  // As assign leaves it: the task is the agent's.
+  await s.deps.db.execute(
+    sql`update tasks set assignee = 'agent' where item_id = ${task.id}`,
+  );
   const [run] = await s.deps.db
     .insert(agentRuns)
     .values({ taskId: task.id, status, ...extra })
@@ -407,5 +412,79 @@ test("cancel undo after a retry conflicts", async () => {
     .from(agentRuns)
     .where(eq(agentRuns.id, run.id));
   expect(after?.status).toBe("queued");
+  await s.close();
+});
+
+test("cancel undo after the task was reassigned conflicts", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s, "running");
+  const out = await s.caller.agent.cancel({ id: task.id });
+  // Assigned again: a new run, which then fails.
+  const again = await s.caller.agent.assign({
+    id: task.id,
+    expectedUpdatedAt: await version(s.deps, task.id),
+  });
+  await s.deps.db
+    .update(agentRuns)
+    .set({ status: "failed" })
+    .where(eq(agentRuns.id, again.result.run.id));
+  await expect(
+    s.caller.ops.undo({ id: "agent.cancel", token: out.undo }),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Changed since" });
+  const [after] = await s.deps.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, run.id));
+  expect(after?.status).toBe("cancelled");
+  await s.close();
+});
+
+test("retry while another run is live is CONFLICT", async () => {
+  const s = await setup();
+  const { task } = await withRun(s, "queued", {
+    createdAt: new Date("2026-11-01T00:00:00Z"),
+  });
+  // A later run that failed: the latest, so the one retry would requeue.
+  await s.deps.db
+    .insert(agentRuns)
+    .values({ taskId: task.id, status: "failed" });
+  await expect(s.caller.agent.retry({ id: task.id })).rejects.toMatchObject({
+    code: "CONFLICT",
+    message: ALREADY_LIVE,
+  });
+  await s.close();
+});
+
+test("retry after Back to me is CONFLICT", async () => {
+  const s = await setup();
+  const { task } = await withRun(s, "failed");
+  await s.caller.tasks.setAssignee({
+    id: task.id,
+    expectedUpdatedAt: await version(s.deps, task.id),
+    assignee: "me",
+  });
+  await expect(s.caller.agent.retry({ id: task.id })).rejects.toMatchObject({
+    code: "CONFLICT",
+    message: "This task is back with you",
+  });
+  await s.close();
+});
+
+test("a second live run for a task has the conflict copy, not a database error", async () => {
+  const s = await setup();
+  const { task } = await withRun(s, "queued");
+  await expect(
+    s.deps.db.transaction((tx) =>
+      holdingSlot(() =>
+        tx.insert(agentRuns).values({ taskId: task.id, status: "waiting" }),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: ALREADY_LIVE });
+  // Any other failure is passed on as it is.
+  await expect(
+    holdingSlot(() =>
+      s.deps.db.insert(agentRuns).values({ taskId: task.id, status: "bogus" }),
+    ),
+  ).rejects.not.toMatchObject({ code: "CONFLICT" });
   await s.close();
 });
