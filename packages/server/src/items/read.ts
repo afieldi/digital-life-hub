@@ -38,6 +38,28 @@ export function toSummary(row: SummaryRow): ItemSummary {
   };
 }
 
+/**
+ * An item's summary columns as a raw `db.execute` query returns them: snake
+ * case, and `archived_at` a string when it comes out of a JSON aggregate.
+ */
+export type RawSummaryRow = {
+  id: string;
+  type: string;
+  title: string;
+  archived_at: string | Date | null;
+};
+
+export function summaryFromRaw(row: RawSummaryRow): ItemSummary {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    archivedAt: row.archived_at
+      ? new Date(row.archived_at).toISOString()
+      : null,
+  };
+}
+
 /** A live item, read with `db` or inside a transaction. */
 export async function getItem(db: Db | Tx, id: string): Promise<Item> {
   const [row] = await db
@@ -141,16 +163,14 @@ export async function listContained(
   db: Db,
   id: string,
 ): Promise<{ item: ItemSummary; via: ItemSummary }[]> {
-  const rows = await db.execute<{
-    id: string;
-    type: string;
-    title: string;
-    archived_at: Date | null;
-    via_id: string;
-    via_type: string;
-    via_title: string;
-    via_archived_at: Date | null;
-  }>(sql`
+  const rows = await db.execute<
+    RawSummaryRow & {
+      via_id: string;
+      via_type: string;
+      via_title: string;
+      via_archived_at: Date | null;
+    }
+  >(sql`
     with recursive tree(id, via_id, depth, linked_at) as (
       select l.to_id, l.from_id, 1, l.created_at
       from links l join items i on i.id = l.to_id
@@ -172,17 +192,12 @@ export async function listContained(
     join items v on v.id = b.via_id
     order by b.depth, b.linked_at, c.id`);
   return rows.map((r) => ({
-    item: toSummary({
-      id: r.id,
-      type: r.type,
-      title: r.title,
-      archivedAt: r.archived_at ? new Date(r.archived_at) : null,
-    }),
-    via: toSummary({
+    item: summaryFromRaw(r),
+    via: summaryFromRaw({
       id: r.via_id,
       type: r.via_type,
       title: r.via_title,
-      archivedAt: r.via_archived_at ? new Date(r.via_archived_at) : null,
+      archived_at: r.via_archived_at,
     }),
   }));
 }

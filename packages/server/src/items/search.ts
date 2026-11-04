@@ -2,7 +2,7 @@ import type { ItemSummary } from "@dlh/core";
 import type { Db } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { sql } from "drizzle-orm";
-import { toSummary } from "./read";
+import { type RawSummaryRow, summaryFromRaw } from "./read";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -48,12 +48,7 @@ export async function searchItems(
       sql`select set_config('pg_trgm.similarity_threshold', ${String(SIMILARITY_THRESHOLD)}, true)`,
     );
     // Each candidate branch can use its own GIN index; a single OR'd predicate forces a seq scan.
-    return tx.execute<{
-      id: string;
-      type: string;
-      title: string;
-      archived_at: string | Date | null;
-    }>(sql`
+    return tx.execute<RawSummaryRow>(sql`
     with q as (select websearch_to_tsquery('english', ${q}) as tsq),
     cand as (
       select id from items, q where deleted_at is null and search @@ q.tsq
@@ -71,12 +66,5 @@ export async function searchItems(
     order by score desc, i.updated_at desc
     limit ${limit}`);
   });
-  return rows.map((r) =>
-    toSummary({
-      id: r.id,
-      type: r.type,
-      title: r.title,
-      archivedAt: r.archived_at ? new Date(r.archived_at) : null,
-    }),
-  );
+  return rows.map(summaryFromRaw);
 }

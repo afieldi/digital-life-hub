@@ -43,7 +43,11 @@ export {
 } from "./compose";
 export { opaqueCursor } from "./cursor";
 export { purgeExpired } from "./items/purge";
-export { getItem } from "./items/read";
+export {
+  getItem,
+  type RawSummaryRow,
+  summaryFromRaw,
+} from "./items/read";
 export { type ItemWriter, writeItems } from "./items/writer";
 export { migrationsRoot, moduleMigrations } from "./migrations";
 export {

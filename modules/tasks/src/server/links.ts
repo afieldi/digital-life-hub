@@ -1,5 +1,10 @@
 import type { ItemSummary } from "@dlh/core";
-import type { CoreDeps, Tx } from "@dlh/server";
+import {
+  type CoreDeps,
+  type RawSummaryRow,
+  summaryFromRaw,
+  type Tx,
+} from "@dlh/server";
 import { sql } from "drizzle-orm";
 
 // Read-only queries on Core's `items` and `links`, by table name: modules can't
@@ -8,22 +13,6 @@ import { sql } from "drizzle-orm";
 //
 // A "task" here is a live item with a row in `tasks`; a subtask is a task that a
 // live task `contains`.
-
-export type SummaryRow = {
-  id: string;
-  type: string;
-  title: string;
-  archived_at: string | Date | null;
-};
-
-export function toSummary(r: SummaryRow): ItemSummary {
-  return {
-    id: r.id,
-    type: r.type,
-    title: r.title,
-    archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : null,
-  };
-}
 
 /** The live item's type, or null when it is missing or deleted. */
 export async function liveType(tx: Tx, id: string): Promise<string | null> {
@@ -84,7 +73,7 @@ export async function parentsNowDone(
   tx: Tx,
   id: string,
 ): Promise<ItemSummary[]> {
-  const rows = await tx.execute<SummaryRow>(sql`
+  const rows = await tx.execute<RawSummaryRow>(sql`
     select p.id, p.type, p.title, p.archived_at
     from links l
     join items p on p.id = l.from_id and p.deleted_at is null
@@ -97,7 +86,7 @@ export async function parentsNowDone(
         where l2.from_id = p.id and l2.kind = 'contains'
       )
     order by l.created_at, l.id`);
-  return rows.map(toSummary);
+  return rows.map(summaryFromRaw);
 }
 
 /**
