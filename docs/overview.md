@@ -83,7 +83,7 @@ We build one module at a time. Each one goes through the same steps, and nothing
 
 This doc stays the map. Each deep dive links back here, and the Modules table gets updated when scope changes.
 
-**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (implemented; Done check pending) · [Agent Hub](specs/agent-hub.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
+**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (implemented; Done check pending) · [Agent Hub](specs/agent-hub.md) (agreed) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
 
 ## Suggested build order
 
@@ -118,11 +118,12 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 | AI billing | Vercel AI Gateway, one key | The light AI gateway's server provider moves from OpenRouter to Vercel AI Gateway (its OpenAI-compatible API), a separate small change. The Agent hub uses the same Gateway |
 | Agent harness | Claude Agent SDK through Vercel AI Gateway | The container gets the Gateway's Claude Code endpoint and key in its environment. A throwaway check that the Agent SDK runs through it comes first; the Claude Code CLI run headless on the same endpoint is the fallback |
 | Agent runs | Containers we host | One container per run, started by `apps/agent` on the same host. Needs an always-on host |
+| Hosting | One always-on VPS | Postgres, the API and `apps/agent` with Docker on one 8 vCPU / 16 GB box through docker-compose. Slack intake can run there too |
 | Agent autonomy | Marking a task for the agent is the approval | The agent picks it up and runs it with no further check, with full write access inside its container. Only a few actions that leave the container ask first, through the queue |
 
 **Still open**
 
-- [ ] Hosting: where the API and database run. Now blocks Slack intake, which needs an always-on process (Socket Mode avoids a public URL).
+- [x] Hosting: one always-on VPS for Postgres, the API and the agent (decided in the [Agent Hub](specs/agent-hub.md) spec). Slack intake's always-on process runs there too (Socket Mode avoids a public URL).
 - [ ] Slack at work: admin approval for an app that reads channels and posts as you, and whether work messages may go to a third-party model through OpenRouter.
 - [ ] Server-side AI cost: sorting Slack messages and agent runs happen with the app closed, so they bill through Vercel AI Gateway, not a CLI subscription. Set a budget on the key.
 - [ ] Saved: what it holds. Decide in its deep dive.
