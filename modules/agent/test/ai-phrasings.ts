@@ -91,15 +91,4 @@ export const agentPhrasings: Phrasing[] = [
   p("have the agent try again", "agent.retry", "suggest"),
   p("resume the failed run", "agent.retry", "suggest"),
   p("run it again", "agent.retry", "suggest"),
-
-  // runs
-  p("what is the agent doing?", "agent.runs", "ask"),
-  p("show the agent's runs", "agent.runs", "ask"),
-  p("what has the agent done on this?", "agent.runs", "ask"),
-  p("list the agent runs", "agent.runs", "ask"),
-  p("is the agent working on this?", "agent.runs", "ask"),
-  p("show me what the agent ran", "agent.runs", "ask"),
-  p("which agent runs are running?", "agent.runs", "ask"),
-  p("what did the agent do for this task", "agent.runs", "ask"),
-  p("how did the agent's run go?", "agent.runs", "ask"),
 ];

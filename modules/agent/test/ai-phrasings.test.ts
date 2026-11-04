@@ -63,7 +63,7 @@ test("Agent's actions don't lower the others' accuracy", async () => {
   expect(together.misses.map(show)).toEqual(withoutAgent.misses.map(show));
 });
 
-test("at least 8 phrasings for each of the 6 Agent AI actions", () => {
+test("at least 8 phrasings for each of the 5 Agent AI actions", () => {
   const ids = agentActions.map((a) => a.id).sort();
   expect(ids).toEqual(
     [
@@ -71,7 +71,6 @@ test("at least 8 phrasings for each of the 6 Agent AI actions", () => {
       "agent.assignRequest",
       "agent.cancel",
       "agent.retry",
-      "agent.runs",
       "agent.unassign",
     ].sort(),
   );

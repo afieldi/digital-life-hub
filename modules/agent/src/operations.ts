@@ -25,12 +25,9 @@ const expectedUpdatedAt = z.iso.datetime();
 /** Connections for one run, over the defaults from Settings. */
 const connections = z.array(z.uuid());
 const MAX_EVENTS_PER_CALL = 200;
-/** What the dev fake answers a run action with, when the run can't be guessed. */
-const FAKE_RUN_ID = "0197a000-0000-7000-8000-000000000000";
 
 /** The run states that still hold the task's one slot, and those a Retry can restart. */
 const LIVE: readonly string[] = ["queued", "running", "waiting"];
-const RETRYABLE: readonly string[] = ["failed", "cancelled"];
 
 /** What ⌘K needs of `agent.runs` for the task on screen. */
 const runsView = z.object({
@@ -47,8 +44,6 @@ function runOf(states: readonly string[]) {
     return { runId: run.id };
   };
 }
-
-const runParams = z.object({ runId: runId.describe("Run") });
 
 const assign = describeOperation({
   id: "agent.assign",
@@ -181,7 +176,7 @@ const cancel = describeOperation({
   kind: "mutation",
   label: "Cancel run",
   description:
-    "Stops the task's agent run and keeps its workspace. Use when the person wants the agent to stop.",
+    "Stops the agent's latest run on the task on screen and keeps its workspace. Use when the person wants the agent to stop.",
   appliesTo: ["task"],
   words: [
     "cancel",
@@ -193,17 +188,12 @@ const cancel = describeOperation({
     "stop the run",
     "stop run",
   ],
-  devFake: { runId: FAKE_RUN_ID },
-  input: z.object({ runId }),
-  subject: () => null,
+  devFake: {},
+  input: z.object({ id: taskId }),
+  subject: (input) => input.id,
   effects: ["touchItems"],
   access: "user",
   summary: () => "Cancel run",
-  palette: {
-    params: runParams,
-    load: runOf(LIVE),
-    toInput: (_ctx, params) => params,
-  },
 });
 
 const retry = describeOperation({
@@ -211,7 +201,7 @@ const retry = describeOperation({
   kind: "mutation",
   label: "Retry run",
   description:
-    "Queues the task's failed or cancelled agent run again, with the same session. Use when the person wants the agent to try again.",
+    "Queues the task on screen's latest agent run again if it failed or was cancelled, with the same session. Use when the person wants the agent to try again.",
   appliesTo: ["task"],
   words: [
     "retry",
@@ -223,18 +213,13 @@ const retry = describeOperation({
     "run it again",
     "agent try again",
   ],
-  devFake: { runId: FAKE_RUN_ID },
-  input: z.object({ runId }),
-  subject: () => null,
+  devFake: {},
+  input: z.object({ id: taskId }),
+  subject: (input) => input.id,
   effects: ["touchItems"],
   calls: [requestOps.resolve],
   access: "user",
   summary: () => "Retry run",
-  palette: {
-    params: runParams,
-    load: runOf(RETRYABLE),
-    toInput: (_ctx, params) => params,
-  },
 });
 
 const decide = describeOperation({
@@ -274,20 +259,8 @@ const runs = describeOperation({
   kind: "query",
   label: "Agent runs",
   description:
-    "Lists the AI agent's runs, newest first: those of the task on screen, or all with a given status. Use when the person asks what the agent is doing or has done.",
+    "The AI agent's runs, newest first: those of a task, or all with a given status. The panel's run history.",
   appliesTo: ["task"],
-  words: [
-    "what is the agent doing",
-    "what did the agent do",
-    "what has the agent done",
-    "agent working",
-    "show the agent",
-    "list the agent",
-    "what the agent ran",
-    "how did the agent",
-    "agent run are running",
-  ],
-  devFake: { status: "running" },
   input: z.object({
     taskId: taskId.optional(),
     status: runStatus.optional(),
@@ -296,6 +269,7 @@ const runs = describeOperation({
   effects: [],
   access: "user",
   palette: false,
+  ai: false,
   summary: () => "Agent runs",
 });
 
