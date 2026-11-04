@@ -30,6 +30,7 @@ export {
   defineAiRunner,
   type Resolved,
   type RunnerTools,
+  suggestOptions,
 } from "./ai/runners";
 export { type ScopedWriter, scopedWriter } from "./ai/scoped";
 export { getSettings } from "./ai/settings";

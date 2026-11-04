@@ -14,7 +14,10 @@ export type AiActionDescription = {
 
 export const ACTION_ID = /^([a-z][a-z0-9]*\.)?[a-z][a-zA-Z0-9]*$/;
 
-export function describeAiAction(d: AiActionDescription): AiActionDescription {
+/** Keeps `multiSelect: true` in the type, so a runner's `apply` knows it may get several options. */
+export function describeAiAction<D extends AiActionDescription>(
+  d: D,
+): AiActionDescription & Pick<D, "multiSelect"> {
   if (!ACTION_ID.test(d.id)) {
     throw new Error(`Invalid AI action id "${d.id}"`);
   }

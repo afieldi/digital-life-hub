@@ -768,7 +768,7 @@ test("a runner that writes outside its effects rolls back and ends failed", asyn
       const renamed = await w.updateItem?.({
         id: ctx.item?.id ?? "",
         expectedUpdatedAt: ctx.version ?? "",
-        title: (out as { title: string }).title,
+        title: out.title,
       });
       // Not in its effects: the scoped writer has no setDeleted.
       await (w as unknown as ItemWriter).setDeleted({

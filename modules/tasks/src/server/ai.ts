@@ -7,6 +7,7 @@ import {
   itemContext,
   MAX_CONTEXT_CHARS,
   PREAMBLE,
+  suggestOptions,
 } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -40,14 +41,7 @@ const breakDown = defineAiRunner(tasksAiActions.breakDown, {
 Break the task into 3 to 7 concrete subtasks, each a short title that starts with a verb. Use the task's title and notes (the item's body); its links list the subtasks it already has ("contains"), so don't repeat them. When asked to suggest, give each subtask as an option with its title as the label. When asked to do it, list the titles in "subtasks".`,
   output: {
     do: z.object({ subtasks: z.array(itemTitle).min(3).max(7) }).strict(),
-    suggest: z
-      .object({
-        options: z
-          .array(z.object({ label: itemTitle }).strict())
-          .min(3)
-          .max(7),
-      })
-      .strict(),
+    suggest: suggestOptions(z.object({ label: itemTitle }), { min: 3, max: 7 }),
   },
   /** Do creates every subtask; a suggestion creates the ticked ones, in one go. */
   async apply(_w, out, ctx, tools) {
@@ -59,6 +53,7 @@ Break the task into 3 to 7 concrete subtasks, each a short title that starts wit
     // Core soft-deletes the created subtasks on undo; nothing else to put back.
     return null;
   },
+  undoRecord: z.null(),
   async undo() {},
   devFake: ({ suggest }) =>
     suggest
@@ -73,10 +68,11 @@ Break the task into 3 to 7 concrete subtasks, each a short title that starts wit
 });
 
 /** Do's `subtasks`, the ticked options of a suggestion, or one option. */
-function titlesOf(out: unknown): string[] {
-  if (Array.isArray(out)) return out.flatMap(titlesOf);
-  const o = out as { subtasks?: string[]; label?: string };
-  return o.subtasks ?? (o.label ? [o.label] : []);
+function titlesOf(
+  out: { subtasks: string[] } | { label: string } | { label: string }[],
+): string[] {
+  if (Array.isArray(out)) return out.map((o) => o.label);
+  return "subtasks" in out ? out.subtasks : [out.label];
 }
 
 const notes = z.string().max(10_000);
@@ -88,27 +84,23 @@ const rewriteNotes = defineAiRunner(tasksAiActions.rewriteNotes, {
 Rewrite the task's notes (the item's body) so they are clearer and easier to scan. Keep every fact and add none; keep the person's language. When asked to suggest, give exactly two versions, each with a short label saying how it differs. When asked to do it, give one version in "notes".`,
   output: {
     do: z.object({ notes }).strict(),
-    suggest: z
-      .object({
-        options: z
-          .array(
-            z.object({ label: z.string().min(1).max(200), notes }).strict(),
-          )
-          .length(2),
-      })
-      .strict(),
+    suggest: suggestOptions(
+      z.object({ label: z.string().min(1).max(200), notes }),
+      2,
+    ),
   },
   async apply(_w, out, ctx, tools) {
     const { mutate } = tools;
     const { undo } = await mutate(update, {
       id: onScreen(ctx),
       expectedUpdatedAt: ctx.version,
-      notes: (out as { notes: string }).notes,
+      notes: out.notes,
     });
     return { record: undo.record };
   },
-  async undo(_w, record, tools) {
-    await tools.revert(update, rewriteUndo.parse(record).record);
+  undoRecord: rewriteUndo,
+  async undo(_w, { record }, tools) {
+    await tools.revert(update, record);
   },
   devFake: ({ suggest }) =>
     suggest
@@ -120,8 +112,7 @@ Rewrite the task's notes (the item's body) so they are clearer and easier to sca
         }
       : { notes: "Fake rewritten notes." },
   // Each version's text, so the person reads both before picking.
-  preview: (option) =>
-    typeof option.notes === "string" ? option.notes : undefined,
+  preview: (option) => option.notes,
   summary: () => "Rewrote the notes",
 });
 
@@ -217,7 +208,7 @@ The <item> section lists the person's open tasks that are overdue or due today o
     advice: "Fake advice.",
   }),
   async list(deps, out, req) {
-    const { order, advice } = planOutput.parse(out);
+    const { order, advice } = out;
     const timeZone = req.timeZone ?? "UTC";
     // Checked against the tasks the model saw; read again for what changed
     // since (a CLI run can take a while): ticked ones show done, deleted ones
