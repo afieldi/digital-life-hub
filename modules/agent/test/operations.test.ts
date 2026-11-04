@@ -1,5 +1,6 @@
 import { accessOf } from "@dlh/core";
 import { requestOps } from "@dlh/module-requests/operations";
+import { taskOps } from "@dlh/module-tasks/operations";
 import { expect, test } from "vitest";
 import { agentOps } from "../src/operations";
 
@@ -53,4 +54,17 @@ test("run actions and assignments declare touchItems", () => {
   for (const key of ["assign", "assignRequest"] as const) {
     expect(agentOps[key].effects).toEqual(["touchItems"]);
   }
+});
+
+test("worker operations that change a run's state touch items, and heartbeat reads the task", () => {
+  for (const key of [
+    "claim",
+    "heartbeat",
+    "suspend",
+    "finish",
+    "fail",
+  ] as const) {
+    expect(agentOps[key].effects).toEqual(["touchItems"]);
+  }
+  expect(agentOps.heartbeat.calls).toEqual([taskOps.get, requestOps.file]);
 });

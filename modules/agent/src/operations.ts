@@ -398,7 +398,9 @@ const heartbeat = describeOperation({
     costUsd: z.number().min(0),
   }),
   subject: () => null,
-  effects: [],
+  // Cancels the run when its task is done, deleted or taken back, and fails it at a cap.
+  effects: ["touchItems"],
+  calls: [taskOps.get, requestOps.file],
   summary: () => "Heartbeat",
   ...worker,
 });
