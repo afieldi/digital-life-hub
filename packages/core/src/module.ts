@@ -49,6 +49,12 @@ export interface ModuleManifest {
     /** Rendered after the label in the Dock, e.g. an open count. It runs inside the API and query providers, so it may call hooks that need them. */
     badge?: ComponentType;
   };
+  /**
+   * Other modules' item types this module's screens show (Requests shows its
+   * tasks): their changes refresh this module's queries too. A module's query
+   * keys start with its id.
+   */
+  refreshOn?: string[];
   /** Panels for the Home screen, which the Home module lays out in `order`. */
   homeWidgets?: HomeWidget[];
   routes: (parent: AnyRoute) => AnyRoute[];

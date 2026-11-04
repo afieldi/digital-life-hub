@@ -165,3 +165,24 @@ export function collectModules(
     homeWidgets,
   };
 }
+
+/**
+ * The modules whose screens show items of `types`: each type's owner and those
+ * that `refreshOn` it. Null when a type has no owner, so the caller can't
+ * tell and should refresh everything.
+ */
+export function modulesShowing(
+  registry: Pick<ModuleRegistry, "modules">,
+  types: readonly string[],
+): Set<string> | null {
+  const showing = new Set<string>();
+  for (const type of types) {
+    const owner = registry.modules.find((m) => m.itemType?.type === type);
+    if (!owner) return null;
+    showing.add(owner.id);
+    for (const m of registry.modules) {
+      if (m.refreshOn?.includes(type)) showing.add(m.id);
+    }
+  }
+  return showing;
+}

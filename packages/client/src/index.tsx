@@ -184,3 +184,4 @@ export {
   undoOf,
   useModuleWrite,
 } from "./moduleWrite";
+export { queueVersioned, queueVersionedMany } from "./versioned";

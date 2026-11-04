@@ -1,4 +1,7 @@
+import type { ChangeEvent } from "@dlh/api-contract";
+import { items } from "@dlh/db";
 import { purgeExpired } from "@dlh/server";
+import { inArray } from "drizzle-orm";
 import type { Handler } from "hono";
 import { streamSSE } from "hono/streaming";
 import { authenticate, bearerToken } from "./auth/sessions";
@@ -8,8 +11,8 @@ const DEFAULT_BATCH_MS = 100;
 const DEFAULT_HEARTBEAT_MS = 25_000;
 
 /**
- * Server-sent events: one `data: {"ids":[…]}` event per batch of published
- * changes. The session is re-checked on every heartbeat, so a revoked device
+ * Server-sent events: one `data: {"ids":[…],"types":[…]}` event (a
+ * `ChangeEvent`) per batch of published changes. The session is re-checked on every heartbeat, so a revoked device
  * is disconnected within one heartbeat interval.
  */
 export function changesHandler(
@@ -54,7 +57,11 @@ export function changesHandler(
           const ids = [...pending];
           pending = new Set();
           if (closed || ids.length === 0) return;
-          void stream.write(`data: ${JSON.stringify({ ids })}\n\n`);
+          void typesOf(deps, ids).then((types) => {
+            if (closed) return;
+            const event: ChangeEvent = types ? { ids, types } : { ids };
+            void stream.write(`data: ${JSON.stringify(event)}\n\n`);
+          });
         }, batchMs);
       });
 
@@ -74,6 +81,20 @@ export function changesHandler(
       await done;
     });
   };
+}
+
+/** The item types among `ids`; null when the lookup fails (the client then refreshes all). */
+async function typesOf(deps: AppDeps, ids: string[]): Promise<string[] | null> {
+  try {
+    const rows = await deps.db
+      .selectDistinct({ type: items.type })
+      .from(items)
+      .where(inArray(items.id, ids));
+    return rows.map((r) => r.type).sort();
+  } catch (err) {
+    console.error("changes: item types lookup failed", err);
+    return null;
+  }
 }
 
 /** Runs the purge now, then on an interval. Failures are logged, never thrown. */

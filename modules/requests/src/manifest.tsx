@@ -24,6 +24,8 @@ export default defineModule(requestsModule, {
     key: "q",
     badge: OpenCount,
   },
+  // Request rows and Detail show the task a request became.
+  refreshOn: ["task"],
   routes: (parent) => [
     createRoute({
       getParentRoute: () => parent,

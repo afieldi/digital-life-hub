@@ -1,3 +1,4 @@
+import { queueVersionedMany } from "@dlh/client";
 import { deviceTimeZone, todayIn } from "@dlh/core";
 import {
   Button,
@@ -67,16 +68,20 @@ export function OpenPage({ search: given }: { search?: ListSearch }) {
     // A second press while the first is on its way would send stale versions.
     if (rescheduling.current || overdue.length === 0) return;
     rescheduling.current = true;
-    const input = {
-      items: overdue.map((r) => ({ id: r.id, expectedUpdatedAt: r.updatedAt })),
-      due: { date: today },
-    };
-    const items = await write({
-      op: taskOps.rescheduleMany.id,
-      summary: taskOps.rescheduleMany.summary(input),
-      verb: "reschedule",
-      call: () => tasks.rescheduleMany.mutate(input),
-    });
+    // Behind each task's pending writes, with the version each one got back.
+    const items = await queueVersionedMany(
+      overdue.map((r) => ({ id: r.id, seen: r.updatedAt })),
+      (versions) => {
+        const input = { items: versions, due: { date: today } };
+        return write({
+          op: taskOps.rescheduleMany.id,
+          summary: taskOps.rescheduleMany.summary(input),
+          verb: "reschedule",
+          call: () => tasks.rescheduleMany.mutate(input),
+        });
+      },
+      (res) => res ?? [],
+    );
     for (const item of items ?? []) {
       patchRow(item.id, { updatedAt: item.updatedAt });
     }
