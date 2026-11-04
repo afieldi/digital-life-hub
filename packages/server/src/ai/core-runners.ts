@@ -1,7 +1,7 @@
 import { aiRetitleOutput, coreAiActions, itemTitle } from "@dlh/core";
 import { z } from "zod";
 import { itemContext } from "./context";
-import { type AiRunner, defineAiRunner } from "./runners";
+import { type AiRunner, defineAiRunner, suggestOptions } from "./runners";
 
 export const PREAMBLE =
   "You work inside a personal tasks-and-notes app. The person's request is your instruction. " +
@@ -33,21 +33,13 @@ const retitle = defineAiRunner(coreAiActions.retitle, {
   system: `${PREAMBLE}
 Write a clearer, more specific title for the item. When asked to suggest, give three distinct options, each with a one-sentence reason. When asked to do it, give one title.`,
   output: {
-    suggest: z
-      .object({
-        options: z
-          .array(
-            z
-              .object({ title: itemTitle, reason: z.string().max(200) })
-              .strict(),
-          )
-          .length(3),
-      })
-      .strict(),
+    suggest: suggestOptions(
+      z.object({ title: itemTitle, reason: z.string().max(200) }),
+      3,
+    ),
     do: aiRetitleOutput.strict(),
   },
-  async apply(w, out, ctx) {
-    const { title } = out as { title: string };
+  async apply(w, { title }, ctx) {
     const old = ctx.item?.title ?? "";
     if (!w.updateItem) throw new Error("retitle needs updateItem");
     const item = await w.updateItem({
@@ -57,16 +49,16 @@ Write a clearer, more specific title for the item. When asked to suggest, give t
     });
     return { id: item.id, title: old, updatedAt: item.updatedAt };
   },
-  async undo(w, record) {
+  undoRecord,
+  async undo(w, r) {
     if (!w.updateItem) throw new Error("retitle needs updateItem");
-    const r = undoRecord.parse(record);
     await w.updateItem({
       id: r.id,
       expectedUpdatedAt: r.updatedAt,
       title: r.title,
     });
   },
-  summary: (out) => `Renamed to “${(out as { title: string }).title}”`,
+  summary: (out) => `Renamed to “${out.title}”`,
 });
 
 const deleteUndo = z.object({ id: z.string(), updatedAt: z.string() });
@@ -76,13 +68,7 @@ const del = defineAiRunner(coreAiActions.delete, {
   system: `${PREAMBLE}
 Describe in one sentence what would be deleted, so the person can confirm it.`,
   output: {
-    suggest: z
-      .object({
-        options: z
-          .array(z.object({ summary: z.string().max(200) }).strict())
-          .length(1),
-      })
-      .strict(),
+    suggest: suggestOptions(z.object({ summary: z.string().max(200) }), 1),
   },
   async apply(w, _out, ctx) {
     if (!w.setDeleted) throw new Error("delete needs setDeleted");
@@ -93,9 +79,9 @@ Describe in one sentence what would be deleted, so the person can confirm it.`,
     });
     return { id: item.id, updatedAt: item.updatedAt };
   },
-  async undo(w, record) {
+  undoRecord: deleteUndo,
+  async undo(w, r) {
     if (!w.setDeleted) throw new Error("delete needs setDeleted");
-    const r = deleteUndo.parse(record);
     await w.setDeleted({
       id: r.id,
       expectedUpdatedAt: r.updatedAt,

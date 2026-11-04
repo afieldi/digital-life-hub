@@ -261,7 +261,7 @@ const handmade = defineAiRunner(
     async apply(w, out, ctx) {
       const item = await w.createItem?.({
         type: "test",
-        title: (out as { title: string }).title,
+        title: out.title,
       });
       if (!item) throw new Error("no createItem");
       const listed = ctx.item?.id ?? item.id;
@@ -296,7 +296,7 @@ function renamer(id: string, effects: ("createItems" | "updateItem")[]) {
       system: "",
       output: { do: z.object({ title: z.string(), other: z.string() }) },
       async apply(_w, out, ctx, tools) {
-        const { title, other } = out as { title: string; other: string };
+        const { title, other } = out;
         const op = testModule.operations.rename;
         if (!tools || op.kind !== "mutation") throw new Error("no tools");
         const target = other || ctx.item?.id;

@@ -8,7 +8,9 @@ import {
   collectServerModules,
   defineAiRunner,
   defineServerModule,
+  suggestOptions,
 } from "../src";
+import type { ScopedWriter } from "../src/ai/scoped";
 
 const desc = (
   id: string,
@@ -117,5 +119,100 @@ describe("collectServerModules with AI", () => {
 
   it("reserves the ai router id", () => {
     expect(CORE_ROUTER_IDS).toContain("ai");
+  });
+});
+
+describe("defineAiRunner", () => {
+  const single = describeAiAction({
+    id: "pick",
+    label: "Pick",
+    description: "Picks.",
+    appliesTo: "*",
+    kinds: ["suggest", "do"],
+    effects: ["updateItem"],
+  });
+  const output = {
+    do: z.object({ title: z.string() }),
+    suggest: suggestOptions(z.object({ title: z.string() }), {
+      min: 1,
+      max: 3,
+    }),
+  };
+  const w = {} as ScopedWriter;
+  const tools = {} as never;
+
+  it("types what apply gets from the output schemas and the action", () => {
+    defineAiRunner(single, {
+      context: async () => ({ item: null, text: "", version: null }),
+      system: "s",
+      output,
+      async apply(_w, out) {
+        expectTypeOf(out).toEqualTypeOf<{ title: string }>();
+        return null;
+      },
+    });
+    // No suggest schema: only do's output, not `unknown`.
+    defineAiRunner(single, {
+      context: async () => ({ item: null, text: "", version: null }),
+      system: "s",
+      output: { do: output.do },
+      async apply(_w, out) {
+        expectTypeOf(out).toEqualTypeOf<{ title: string }>();
+        return null;
+      },
+    });
+    const multi = describeAiAction({
+      id: "picks",
+      label: "Picks",
+      description: "Picks several.",
+      appliesTo: "*",
+      kinds: ["suggest"],
+      effects: ["updateItem"],
+      multiSelect: true,
+    });
+    defineAiRunner(multi, {
+      context: async () => ({ item: null, text: "", version: null }),
+      system: "s",
+      output,
+      async apply(_w, out) {
+        expectTypeOf(out).toEqualTypeOf<
+          { title: string } | { title: string }[]
+        >();
+        return null;
+      },
+    });
+  });
+
+  it("parses the stored undo record before undo gets it", async () => {
+    const got: unknown[] = [];
+    const runner = defineAiRunner(single, {
+      context: async () => ({ item: null, text: "", version: null }),
+      system: "s",
+      output,
+      async apply() {
+        return { id: "a", n: 1 };
+      },
+      undoRecord: z.object({ id: z.string(), n: z.coerce.number() }),
+      async undo(_w, record) {
+        expectTypeOf(record).toEqualTypeOf<{ id: string; n: number }>();
+        got.push(record);
+      },
+    });
+    await runner.undo?.(w, { id: "a", n: "2" }, tools);
+    expect(got).toEqual([{ id: "a", n: 2 }]);
+    await expect(runner.undo?.(w, { id: 1 }, tools)).rejects.toThrow();
+    expect(got).toHaveLength(1);
+  });
+
+  it("suggestOptions refuses extra fields and the wrong count", () => {
+    const shape = suggestOptions(z.object({ title: z.string() }), 2);
+    expect(
+      shape.safeParse({ options: [{ title: "a" }, { title: "b" }] }).success,
+    ).toBe(true);
+    expect(shape.safeParse({ options: [{ title: "a" }] }).success).toBe(false);
+    expect(
+      shape.safeParse({ options: [{ title: "a", x: 1 }, { title: "b" }] })
+        .success,
+    ).toBe(false);
   });
 });

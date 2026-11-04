@@ -1,5 +1,5 @@
 import type { AiActionDescription, AiKind, AiListedItem } from "@dlh/core";
-import type { z } from "zod";
+import { z } from "zod";
 import { ServerModuleError } from "../modules";
 import type { ImplementedMutation, UndoToken } from "../operations/implement";
 import type { CoreDeps } from "../trpc";
@@ -82,11 +82,103 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   ): Promise<Resolved>;
 };
 
-export function defineAiRunner<D extends AiActionDescription>(
-  action: D,
-  rest: Omit<AiRunner<D>, "action">,
-): AiRunner<D> {
-  return { action, ...rest };
+/** A runner's output schemas, one per kind it runs as. */
+export type AiOutputs = Partial<Record<AiKind, z.ZodType>>;
+
+/** What the `kind` schema parses to; never when the runner has none. */
+type OutputOf<O extends AiOutputs, K extends AiKind> = O extends {
+  [P in K]: infer S extends z.ZodType;
+}
+  ? z.infer<S>
+  : never;
+
+/** One option of the suggest output, `{ options: Option[] }`. */
+export type SuggestOption<O extends AiOutputs> = O extends {
+  suggest: z.ZodType<{ options: (infer T)[] }>;
+}
+  ? T
+  : never;
+
+/**
+ * What `apply` and `summary` get: do's output, the chosen suggest option, or
+ * for a `multiSelect` action the chosen options together.
+ */
+export type AppliedOut<D, O extends AiOutputs> =
+  | OutputOf<O, "do">
+  | SuggestOption<O>
+  | (D extends { multiSelect: true } ? SuggestOption<O>[] : never);
+
+/**
+ * `AiRunner` with its model output and undo record typed. The gateway parses
+ * the output with `output` before any of these run; `undoRecord`, when given,
+ * parses the stored record before `undo` gets it. A runner with `resolve`
+ * applies what `resolve` returned instead, so it should keep `apply` loose.
+ */
+export type TypedAiRunner<
+  D extends AiActionDescription,
+  O extends AiOutputs,
+  U,
+> = Omit<
+  AiRunner<D>,
+  "action" | "output" | "apply" | "undo" | "summary" | "list" | "preview"
+> & {
+  output: O;
+  apply?(
+    w: ScopedWriter,
+    out: AppliedOut<D, O>,
+    ctx: AiContext,
+    tools: RunnerTools,
+  ): Promise<U>;
+  /** Checks the record `apply` returned once it comes back from the database. */
+  undoRecord?: z.ZodType<U>;
+  undo?(w: ScopedWriter, record: U, tools: RunnerTools): Promise<void>;
+  summary?(out: AppliedOut<D, O>, ctx: AiContext): string;
+  list?(
+    deps: CoreDeps,
+    out: OutputOf<O, "ask">,
+    req: { timeZone?: string; listed?: string[] },
+  ): Promise<{ heading: string; items: AiListedItem[] }>;
+  preview?(option: SuggestOption<O>): string | undefined;
+};
+
+export function defineAiRunner<
+  D extends AiActionDescription,
+  O extends AiOutputs,
+  U = unknown,
+>(action: D, rest: TypedAiRunner<D, O, U>): AiRunner<D> {
+  const { undoRecord, undo, ...typed } = rest;
+  // The gateway checks outputs against `output` before calling these, so
+  // widening their parameters back to `unknown` is safe.
+  const runner = { action, ...typed } as AiRunner<D>;
+  if (undo) {
+    runner.undo = async (w, record, tools) =>
+      undo.call(
+        runner,
+        w,
+        undoRecord ? undoRecord.parse(record) : (record as U),
+        tools,
+      );
+  }
+  return runner;
+}
+
+/**
+ * A suggest output: `{ options }`, each option `option` with nothing extra.
+ * `count` is how many the model must give, exactly or as a range.
+ */
+export function suggestOptions<S extends z.ZodRawShape>(
+  option: z.ZodObject<S>,
+  count: number | { min: number; max: number },
+) {
+  const options = z.array(option.strict());
+  return z
+    .object({
+      options:
+        typeof count === "number"
+          ? options.length(count)
+          : options.min(count.min).max(count.max),
+    })
+    .strict();
 }
 
 /**
