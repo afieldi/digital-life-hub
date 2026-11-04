@@ -1,4 +1,9 @@
-import type { AiCancelInput, AiProviderId, AiResult } from "@dlh/core";
+import {
+  type AiCancelInput,
+  type AiProviderId,
+  type AiResult,
+  aiProviderId,
+} from "@dlh/core";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { type ItemWriter, writeItems } from "../items/writer";
@@ -17,6 +22,7 @@ import {
   fail,
   failRequest,
   loadRow,
+  type RequestPatch,
   type RequestRow,
   RequestUsedError,
   runnerFor,
@@ -138,9 +144,9 @@ export async function runApply(
   row: RequestRow,
   from: "pending" | "suggested",
   out: unknown,
-  patch: Partial<RequestRow>,
+  patch: RequestPatch,
 ): Promise<string> {
-  const provider = row.provider as AiProviderId;
+  const provider = aiProviderId.parse(row.provider);
   const apply = runner.apply;
   if (!apply) throw badRequest(`AI action "${runner.action.id}" can't apply`);
   const endPatch = { ...patch, output: null };
@@ -211,7 +217,7 @@ export async function apply(
 ): Promise<AiResult & { status: "applied" }> {
   const row = await loadRow(deps, input.requestId);
   if (row.status !== "suggested") throw new RequestUsedError();
-  const provider = row.provider as AiProviderId;
+  const provider = aiProviderId.parse(row.provider);
   if (expired(deps, row, SUGGESTION_TTL_MS)) {
     return fail(
       deps,
@@ -251,7 +257,7 @@ export async function cancel(
   input: AiCancelInput,
 ): Promise<{ ok: true }> {
   const row = await loadRow(deps, input.requestId);
-  const end = input.error
+  const end: RequestPatch = input.error
     ? {
         status: "failed",
         errorCode: input.error.code,
@@ -295,7 +301,7 @@ export async function undo(
     const err =
       e instanceof RequestUsedError
         ? null
-        : writeFailure(e, row.provider as AiProviderId);
+        : writeFailure(e, aiProviderId.parse(row.provider));
     // A stale undo can never succeed later, so stop offering it.
     if (err?.code === "stale") {
       await claim(deps.db, row.id, "applied", { undo: null }).catch(

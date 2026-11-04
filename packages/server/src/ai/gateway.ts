@@ -4,6 +4,8 @@ import {
   type AiPrepareInput,
   type AiProviderId,
   type AiResult,
+  aiKind,
+  aiProviderId,
   kindAllowed,
 } from "@dlh/core";
 import { aiRequests } from "@dlh/db";
@@ -288,8 +290,8 @@ async function finish(
   usage: ReturnType<typeof usagePatch>,
   timeZone: string | undefined,
 ): Promise<AiResult> {
-  const provider = row.provider as AiProviderId;
-  const kind = row.kind as AiKind;
+  const provider = aiProviderId.parse(row.provider);
+  const kind = aiKind.parse(row.kind);
   const done = { ...timing(deps, row), ...usage, output: null };
   const shape =
     kind === "ask"

@@ -1,4 +1,4 @@
-import type { AiErrorData, AiProviderId } from "@dlh/core";
+import type { AiErrorData, AiProviderId, AiRequestStatus } from "@dlh/core";
 import { aiRequests } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
@@ -9,7 +9,12 @@ import type { AiCompleteResult } from "./providers";
 import type { AiRunner } from "./runners";
 
 export type RequestRow = typeof aiRequests.$inferSelect;
-type RequestPatch = Partial<Omit<RequestRow, "id" | "createdAt">>;
+/** Fields a step writes to a request; `status` only as one of the known ones. */
+export type RequestPatch = Partial<
+  Omit<RequestRow, "id" | "createdAt" | "status">
+> & {
+  status?: AiRequestStatus;
+};
 type Updater = { update: Tx["update"] };
 
 /** A single-use step (complete, apply, discard, undo, cancel) was already taken. */
@@ -104,7 +109,7 @@ export async function loadRow(deps: CoreDeps, id: string): Promise<RequestRow> {
 export async function claim(
   db: Updater,
   id: string,
-  from: string,
+  from: AiRequestStatus,
   set: RequestPatch,
 ): Promise<void> {
   const rows = await db
@@ -142,7 +147,7 @@ export function usagePatch(
 export async function markFailed(
   deps: CoreDeps,
   id: string,
-  from: string,
+  from: AiRequestStatus,
   patch: RequestPatch,
   status: "failed" | "expired" = "failed",
 ): Promise<void> {
@@ -156,7 +161,7 @@ export async function markFailed(
 export async function fail(
   deps: CoreDeps,
   id: string,
-  from: string,
+  from: AiRequestStatus,
   err: AiError,
   patch: RequestPatch,
   status: "failed" | "expired" = "failed",
@@ -181,7 +186,7 @@ export async function fail(
 export async function failRequest(
   deps: CoreDeps,
   id: string,
-  from: string,
+  from: AiRequestStatus,
   e: unknown,
   provider: AiProviderId,
   patch: RequestPatch,
