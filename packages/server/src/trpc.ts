@@ -39,7 +39,21 @@ export interface ApiDeps {}
 
 export type Session = { id: string; email: string };
 
-export type Context = { deps: CoreDeps & ApiDeps; session: Session | null };
+/**
+ * Who a request comes from: you (a session), the agent host's worker, or one
+ * agent run, each by its bearer token.
+ */
+export type Principal =
+  | { kind: "user"; session: Session }
+  | { kind: "worker"; tokenId: string }
+  | { kind: "run"; tokenId: string; runId: string };
+
+/** `session` is set only for you; `principal` for any signed-in caller. */
+export type Context = {
+  deps: CoreDeps & ApiDeps;
+  session: Session | null;
+  principal: Principal | null;
+};
 
 // isDev is fixed at init, so strip the stack per request from devErrors instead.
 // AI failures carry an AiError cause, sent to the app as `data.ai`.

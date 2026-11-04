@@ -23,7 +23,7 @@ async function call(path: string, devErrors: boolean) {
     endpoint: "/trpc",
     req: new Request(`http://x/trpc/${path}`),
     router: appRouter,
-    createContext: () => ({ deps, session: null }),
+    createContext: () => ({ deps, session: null, principal: null }),
   });
   return (await res.json()) as { error: { data: Record<string, unknown> } };
 }

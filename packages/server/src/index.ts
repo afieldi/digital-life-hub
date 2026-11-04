@@ -34,6 +34,14 @@ export {
 } from "./ai/runners";
 export { type ScopedWriter, scopedWriter } from "./ai/scoped";
 export { getSettings } from "./ai/settings";
+export {
+  findServiceToken,
+  mintRunToken,
+  mintWorkerToken,
+  revokeRunTokens,
+  revokeWorkerToken,
+} from "./auth/serviceTokens";
+export { hashToken, newToken } from "./auth/tokens";
 export { type ChangeBus, createChangeBus } from "./changes";
 export {
   composeServer,
@@ -97,6 +105,7 @@ export {
   type Context,
   type CoreDeps,
   type DeleteWith,
+  type Principal,
   protectedProcedure,
   publicProcedure,
   router,

@@ -12,8 +12,10 @@ const DEFAULT_HEARTBEAT_MS = 25_000;
 
 /**
  * Server-sent events: one `data: {"ids":[…],"types":[…]}` event (a
- * `ChangeEvent`) per batch of published changes. The session is re-checked on every heartbeat, so a revoked device
- * is disconnected within one heartbeat interval.
+ * `ChangeEvent`) per batch of published changes. You listen with a session's
+ * token, the agent host's worker with its worker token; a run token is refused.
+ * The token is re-checked on every heartbeat, so a revoked device or worker is
+ * disconnected within one heartbeat interval.
  */
 export function changesHandler(
   deps: AppDeps,
@@ -23,10 +25,9 @@ export function changesHandler(
   const heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
   return async (c) => {
     const token = bearerToken(c.req.header("Authorization"));
-    const session = token
-      ? await authenticate(deps.store, token, deps.now())
-      : null;
-    if (!token || !session) return c.json({ error: "UNAUTHORIZED" }, 401);
+    if (!token || !(await mayListen(deps, token))) {
+      return c.json({ error: "UNAUTHORIZED" }, 401);
+    }
 
     return streamSSE(c, async (stream) => {
       let pending = new Set<string>();
@@ -67,13 +68,13 @@ export function changesHandler(
 
       heartbeat = setInterval(async () => {
         try {
-          const row = await authenticate(deps.store, token, deps.now());
+          const ok = await mayListen(deps, token);
           if (closed) return;
-          if (!row) close();
+          if (!ok) close();
           else void stream.write(": ping\n\n");
         } catch (err) {
           // The store failed; end the stream so the client reconnects.
-          console.error("changes: session check failed", err);
+          console.error("changes: token check failed", err);
           close();
         }
       }, heartbeatMs);
@@ -81,6 +82,13 @@ export function changesHandler(
       await done;
     });
   };
+}
+
+/** A live session's token or a live worker token. */
+async function mayListen(deps: AppDeps, token: string): Promise<boolean> {
+  if (await authenticate(deps.store, token, deps.now())) return true;
+  const principal = await deps.store.findServiceToken(token);
+  return principal?.kind === "worker";
 }
 
 /** The item types among `ids`; null when the lookup fails (the client then refreshes all). */

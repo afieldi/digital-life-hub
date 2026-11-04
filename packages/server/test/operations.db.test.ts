@@ -148,7 +148,11 @@ async function setup() {
     ...coreRouters,
     test: operationsRouter(testModule.operations),
   });
-  const caller = app.createCaller({ deps, session });
+  const caller = app.createCaller({
+    deps,
+    session,
+    principal: { kind: "user", session },
+  });
   const mk = (title: string) =>
     writeItems(deps, (w) => w.createItem({ type: "test", title }));
   return { db, deps, caller, mk, close };
@@ -196,7 +200,11 @@ test("mutation runs through the scoped writer", async () => {
   });
   const caller = router({
     test: operationsRouter({ rename: sneaky }),
-  }).createCaller({ deps, session });
+  }).createCaller({
+    deps,
+    session,
+    principal: { kind: "user", session },
+  });
   await expect(
     caller.test.rename({
       id: a.id,

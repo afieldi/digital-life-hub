@@ -106,6 +106,11 @@ export type OperationDescription<
   /** Defaults to `true`. */
   ai?: boolean;
   /**
+   * Who may call it: `everyone` (you or an agent run), `user` (only you) or
+   * `worker` (only the agent host's worker token). See `accessOf` for the default.
+   */
+  access?: OperationAccess;
+  /**
    * What the scripted dev and e2e fake answers as AI with (the input without
    * the item keys), when guessing from field names would break a rule the
    * schema can't show, e.g. a field that must go with another.
@@ -117,6 +122,13 @@ export type OperationDescription<
    */
   calls?: OperationDescription[];
 };
+
+export type OperationAccess = "everyone" | "user" | "worker";
+
+/** `access`, or by default `everyone` for an AI action and `user` otherwise. */
+export function accessOf(d: OperationDescription): OperationAccess {
+  return d.access ?? (d.ai === false ? "user" : "everyone");
+}
 
 /** Input keys ⌘K fills from the item on screen rather than a form. */
 export const ITEM_KEYS = ["id", "expectedUpdatedAt"] as const;
@@ -133,6 +145,11 @@ export function describeOperation<
   }
   if (d.kind === "query" && d.calls?.length) {
     throw new OperationError(`Operation "${d.id}" is a query with calls`);
+  }
+  if (d.access === "worker" && (d.palette !== false || d.ai !== false)) {
+    throw new OperationError(
+      `Operation "${d.id}" has worker access but is in ⌘K or AI`,
+    );
   }
   try {
     if (d.palette === undefined || d.palette === true) {

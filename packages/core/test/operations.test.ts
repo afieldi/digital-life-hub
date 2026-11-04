@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  accessOf,
   capFor,
   collectModules,
   defineModule,
@@ -13,6 +14,7 @@ import {
   localDueValue,
   ModuleRegistryError,
   NotReady,
+  type OperationDescription,
   OperationError,
   operationList,
   toAiAction,
@@ -281,6 +283,46 @@ describe("describeOperation", () => {
         palette: false,
       }),
     ).not.toThrow());
+  test("worker access needs palette false and ai false", () => {
+    const worker: OperationDescription = {
+      id: "agent.claim",
+      kind: "mutation",
+      label: "Claim",
+      description: "x",
+      appliesTo: "none",
+      input: z.object({}),
+      subject: () => null,
+      effects: ["updateItem"],
+      summary: () => "Claim",
+      access: "worker",
+    };
+    expect(() => describeOperation({ ...worker, ai: false })).toThrow(
+      'Operation "agent.claim" has worker access but is in ⌘K or AI',
+    );
+    expect(() => describeOperation({ ...worker, palette: false })).toThrow(
+      OperationError,
+    );
+    expect(() =>
+      describeOperation({ ...worker, palette: false, ai: false }),
+    ).not.toThrow();
+  });
+  test("access defaults to everyone with ai and user without", () => {
+    const d = describeOperation({
+      id: "tasks.complete",
+      kind: "mutation",
+      label: "Complete",
+      description: "x",
+      appliesTo: ["task"],
+      input,
+      subject: (i) => i.id,
+      effects: ["updateItem"],
+      summary: () => "Complete",
+    });
+    expect(accessOf(d)).toBe("everyone");
+    expect(accessOf({ ...d, ai: false })).toBe("user");
+    expect(accessOf({ ...d, ai: false, access: "everyone" })).toBe("everyone");
+    expect(accessOf({ ...d, access: "user" })).toBe("user");
+  });
   test("an object palette checks params, and toInput gets typed params", () => {
     const create = z.object({
       title: z.string(),

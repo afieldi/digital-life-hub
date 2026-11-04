@@ -1,4 +1,5 @@
 import type { Platform } from "@dlh/api-contract";
+import type { Principal } from "@dlh/server";
 
 export type SessionRow = {
   id: string;
@@ -34,4 +35,6 @@ export interface AuthStore {
   listActiveSessions(now: Date): Promise<SessionRow[]>;
   /** False if missing or already revoked. */
   revokeSession(id: string, now: Date): Promise<boolean>;
+  /** The worker or run `token` signs in as; null when unknown or revoked. */
+  findServiceToken(token: string): Promise<Principal | null>;
 }

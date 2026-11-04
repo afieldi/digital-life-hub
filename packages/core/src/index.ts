@@ -81,6 +81,7 @@ export {
 export type { OperationList } from "./operations/ai";
 export { operationList, toAiAction } from "./operations/ai";
 export type {
+  OperationAccess,
   OperationDescription,
   PaletteContext,
   PaletteForm,
@@ -88,6 +89,7 @@ export type {
   PaletteSpec,
 } from "./operations/describe";
 export {
+  accessOf,
   describeOperation,
   ITEM_KEYS,
   itemOnScreen,

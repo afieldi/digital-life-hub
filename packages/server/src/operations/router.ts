@@ -1,6 +1,11 @@
-import type { TRPCMutationProcedure, TRPCQueryProcedure } from "@trpc/server";
+import { accessOf, type OperationAccess } from "@dlh/core";
+import {
+  TRPCError,
+  type TRPCMutationProcedure,
+  type TRPCQueryProcedure,
+} from "@trpc/server";
 import type { z } from "zod";
-import { protectedProcedure, router } from "../trpc";
+import { type Principal, publicProcedure, router } from "../trpc";
 import {
   type ImplementedOperation,
   type Operations,
@@ -28,8 +33,27 @@ export type OperationsRouter<T extends Operations> = ReturnType<
   typeof router<{ [K in keyof T]: OperationProcedure<T[K]> }>
 >;
 
+/** The principals each `access` lets in. */
+const ALLOWED: Record<OperationAccess, ReadonlySet<Principal["kind"]>> = {
+  everyone: new Set(["user", "run"]),
+  user: new Set(["user"]),
+  worker: new Set(["worker"]),
+};
+
+/** No principal is UNAUTHORIZED; one `access` doesn't let in is FORBIDDEN. */
+function accessProcedure(access: OperationAccess) {
+  const allowed = ALLOWED[access];
+  return publicProcedure.use(({ ctx, next }) => {
+    if (!ctx.principal) throw new TRPCError({ code: "UNAUTHORIZED" });
+    if (!allowed.has(ctx.principal.kind)) {
+      throw new TRPCError({ code: "FORBIDDEN" });
+    }
+    return next();
+  });
+}
+
 function procedureFor(op: ImplementedOperation) {
-  const p = protectedProcedure.input(op.desc.input);
+  const p = accessProcedure(accessOf(op.desc)).input(op.desc.input);
   if (op.kind === "query") {
     return p.query(({ ctx, input }) => op.impl.run(ctx.deps, input));
   }
@@ -37,8 +61,9 @@ function procedureFor(op: ImplementedOperation) {
 }
 
 /**
- * One protected procedure per operation under its key: a query, or a mutation
- * that returns `{ result, undo }` and writes through Core's scoped writer.
+ * One procedure per operation under its key, open to the callers its `access`
+ * allows: a query, or a mutation that returns `{ result, undo }` and writes
+ * through Core's scoped writer.
  */
 export function operationsRouter<T extends Operations>(
   ops: T,

@@ -2,6 +2,7 @@ import type { DeviceInput } from "@dlh/api-contract";
 import type { Db } from "@dlh/db";
 import {
   createCoreDeps,
+  findServiceToken,
   type OperationsRouter,
   type ServerModule,
 } from "@dlh/server";
@@ -89,7 +90,11 @@ export function createTestApi(
       time += ms;
     },
   };
-  const store = memoryAuthStore();
+  // Sessions stay in memory; service tokens are minted in `db`, so look them up there.
+  const db = opts.db;
+  const store = memoryAuthStore(
+    db ? { findServiceToken: (token) => findServiceToken(db, token) } : {},
+  );
   const google = new FakeGoogle(allowedEmail);
   const devAuth = opts.devAuth ?? false;
   // OpenRouter in tests: queue model outputs on `ai`.

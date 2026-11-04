@@ -1,6 +1,27 @@
+import {
+  findServiceToken,
+  mintRunToken,
+  mintWorkerToken,
+  revokeWorkerToken,
+} from "@dlh/server";
 import { Hono } from "hono";
 import { changesHandler } from "../src/changes";
 import { createTestApi, freshModuleDb, serverModules } from "../src/testing";
+
+const changes = (
+  api: ReturnType<typeof createTestApi>,
+  token: string,
+  opts: { heartbeatMs?: number } = {},
+) =>
+  new Hono()
+    .get("/changes", changesHandler(api.deps, opts))
+    .request("/changes", { headers: { Authorization: `Bearer ${token}` } });
+
+/** Reads until the stream ends. */
+async function drain(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  let done = false;
+  while (!done) ({ done } = await reader.read());
+}
 
 test("an event names the changed items' types", async () => {
   const t = await freshModuleDb(serverModules);
@@ -32,5 +53,38 @@ test("an event names the changed items' types", async () => {
     types: ["task"],
   });
   await reader.cancel();
+  await t.close();
+});
+
+test("/changes accepts a worker token", async () => {
+  const t = await freshModuleDb(serverModules);
+  const api = createTestApi({ db: t.db });
+  const token = await mintWorkerToken(t.db);
+  const res = await changes(api, token, { heartbeatMs: 20 });
+  expect(res.status).toBe(200);
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes(": ping")) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+  }
+  expect(text).toContain(": ping");
+  // Revoking the worker token closes the stream at the next heartbeat.
+  const principal = await findServiceToken(t.db, token);
+  if (principal?.kind !== "worker") throw new Error("expected a worker");
+  expect(await revokeWorkerToken(t.db, principal.tokenId)).toBe(true);
+  await drain(reader);
+  await t.close();
+});
+
+test("/changes refuses a run token", async () => {
+  const t = await freshModuleDb(serverModules);
+  const api = createTestApi({ db: t.db });
+  const token = await t.db.transaction((tx) =>
+    mintRunToken(tx, "0190a000-0000-7000-8000-000000000001"),
+  );
+  expect((await changes(api, token)).status).toBe(401);
   await t.close();
 });

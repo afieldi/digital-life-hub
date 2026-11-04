@@ -174,7 +174,11 @@ async function setup() {
     ...coreRouters,
     alpha: operationsRouter(alpha.operations),
     beta: operationsRouter(beta.operations),
-  }).createCaller({ deps, session });
+  }).createCaller({
+    deps,
+    session,
+    principal: { kind: "user", session },
+  });
   return { db, deps, caller, close };
 }
 

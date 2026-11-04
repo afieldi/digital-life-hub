@@ -1,5 +1,6 @@
 import { platform } from "@dlh/api-contract";
 import { type Db, loginAttempts, sessions } from "@dlh/db";
+import { findServiceToken } from "@dlh/server";
 import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
 import type { AuthStore, SessionRow } from "./store";
 
@@ -65,6 +66,9 @@ export function drizzleAuthStore(db: Db): AuthStore {
         .where(and(eq(sessions.id, id), isNull(sessions.revokedAt)))
         .returning({ id: sessions.id });
       return rows.length > 0;
+    },
+    findServiceToken(token) {
+      return findServiceToken(db, token);
     },
   };
 }
