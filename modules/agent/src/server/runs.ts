@@ -10,7 +10,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { agentRunMessages, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
-import { type RunRow, runRow } from "../schema";
+import { pending, type RunRow, runRow } from "../schema";
 
 export type RunTableRow = typeof agentRuns.$inferSelect;
 
@@ -73,25 +73,17 @@ async function latestRun(tx: Tx, taskId: string): Promise<RunTableRow> {
   return row;
 }
 
-/** Ends `run` as cancelled and revokes its run tokens. */
-export async function cancelRun(tx: Tx, run: RunTableRow, now: Date) {
-  const [row] = await tx
-    .update(agentRuns)
-    .set({ status: "cancelled", finishedAt: now })
-    .where(eq(agentRuns.id, run.id))
-    .returning();
-  if (!row) notFound("No run");
-  await revokeRunTokens(tx, run.id);
-  return row;
-}
-
-/** What retry needs of `requests.get`'s result. */
+/** What resolving a run's request needs of `requests.get`'s result. */
 const requestView = z.object({
   request: z.object({ updatedAt: z.string(), outcome: z.string().nullable() }),
 });
 
-/** Resolves the run's open failure request as handled; one already resolved or gone is left. */
-async function resolveFailure(w: ScopedWriter, requestId: string) {
+/**
+ * Resolves the request a run filed as handled, through `requests.get` and
+ * `requests.resolve` (the operation must declare both). One already resolved
+ * or gone is left.
+ */
+async function resolveRequest(w: ScopedWriter, requestId: string) {
   const call = allowed(w.call);
   let view: z.infer<typeof requestView>;
   try {
@@ -108,6 +100,29 @@ async function resolveFailure(w: ScopedWriter, requestId: string) {
   });
 }
 
+/**
+ * Ends a live `run` as cancelled and revokes its run tokens. An approval or
+ * grant it was waiting on is resolved as handled and cleared, so the Queue
+ * doesn't keep asking about a run that has stopped.
+ */
+export async function cancelRun(w: ScopedWriter, run: RunTableRow, now: Date) {
+  const asking =
+    run.pending && run.pending.kind !== "failure" ? run.pending : null;
+  if (asking) await resolveRequest(w, asking.requestId);
+  const [row] = await w.tx
+    .update(agentRuns)
+    .set({
+      status: "cancelled",
+      finishedAt: now,
+      ...(asking ? { pending: null } : {}),
+    })
+    .where(eq(agentRuns.id, run.id))
+    .returning();
+  if (!row) notFound("No run");
+  await revokeRunTokens(w.tx, run.id);
+  return row;
+}
+
 export const cancel = implementOperation(agentOps.cancel, {
   async run(w, input, deps) {
     const run = await latestRun(w.tx, input.id);
@@ -117,12 +132,27 @@ export const cancel = implementOperation(agentOps.cancel, {
     if (run.status === "done" || run.status === "failed") {
       conflict("This run has ended");
     }
-    const row = await cancelRun(w.tx, run, deps.now());
+    const row = await cancelRun(w, run, deps.now());
     await allowed(w.touchItem)(input.id);
     return { result: toRunRow(row), undo: null };
   },
   async undo() {},
   undoRecord: z.null(),
+});
+
+/**
+ * Puts run `runId` back as it was before Retry, if it is still queued and
+ * no claim has started it since (a claim sets `started_at`).
+ */
+const retryRecord = z.object({
+  runId: z.uuid(),
+  taskId: z.uuid(),
+  status: z.enum(["failed", "cancelled"]),
+  pending: pending.nullable(),
+  failureCode: z.string().nullable(),
+  failureMessage: z.string().nullable(),
+  finishedAt: z.iso.datetime().nullable(),
+  startedAt: z.iso.datetime().nullable(),
 });
 
 export const retry = implementOperation(agentOps.retry, {
@@ -132,7 +162,7 @@ export const retry = implementOperation(agentOps.retry, {
       conflict("Only a failed or cancelled run can be retried");
     }
     if (run.pending?.kind === "failure") {
-      await resolveFailure(w, run.pending.requestId);
+      await resolveRequest(w, run.pending.requestId);
     }
     const [row] = await w.tx
       .update(agentRuns)
@@ -147,10 +177,44 @@ export const retry = implementOperation(agentOps.retry, {
       .returning();
     if (!row) notFound("No run");
     await allowed(w.touchItem)(input.id);
-    return { result: toRunRow(row), undo: null };
+    return {
+      result: toRunRow(row),
+      undo: {
+        runId: run.id,
+        taskId: run.taskId,
+        status: run.status,
+        pending: run.pending,
+        failureCode: run.failureCode,
+        failureMessage: run.failureMessage,
+        finishedAt: iso(run.finishedAt),
+        startedAt: iso(run.startedAt),
+      },
+    };
   },
-  async undo() {},
-  undoRecord: z.null(),
+  // Runs before the callee undo of `requests.resolve`, which reopens the failure request.
+  async undo(w, r) {
+    const [run] = await w.tx
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, r.runId))
+      .for("update");
+    if (run?.status !== "queued" || iso(run.startedAt) !== r.startedAt) {
+      conflict("Changed since");
+    }
+    await w.tx
+      .update(agentRuns)
+      .set({
+        status: r.status,
+        pending: r.pending,
+        failureCode: r.failureCode,
+        failureMessage: r.failureMessage,
+        finishedAt: r.finishedAt === null ? null : new Date(r.finishedAt),
+      })
+      .where(eq(agentRuns.id, r.runId));
+    // Nothing else in this token touches the task, so its version can't conflict.
+    await allowed(w.touchItem)(r.taskId);
+  },
+  undoRecord: retryRecord,
 });
 
 export const message = implementOperation(agentOps.message, {

@@ -68,7 +68,10 @@ test("retry acts on the task's latest run", async () => {
     .returning();
   const out = await s.caller.agent.retry({ id: task.id });
   expect(out.result).toMatchObject({ id: latest?.id, status: "queued" });
-  expect(out.undo.record).toBeNull();
+  expect(out.undo.record).toMatchObject({
+    runId: latest?.id,
+    status: "cancelled",
+  });
   await s.close();
 });
 
@@ -246,5 +249,105 @@ test("setSettings refuses max_parallel 0", async () => {
     s.caller.agent.setSettings({ maxParallel: 0 }),
   ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   expect((await s.caller.agent.settings({})).maxParallel).toBe(3);
+  await s.close();
+});
+
+test("retry undo puts the run back to failed and reopens its request", async () => {
+  const s = await setup();
+  const failure = await s.file("Needs you: Fix the build", { source: "agent" });
+  const finishedAt = new Date("2026-11-03T10:00:00.000Z");
+  const { task, run } = await withRun(s, "failed", {
+    finishedAt,
+    failureCode: "crash",
+    failureMessage: "It crashed",
+    failures: 1,
+    pending: { requestId: failure.id, seq: 0, kind: "failure" },
+  });
+  const out = await s.caller.agent.retry({ id: task.id });
+  await expectTracked(s.deps, { itemId: task.id }, () =>
+    s.caller.ops.undo({ id: "agent.retry", token: out.undo }),
+  );
+  const [after] = await s.deps.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, run.id));
+  expect(after).toMatchObject({
+    status: "failed",
+    finishedAt,
+    failureCode: "crash",
+    failureMessage: "It crashed",
+    failures: 1,
+    pending: { requestId: failure.id, seq: 0, kind: "failure" },
+  });
+  const [req] = await s.deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, failure.id));
+  expect(req?.outcome).toBeNull();
+  await s.close();
+});
+
+test("retry undo after the run was claimed conflicts", async () => {
+  const s = await setup();
+  const failure = await s.file("Needs you: Fix the build", { source: "agent" });
+  const { task, run } = await withRun(s, "failed", {
+    finishedAt: new Date(),
+    pending: { requestId: failure.id, seq: 0, kind: "failure" },
+  });
+  const out = await s.caller.agent.retry({ id: task.id });
+  await s.deps.db
+    .update(agentRuns)
+    .set({ status: "running", startedAt: new Date() })
+    .where(eq(agentRuns.id, run.id));
+  await expect(
+    s.caller.ops.undo({ id: "agent.retry", token: out.undo }),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Changed since" });
+  const [after] = await s.deps.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, run.id));
+  expect(after?.status).toBe("running");
+  const [req] = await s.deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, failure.id));
+  expect(req?.outcome).toBe("handled");
+  await s.close();
+});
+
+test("cancel of a waiting run resolves its approval request", async () => {
+  const s = await setup();
+  const ask = await s.file("Merge the PR?", { source: "agent" });
+  const { task, run } = await withRun(s, "waiting", {
+    pending: { requestId: ask.id, seq: 7, kind: "approval" },
+  });
+  const out = await s.caller.agent.cancel({ id: task.id });
+  expect(out.result).toMatchObject({
+    id: run.id,
+    status: "cancelled",
+    pending: null,
+  });
+  const [req] = await s.deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, ask.id));
+  expect(req?.outcome).toBe("handled");
+  await s.close();
+});
+
+test("cancel of a failed run leaves its failure request", async () => {
+  const s = await setup();
+  const failure = await s.file("Needs you: Fix the build", { source: "agent" });
+  const { task } = await withRun(s, "failed", {
+    pending: { requestId: failure.id, seq: 0, kind: "failure" },
+  });
+  await expect(s.caller.agent.cancel({ id: task.id })).rejects.toMatchObject({
+    code: "CONFLICT",
+  });
+  const [req] = await s.deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, failure.id));
+  expect(req?.outcome).toBeNull();
   await s.close();
 });

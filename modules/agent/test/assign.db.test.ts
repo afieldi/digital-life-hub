@@ -208,3 +208,32 @@ test("unassign cancels the active run", async () => {
   expect(run?.status).toBe("cancelled");
   await close();
 });
+
+test("unassign of a waiting run resolves its grant request", async () => {
+  const { deps, caller, mkTask, file, close } = await setup();
+  const task = await mkTask();
+  const out = await caller.agent.assign({
+    id: task.id,
+    expectedUpdatedAt: task.updatedAt,
+  });
+  const grant = await file("Use the AWS connection?", { source: "agent" });
+  await deps.db
+    .update(agentRuns)
+    .set({
+      status: "waiting",
+      pending: { requestId: grant.id, seq: 3, kind: "grant" },
+    })
+    .where(eq(agentRuns.id, out.result.run.id));
+  const back = await caller.agent.unassign({
+    id: task.id,
+    expectedUpdatedAt: await version(deps, task.id),
+  });
+  expect(back.result.run).toMatchObject({ status: "cancelled", pending: null });
+  const [req] = await deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, grant.id));
+  expect(req?.outcome).toBe("handled");
+  expect(await assigneeOf(deps, task.id)).toBe("me");
+  await close();
+});

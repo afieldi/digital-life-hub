@@ -161,7 +161,7 @@ export const unassign = implementOperation(agentOps.unassign, {
       }),
     );
     const live = await liveRun(w.tx, input.id);
-    const run = live ? await cancelRun(w.tx, live, deps.now()) : null;
+    const run = live ? await cancelRun(w, live, deps.now()) : null;
     // setAssignee's bump publishes the task. Only when it changed nothing (the
     // task was already yours) is touching safe, and needed to show the run.
     if (run && task.updatedAt === input.expectedUpdatedAt) {

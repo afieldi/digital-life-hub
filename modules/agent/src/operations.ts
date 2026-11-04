@@ -145,7 +145,8 @@ const unassign = describeOperation({
   input: z.object({ id: taskId, expectedUpdatedAt }),
   subject: (input) => input.id,
   effects: ["touchItems"],
-  calls: [taskOps.setAssignee],
+  // `requests.*` resolve the approval or grant a waiting run asked for.
+  calls: [taskOps.setAssignee, requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Back to me",
   palette: (ctx) => {
@@ -198,6 +199,8 @@ const cancel = describeOperation({
   input: z.object({ id: taskId }),
   subject: (input) => input.id,
   effects: ["touchItems"],
+  // Resolves the approval or grant a waiting run asked for.
+  calls: [requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Cancel run",
 });
