@@ -110,7 +110,13 @@ const assignRequest = describeOperation({
   subject: (input) => input.id,
   // Sets the AI cap (suggest, you confirm). Touching is left to setAssignee's version bump: a touchItem after it would break its undo.
   effects: ["touchItems"],
-  calls: [taskOps.create, taskOps.setAssignee, requestOps.resolve],
+  // `requests.get` reads the request's title and body for the task.
+  calls: [
+    requestOps.get,
+    taskOps.create,
+    taskOps.setAssignee,
+    requestOps.resolve,
+  ],
   access: "user",
   summary: () => "Give to agent",
   palette: (ctx) => {
@@ -217,7 +223,8 @@ const retry = describeOperation({
   input: z.object({ id: taskId }),
   subject: (input) => input.id,
   effects: ["touchItems"],
-  calls: [requestOps.resolve],
+  // `requests.get` reads the failure request's version to resolve it.
+  calls: [requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Retry run",
 });

@@ -7,6 +7,15 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { agentModule } from "./module";
 import { agentOps } from "./operations";
+import { assign, assignRequest, unassign } from "./server/assign";
+import {
+  connectionsQuery,
+  disableConnection,
+  setDefaultConnections,
+} from "./server/connections";
+import { events, run, runs } from "./server/reads";
+import { cancel, message, retry } from "./server/runs";
+import { setSettings, settingsQuery } from "./server/settings";
 
 const notYet = () => {
   throw new TRPCError({
@@ -15,7 +24,7 @@ const notYet = () => {
   });
 };
 
-/** Placeholder until the operation is built (Tasks 9-11 replace each one). */
+/** Placeholder until the operation is built (Tasks 10-11 replace each one). */
 function stub<D extends (typeof agentOps)[keyof typeof agentOps]>(
   desc: D,
 ): ImplementedOperation<D> {
@@ -34,21 +43,21 @@ function stub<D extends (typeof agentOps)[keyof typeof agentOps]>(
 export default defineServerModule(agentModule, {
   migrations: true,
   operations: {
-    assign: stub(agentOps.assign),
-    assignRequest: stub(agentOps.assignRequest),
-    unassign: stub(agentOps.unassign),
-    message: stub(agentOps.message),
-    cancel: stub(agentOps.cancel),
-    retry: stub(agentOps.retry),
+    assign,
+    assignRequest,
+    unassign,
+    message,
+    cancel,
+    retry,
     decide: stub(agentOps.decide),
-    run: stub(agentOps.run),
-    runs: stub(agentOps.runs),
-    events: stub(agentOps.events),
-    connections: stub(agentOps.connections),
-    setDefaultConnections: stub(agentOps.setDefaultConnections),
-    disableConnection: stub(agentOps.disableConnection),
-    settings: stub(agentOps.settings),
-    setSettings: stub(agentOps.setSettings),
+    run,
+    runs,
+    events,
+    connections: connectionsQuery,
+    setDefaultConnections,
+    disableConnection,
+    settings: settingsQuery,
+    setSettings,
     claim: stub(agentOps.claim),
     heartbeat: stub(agentOps.heartbeat),
     appendEvents: stub(agentOps.appendEvents),
