@@ -175,9 +175,9 @@ Where a field names another item, give that item's title.`;
       context,
       system,
       output: { ask: z.object(omitKeys(shape, ["timeZone"])).strict() },
-      async list(deps, out, ctx) {
+      async list(deps, out, req) {
         const zone =
-          "timeZone" in shape ? { timeZone: ctx.timeZone ?? "UTC" } : {};
+          "timeZone" in shape ? { timeZone: req.timeZone ?? "UTC" } : {};
         const input = desc.input.safeParse({ ...(out as object), ...zone });
         if (!input.success)
           throw badOutput("The answer didn't fit the request");

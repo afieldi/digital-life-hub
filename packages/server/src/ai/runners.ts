@@ -57,7 +57,12 @@ export type AiRunner<D extends AiActionDescription = AiActionDescription> = {
   list?(
     deps: CoreDeps,
     out: unknown,
-    ctx: AiContext,
+    /**
+     * The request's zone, and the ids its context listed to the model at
+     * prepare (`AiContext.listed`): not a fresh context, which may have
+     * changed (or lost its item) during a slow CLI run.
+     */
+    req: { timeZone?: string; listed?: string[] },
   ): Promise<{ heading: string; items: AiListedItem[] }>;
   /**
    * Text shown under a suggested option's label, such as the rewritten text
