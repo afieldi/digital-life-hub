@@ -288,6 +288,15 @@ async function runningRun(w: ScopedWriter, runId: string) {
   return run;
 }
 
+/** An item title's longest. */
+const MAX_TITLE = 500;
+
+/** "Needs you: <title>", cut to the title limit with a trailing "…". */
+function needsYou(title: string): string {
+  const full = `Needs you: ${title}`;
+  return full.length <= MAX_TITLE ? full : `${full.slice(0, MAX_TITLE - 1)}…`;
+}
+
 /** What suspend and fail need of `requests.file`'s result. */
 const filed = z.object({ request: z.object({ id: z.uuid() }) });
 
@@ -307,7 +316,7 @@ async function failRun(
   const attempt = run.failures + 1;
   const { request } = filed.parse(
     await allowed(w.call)(requestOps.file, {
-      title: `Needs you: ${task.title}`,
+      title: needsYou(task.title),
       body: failure.message,
       source: "agent",
       externalId: `${run.id}:fail:${attempt}`,
@@ -347,26 +356,28 @@ async function cancelRunning(
   return row;
 }
 
-/** The cap a heartbeat has reached, if any: the cost so far, or the time since the first start. */
+/**
+ * The cap a run has reached in its current allowance (since its last Retry),
+ * if any: the cost spent, or the running time.
+ */
 function capReached(
-  costUsd: number,
-  startedAt: Date,
-  now: Date,
+  run: RunTableRow,
   limits: { maxCostUsd: number; maxRunningMinutes: number },
 ) {
-  if (costUsd >= limits.maxCostUsd) {
+  if (Number(run.costUsd) - Number(run.costBaseUsd) >= limits.maxCostUsd) {
     const cap = limits.maxCostUsd.toFixed(2);
     return { code: "cost_cap", message: `Cost cap reached ($${cap})` };
   }
-  if (
-    now.getTime() - startedAt.getTime() >=
-    limits.maxRunningMinutes * 60_000
-  ) {
+  if (run.runningMs >= limits.maxRunningMinutes * 60_000) {
     const cap = limits.maxRunningMinutes;
     return { code: "time_cap", message: `Time cap reached (${cap} min)` };
   }
   return null;
 }
+
+/** Milliseconds from `since` to `now`; none without a `since`, or if the clock went back. */
+const elapsedMs = (since: Date | null, now: Date) =>
+  since ? Math.max(0, now.getTime() - since.getTime()) : 0;
 
 export const heartbeat = implementOperation(agentOps.heartbeat, {
   async run(w, input, deps) {
@@ -384,6 +395,8 @@ export const heartbeat = implementOperation(agentOps.heartbeat, {
       .update(agentRuns)
       .set({
         heartbeatAt: now,
+        // Since the last heartbeat or the claim, so time queued or waiting isn't counted.
+        runningMs: run.runningMs + elapsedMs(run.heartbeatAt, now),
         turns: input.turns,
         inputTokens: input.inputTokens,
         outputTokens: input.outputTokens,
@@ -398,12 +411,7 @@ export const heartbeat = implementOperation(agentOps.heartbeat, {
       return { result: { stop: true }, undo: null };
     }
     const settings = await readSettings(w.tx);
-    const cap = capReached(
-      input.costUsd,
-      beaten.startedAt ?? now,
-      now,
-      settings,
-    );
+    const cap = capReached(beaten, settings);
     if (cap) {
       await failRun(w, beaten, task, cap, now);
       return { result: { stop: true }, undo: null };

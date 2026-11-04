@@ -271,6 +271,9 @@ const retryRecord = z.object({
   failureMessage: z.string().nullable(),
   finishedAt: z.iso.datetime().nullable(),
   heartbeatAt: z.iso.datetime().nullable(),
+  /** The allowance the run had used, which Retry reset. */
+  runningMs: z.number().int(),
+  costBaseUsd: z.string(),
 });
 
 /** What retry needs of `tasks.get`'s result. */
@@ -302,6 +305,9 @@ export const retry = implementOperation(agentOps.retry, {
           finishedAt: null,
           failureCode: null,
           failureMessage: null,
+          // A fresh allowance: the caps count from here.
+          runningMs: 0,
+          costBaseUsd: run.costUsd,
         })
         .where(eq(agentRuns.id, run.id))
         .returning(),
@@ -319,6 +325,8 @@ export const retry = implementOperation(agentOps.retry, {
         failureMessage: run.failureMessage,
         finishedAt: iso(run.finishedAt),
         heartbeatAt: iso(run.heartbeatAt),
+        runningMs: run.runningMs,
+        costBaseUsd: run.costBaseUsd,
       },
     };
   },
@@ -340,6 +348,8 @@ export const retry = implementOperation(agentOps.retry, {
         failureCode: r.failureCode,
         failureMessage: r.failureMessage,
         finishedAt: r.finishedAt === null ? null : new Date(r.finishedAt),
+        runningMs: r.runningMs,
+        costBaseUsd: r.costBaseUsd,
       })
       .where(eq(agentRuns.id, r.runId));
     // Nothing else in this token touches the task, so its version can't conflict.

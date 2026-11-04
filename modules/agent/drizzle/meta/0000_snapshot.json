@@ -350,6 +350,20 @@
           "notNull": true,
           "default": "'0'"
         },
+        "cost_base_usd": {
+          "name": "cost_base_usd",
+          "type": "numeric(10, 4)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "running_ms": {
+          "name": "running_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "image": {
           "name": "image",
           "type": "text",

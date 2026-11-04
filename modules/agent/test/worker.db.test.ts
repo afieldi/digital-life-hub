@@ -35,8 +35,9 @@ async function withRun(
   s: S,
   status = "running",
   run: Partial<typeof agentRuns.$inferInsert> = {},
+  title?: string,
 ) {
-  const task = await s.mkTask();
+  const task = await s.mkTask(title);
   await s.deps.db.execute(
     sql`update tasks set assignee = 'agent' where item_id = ${task.id}`,
   );
@@ -235,13 +236,97 @@ test("the cost cap applied is the one in settings", async () => {
 
 test('heartbeat past the time cap fails the run with "Time cap reached (240 min)"', async () => {
   const s = await setup();
-  const { run } = await withRun(s, "running", { startedAt: minutesAgo(240) });
+  // 239 minutes used, and a minute since the last heartbeat.
+  const { run } = await withRun(s, "running", {
+    runningMs: 239 * 60_000,
+    heartbeatAt: minutesAgo(1),
+  });
   const out = await worker(s).agent.heartbeat({ runId: run.id, ...beat });
   expect(out.result).toEqual({ stop: true });
   expect(await runById(s, run.id)).toMatchObject({
     status: "failed",
     failureCode: "time_cap",
     failureMessage: "Time cap reached (240 min)",
+    runningMs: 240 * 60_000,
+  });
+  await s.close();
+});
+
+test("time spent waiting doesn't count toward the time cap", async () => {
+  const s = await setup();
+  // First started five hours ago, but only a minute of that was running.
+  const { run } = await withRun(s, "running", {
+    startedAt: minutesAgo(300),
+    heartbeatAt: minutesAgo(1),
+  });
+  const w = worker(s);
+  await w.agent.heartbeat({ runId: run.id, ...beat });
+  await suspended(s, run.id, 5);
+  await s.caller.agent.decide({ runId: run.id, seq: 5, approve: true });
+  await w.agent.claim({});
+  const out = await w.agent.heartbeat({ runId: run.id, ...beat });
+  expect(out.result).toEqual({ stop: false });
+  expect(await runById(s, run.id)).toMatchObject({
+    status: "running",
+    runningMs: 60_000,
+  });
+  await s.close();
+});
+
+test("a run retried after the time cap gets a fresh allowance", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s, "running", {
+    runningMs: 240 * 60_000,
+  });
+  const w = worker(s);
+  expect((await w.agent.heartbeat({ runId: run.id, ...beat })).result).toEqual({
+    stop: true,
+  });
+  expect((await runById(s, run.id))?.failureCode).toBe("time_cap");
+  await s.caller.agent.retry({ id: task.id });
+  expect((await runById(s, run.id))?.runningMs).toBe(0);
+  await w.agent.claim({});
+  expect((await w.agent.heartbeat({ runId: run.id, ...beat })).result).toEqual({
+    stop: false,
+  });
+  expect((await runById(s, run.id))?.status).toBe("running");
+  await s.close();
+});
+
+test("a run retried after the cost cap gets a fresh allowance", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s);
+  const w = worker(s);
+  const at = (costUsd: number) =>
+    w.agent.heartbeat({ runId: run.id, ...beat, costUsd });
+  expect((await at(10)).result).toEqual({ stop: true });
+  await s.caller.agent.retry({ id: task.id });
+  expect((await runById(s, run.id))?.costBaseUsd).toBe("10.0000");
+  await w.agent.claim({});
+  // The run's cost goes on counting; the cap counts from the Retry.
+  expect((await at(19.99)).result).toEqual({ stop: false });
+  expect((await at(20)).result).toEqual({ stop: true });
+  expect(await runById(s, run.id)).toMatchObject({
+    status: "failed",
+    failureMessage: "Cost cap reached ($10.00)",
+    failures: 2,
+  });
+  await s.close();
+});
+
+test("retry undo restores the allowance the run had used", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s, "running", {
+    runningMs: 240 * 60_000,
+    costUsd: "3",
+  });
+  await worker(s).agent.heartbeat({ runId: run.id, ...beat, costUsd: 3 });
+  const out = await s.caller.agent.retry({ id: task.id });
+  await s.caller.ops.undo({ id: "agent.retry", token: out.undo });
+  expect(await runById(s, run.id)).toMatchObject({
+    status: "failed",
+    runningMs: 240 * 60_000,
+    costBaseUsd: "0.0000",
   });
   await s.close();
 });
@@ -530,6 +615,20 @@ test("finish after a cancel is CONFLICT and the task stays open", async () => {
   ).rejects.toMatchObject({ code: "CONFLICT" });
   expect(await completedAt(s, task.id)).toBeNull();
   expect((await runById(s, run.id))?.status).toBe("cancelled");
+  await s.close();
+});
+
+test('"Needs you" is cut to the title limit with a trailing "…"', async () => {
+  const s = await setup();
+  const { run } = await withRun(s, "running", {}, "x".repeat(500));
+  await worker(s).agent.fail({ runId: run.id, code: "crash", message: "x" });
+  const [req] = await requestsFiledAs(s, `${run.id}:fail:1`);
+  const titles = await s.deps.db.execute<{ title: string }>(
+    sql`select title from items where id = ${req?.itemId ?? null}`,
+  );
+  const title = titles[0]?.title ?? "";
+  expect(title).toHaveLength(500);
+  expect(title).toBe(`Needs you: ${"x".repeat(488)}…`);
   await s.close();
 });
 

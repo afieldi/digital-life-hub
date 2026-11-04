@@ -57,6 +57,8 @@ CREATE TABLE "agent_runs" (
 	"input_tokens" integer DEFAULT 0 NOT NULL,
 	"output_tokens" integer DEFAULT 0 NOT NULL,
 	"cost_usd" numeric(10, 4) DEFAULT '0' NOT NULL,
+	"cost_base_usd" numeric(10, 4) DEFAULT '0' NOT NULL,
+	"running_ms" integer DEFAULT 0 NOT NULL,
 	"image" text,
 	CONSTRAINT "agent_runs_task_id_items_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."items"("id") ON DELETE cascade,
 	CONSTRAINT "agent_runs_status_check" CHECK ("agent_runs"."status" in ('queued', 'running', 'waiting', 'done', 'failed', 'cancelled'))

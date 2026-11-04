@@ -55,6 +55,12 @@ export const agentRuns = pgTable(
     costUsd: numeric("cost_usd", { precision: 10, scale: 4 })
       .notNull()
       .default("0"),
+    /** `cost_usd` when the current allowance began (the last Retry); the cost cap counts from it. */
+    costBaseUsd: numeric("cost_base_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0"),
+    /** Running time in the current allowance, added by each heartbeat; the time cap counts it. */
+    runningMs: integer("running_ms").notNull().default(0),
     image: text("image"),
   },
   (t) => [
