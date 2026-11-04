@@ -1,13 +1,9 @@
-import { DEFAULT_TEST_DATABASE_URL } from "@dlh/db";
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_API_PORT, E2E_API_URL } from "./e2e/apiUrl";
+import { E2E_API_PORT, E2E_API_URL, E2E_DATABASE_URL } from "./e2e/apiUrl";
 
-// 1420 is Tauri's conventional dev port (tauri.conf.json devUrl). Never reuse
-// an existing server: a stale one would be tested instead of this checkout.
-const port = 1420;
-// Must be the database e2e/prepareDb.ts resets (freshTestDb reads the same variable).
-const testDatabaseUrl =
-  process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_DATABASE_URL;
+// Not Tauri's 1420, so e2e runs beside `pnpm dev`. Never reuse an existing
+// server: a stale one would be tested instead of this checkout.
+const port = 1430;
 
 export default defineConfig({
   testDir: "e2e",
@@ -23,7 +19,7 @@ export default defineConfig({
       env: {
         NODE_ENV: "development",
         PORT: String(E2E_API_PORT),
-        DATABASE_URL: testDatabaseUrl,
+        DATABASE_URL: E2E_DATABASE_URL,
         GOOGLE_CLIENT_ID: "e2e-client-id",
         GOOGLE_CLIENT_SECRET: "e2e-client-secret",
         ALLOWED_EMAIL: "e2e@example.test",
@@ -32,7 +28,7 @@ export default defineConfig({
       },
     },
     {
-      command: "pnpm dev:web",
+      command: `pnpm --filter @dlh/desktop exec vite --port ${port} --strictPort`,
       url: `http://localhost:${port}`,
       reuseExistingServer: false,
       env: { VITE_API_URL: E2E_API_URL },

@@ -15,6 +15,7 @@ const demo = {
 } satisfies ServerModule;
 
 let url: string;
+let closeDb: () => Promise<void>;
 
 const count = async (table: string) => {
   const { db, close } = createDb(url);
@@ -35,13 +36,11 @@ beforeAll(async () => {
   await fresh.db.execute(sql`drop schema public cascade`);
   await fresh.db.execute(sql`drop schema drizzle cascade`);
   await fresh.db.execute(sql`create schema public`);
-  await fresh.close();
+  // Closing drops the database: keep it until the tests are done.
+  closeDb = fresh.close;
 });
 
-afterAll(async () => {
-  const fresh = await freshTestDb();
-  await fresh.close();
-});
+afterAll(() => closeDb());
 
 describe("migrateAll", () => {
   it("applies Core then modules", async () => {

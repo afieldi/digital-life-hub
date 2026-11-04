@@ -7,6 +7,8 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["test/setup.ts"],
+    // A DB test's first fresh database may wait for its template's migrations.
+    testTimeout: 30_000,
     exclude: ["e2e/**", "node_modules/**"],
   },
 });

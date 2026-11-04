@@ -215,6 +215,23 @@ test("CORS allows the Tauri origins", async () => {
   expect(bad.headers.get("Access-Control-Allow-Origin")).toBeNull();
 });
 
+test("CORS allows the e2e web server's origin only in development", async () => {
+  const preflight = (devAuth: boolean) =>
+    createTestApi({ devAuth }).app.request("/trpc/auth.me", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:1430",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+  expect(
+    (await preflight(true)).headers.get("Access-Control-Allow-Origin"),
+  ).toBe("http://localhost:1430");
+  expect(
+    (await preflight(false)).headers.get("Access-Control-Allow-Origin"),
+  ).toBeNull();
+});
+
 test("GET /health", async () => {
   const res = await createTestApi().app.request("/health");
   expect(await res.json()).toEqual({ ok: true });
