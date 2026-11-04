@@ -319,12 +319,10 @@ async function finish(
   try {
     if (kind === "ask") {
       if (runner.list) {
-        const ctx = await runner.context(deps, row.itemId, { timeZone });
         // What the model saw at prepare, not what the context reads now.
         const { listed } = pendingOutput.safeParse(row.output).data ?? {};
         const list = await runner.list(deps, out, {
-          ...ctx,
-          timeZone,
+          ...(timeZone ? { timeZone } : {}),
           ...(listed ? { listed } : {}),
         });
         await claim(deps.db, row.id, "pending", { status: "listed", ...done });

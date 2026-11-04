@@ -478,6 +478,33 @@ test("a CLI query falls back to UTC and keeps the zone until complete", async ()
   await s.close();
 });
 
+test("a CLI query still lists when the item on screen was deleted during the run", async () => {
+  const s = await setup();
+  const a = await s.mk("Alpha");
+  const run = await prepare(s.deps, {
+    text: "find alpha",
+    itemId: a.id,
+    actionId: "test.find",
+    kind: "ask",
+    provider: "claude-cli",
+  });
+  if (run.status !== "run") throw new Error("expected a CLI run");
+  s.tick();
+  await writeItems(s.deps, (w) =>
+    w.setDeleted({ id: a.id, expectedUpdatedAt: a.updatedAt, deleted: true }),
+  );
+  const res = await complete(s.deps, {
+    requestId: run.requestId,
+    raw: JSON.stringify({
+      type: "result",
+      is_error: false,
+      result: JSON.stringify({ text: "alpha" }),
+    }),
+  });
+  expect(res).toMatchObject({ status: "listed" });
+  await s.close();
+});
+
 test("an ambiguous item title drops to suggested with matches", async () => {
   const s = await setup();
   const p1 = await s.mk("Groceries list");

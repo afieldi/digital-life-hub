@@ -216,13 +216,13 @@ The <item> section lists the person's open tasks that are overdue or due today o
       .map((m) => ({ taskId: m[1], reason: "Fake reason." })),
     advice: "Fake advice.",
   }),
-  async list(deps, out, ctx) {
+  async list(deps, out, req) {
     const { order, advice } = planOutput.parse(out);
-    const timeZone = ctx.timeZone ?? "UTC";
+    const timeZone = req.timeZone ?? "UTC";
     // Checked against the tasks the model saw; read again for what changed
     // since (a CLI run can take a while): ticked ones show done, deleted ones
     // are dropped.
-    const shown = new Set(ctx.listed ?? []);
+    const shown = new Set(req.listed ?? []);
     for (const { taskId } of order) {
       if (!shown.has(taskId)) {
         throw new AiError(
