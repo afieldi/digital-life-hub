@@ -8,13 +8,14 @@ import {
   isTextEntry,
   KeyHints,
   ListGroup,
+  ModulePage,
   ProgressBar,
-  Skeleton,
+  QueryState,
   Switch,
 } from "@dlh/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlert, ListChecks } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { ListChecks } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { groupFor } from "../dates";
 import { taskOps } from "../operations";
 import { taskHref, useTasksApi, useTaskWrite } from "./api";
@@ -109,71 +110,61 @@ export function OpenPage({ search: given }: { search?: ListSearch }) {
   const progress = todayProgress(rows, today);
   const next = nextUp(rows, new Date(), timeZone);
 
-  let content: ReactNode;
-  if (list.isPending) {
-    content = <Skeleton lines={5} />;
-  } else if (list.isError) {
-    content = (
-      <EmptyState
-        icon={CircleAlert}
-        title="Couldn't load tasks"
-        action={
-          <Button variant="glass" onPress={() => void list.refetch()}>
-            Retry
-          </Button>
-        }
-      />
-    );
-  } else if (rows.length === 0) {
-    content = (
-      <EmptyState icon={ListChecks} title="Nothing open. Add one above" />
-    );
-  } else {
-    content = groups.map((g) => (
-      <ListGroup
-        key={g.key}
-        label={g.label}
-        count={g.rows.filter((r) => !r.completedAt).length}
-        tone={g.key === "overdue" ? "danger" : "default"}
-        action={
-          g.key === "overdue" ? (
-            <Button variant="ghost" onPress={() => void rescheduleAll()}>
-              Reschedule all
-            </Button>
-          ) : undefined
-        }
-      >
-        {g.rows.map((row) => (
-          <TaskRowView
-            key={row.id}
-            row={row}
-            today={today}
-            timeZone={timeZone}
-            onToggle={toggle}
-            href={taskHref(row.id)}
-          />
-        ))}
-      </ListGroup>
-    ));
-  }
+  const content = (
+    <QueryState
+      query={list}
+      errorTitle="Couldn't load tasks"
+      isEmpty={rows.length === 0}
+      empty={
+        <EmptyState icon={ListChecks} title="Nothing open. Add one above" />
+      }
+    >
+      {() =>
+        groups.map((g) => (
+          <ListGroup
+            key={g.key}
+            label={g.label}
+            count={g.rows.filter((r) => !r.completedAt).length}
+            tone={g.key === "overdue" ? "danger" : "default"}
+            action={
+              g.key === "overdue" ? (
+                <Button variant="ghost" onPress={() => void rescheduleAll()}>
+                  Reschedule all
+                </Button>
+              ) : undefined
+            }
+          >
+            {g.rows.map((row) => (
+              <TaskRowView
+                key={row.id}
+                row={row}
+                today={today}
+                timeZone={timeZone}
+                onToggle={toggle}
+                href={taskHref(row.id)}
+              />
+            ))}
+          </ListGroup>
+        ))
+      }
+    </QueryState>
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-6 pt-8 pb-[150px]">
-      <TasksHeader current="/tasks" search={search} />
-      <div className="flex flex-wrap items-start gap-6">
-        <section
-          aria-label="Open tasks"
-          className="flex min-w-0 flex-[999_1_560px] flex-col gap-4"
-        >
+    <ModulePage
+      header={<TasksHeader current="/tasks" search={search} />}
+      mainLabel="Open tasks"
+      main={
+        <>
           <QuickAdd inputRef={quickAdd} />
           <GlassPanel level="panel" className="flex flex-col gap-0.5 p-2.5">
             {content}
           </GlassPanel>
-        </section>
-        <aside
-          aria-label="Summary and filters"
-          className="flex flex-[1_1_280px] flex-col gap-4"
-        >
+        </>
+      }
+      asideLabel="Summary and filters"
+      aside={
+        <>
           <GlassPanel level="panel" className="flex flex-col gap-3 p-5">
             {progress.total > 0 ? (
               <ProgressBar
@@ -198,8 +189,8 @@ export function OpenPage({ search: given }: { search?: ListSearch }) {
               { keys: ["↵"], label: "open" },
             ]}
           />
-        </aside>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }

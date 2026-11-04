@@ -44,6 +44,7 @@ An operation (`describeOperation` in `src/operations.ts`) is one thing the modul
 - `useModuleApi<NotesRouter>("notes")` for the module's procedures, `useCoreApi()` for Core's (`items.list`, `items.rename`, links, search).
 - `useModuleWrite({ queryKeys, conflictMessage })` runs a write with its toast, Undo, refresh and conflict handling. `apiErrorKind(err)` says what went wrong (`conflict`, `gone`, `invalid`, `network`…); queries already retry only what may pass.
 - An item page calls `useRecordView(id)`: it records the view for Recents and tells ⌘K and AI which item is on screen. Point `itemType.href` at it.
+- `ModulePage` lays out a screen (header, main column, side column) and `QueryState` renders a query's loading, error-with-Retry and empty states.
 - Modules use `@dlh/ui` components and layout classes only; `scripts/check-module-classes.ts` refuses colour, type and other visual classes.
 - A panel for Home goes in `homeWidgets: [{ id, label, component, order? }]`.
 - Days, zones and dues: `todayIn`, `dayOfDue`, `formatWhen`, `timeZoneValue` and the rest are in `@dlh/core`; `parseDue` in `@dlh/core/capture`.

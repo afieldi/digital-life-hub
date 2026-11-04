@@ -9,17 +9,14 @@ import {
 } from "@dlh/core";
 import {
   Board,
-  Button,
   Caption,
-  EmptyState,
   GlassPanel,
   ListGroup,
   PeriodNav,
-  Skeleton,
+  QueryState,
 } from "@dlh/ui";
 import { useNavigate } from "@tanstack/react-router";
-import { CircleAlert } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { taskOps } from "../operations";
 import type { TaskRow } from "../schema";
 import { taskHref, useTasksApi } from "./api";
@@ -111,43 +108,30 @@ export function UpcomingPage({ search: given }: { search?: ListSearch }) {
     });
   };
 
-  let board: ReactNode;
-  if (list.isPending) {
-    board = <Skeleton lines={5} />;
-  } else if (list.isError) {
-    board = (
-      <EmptyState
-        icon={CircleAlert}
-        title="Couldn't load tasks"
-        action={
-          <Button variant="glass" onPress={() => void list.refetch()}>
-            Retry
-          </Button>
-        }
-      />
-    );
-  } else {
-    board = (
-      <div className="overflow-x-auto pb-2">
-        <Board<TaskRow>
-          columns={columns}
-          items={week}
-          columnOf={(r) => r.day ?? ""}
-          textValue={(r) => r.title}
-          hrefOf={(r) => taskHref(r.id)}
-          onMove={move}
-          onAdd={setAddDay}
-          addLabel="Add"
-          renderCard={(r) => (
-            <>
-              <span>{r.title}</span>
-              <Caption>{cardWhen(r, timeZone)}</Caption>
-            </>
-          )}
-        />
-      </div>
-    );
-  }
+  const board = (
+    <QueryState query={list} errorTitle="Couldn't load tasks">
+      {() => (
+        <div className="overflow-x-auto pb-2">
+          <Board<TaskRow>
+            columns={columns}
+            items={week}
+            columnOf={(r) => r.day ?? ""}
+            textValue={(r) => r.title}
+            hrefOf={(r) => taskHref(r.id)}
+            onMove={move}
+            onAdd={setAddDay}
+            addLabel="Add"
+            renderCard={(r) => (
+              <>
+                <span>{r.title}</span>
+                <Caption>{cardWhen(r, timeZone)}</Caption>
+              </>
+            )}
+          />
+        </div>
+      )}
+    </QueryState>
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-[1960px] flex-col gap-5 px-6 pt-8 pb-[150px]">
