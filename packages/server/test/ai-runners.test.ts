@@ -78,7 +78,19 @@ describe("collectAiRunners", () => {
     );
   });
 
-  it("rejects appliesTo naming a type the module does not own", () => {
+  it("rejects appliesTo naming a type no module owns", () => {
+    const d = desc("notes.tidy", ["task"]);
+    expect(() =>
+      collectAiRunners(
+        [d],
+        [runner(d)],
+        new Map([["notes.tidy", "notes"]]),
+        new Map([["note", "notes"]]),
+      ),
+    ).toThrow('applies to item type "task" that no module owns');
+  });
+
+  it("accepts appliesTo naming another module's type", () => {
     const d = desc("notes.tidy", ["task"]);
     expect(() =>
       collectAiRunners(
@@ -87,13 +99,13 @@ describe("collectAiRunners", () => {
         new Map([["notes.tidy", "notes"]]),
         new Map([["task", "tasks"]]),
       ),
-    ).toThrow('applies to item type "task" that its module does not own');
+    ).not.toThrow();
   });
 
   it("rejects a core action naming an item type", () => {
     const d = desc("answer", ["note"]);
     expect(() => collectAiRunners([d], [runner(d)], none, none)).toThrow(
-      "does not own",
+      "may apply only to",
     );
   });
 });

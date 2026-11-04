@@ -175,6 +175,7 @@ Where a field names another item, give that item's title.`;
       context,
       system,
       output: { ask: z.object(omitKeys(shape, ["timeZone"])).strict() },
+      ...(desc.devFake ? { devFake: () => desc.devFake } : {}),
       async list(deps, out, req) {
         const zone =
           "timeZone" in shape ? { timeZone: req.timeZone ?? "UTC" } : {};
