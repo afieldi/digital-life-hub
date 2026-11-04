@@ -122,6 +122,46 @@ const renameBothDesc = describeOperation({
   calls: [renameDesc],
 });
 
+/** Renames another item through alpha.rename and has nothing of its own to undo. */
+const renameOtherDesc = describeOperation({
+  id: "beta.renameOther",
+  kind: "mutation",
+  label: "Rename other",
+  description: "Rename another item through alpha.rename only.",
+  appliesTo: "none",
+  input: renameInput,
+  subject: () => null,
+  effects: [],
+  summary: () => "Rename other",
+  calls: [renameDesc],
+});
+
+/** Returns whether its writer knows it was called. */
+const probeDesc = describeOperation({
+  id: "alpha.probe",
+  kind: "mutation",
+  label: "Probe",
+  description: "Report whether this run is an operation call.",
+  appliesTo: "none",
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  summary: () => "Probe",
+});
+
+const probeViaDesc = describeOperation({
+  id: "beta.probeVia",
+  kind: "mutation",
+  label: "Probe via",
+  description: "Call alpha.probe.",
+  appliesTo: "none",
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  summary: () => "Probe via",
+  calls: [probeDesc],
+});
+
 /** The title before, and the title the call set: undo reverts only if it still holds. */
 const renameRecord = z.object({
   id: z.uuid(),
@@ -195,6 +235,13 @@ const alpha = defineServerModule({
       undo: undoRename,
       undoRecord: renameRecord,
     }),
+    probe: implementOperation(probeDesc, {
+      async run(w) {
+        return { result: w.viaCall ?? false, undo: null };
+      },
+      async undo() {},
+      undoRecord: z.null(),
+    }),
     elsewhere: implementOperation(elsewhereDesc, {
       async run() {
         return { result: null, undo: null };
@@ -240,6 +287,26 @@ const beta = defineServerModule({
       },
       undo: undoRename,
       undoRecord: renameRecord,
+    }),
+    renameOther: implementOperation(renameOtherDesc, {
+      async run(w, input) {
+        if (!w.call) throw new Error("no call");
+        const item = await w.call(renameDesc, input);
+        return { result: item, undo: null };
+      },
+      async undo() {
+        throw new Error("a null record has nothing to undo");
+      },
+      undoRecord: z.null(),
+    }),
+    probeVia: implementOperation(probeViaDesc, {
+      async run(w) {
+        if (!w.call) throw new Error("no call");
+        const called = await w.call(probeDesc, {});
+        return { result: { called, top: w.viaCall ?? false }, undo: null };
+      },
+      async undo() {},
+      undoRecord: z.null(),
     }),
     wrap: implementOperation(wrapDesc, {
       async run(w, input) {
@@ -449,5 +516,30 @@ test("a token without calls still undoes", async () => {
   const { calls: _calls, ...old } = out.undo;
   await caller.ops.undo({ id: "beta.renameBoth", token: old });
   expect((await row(deps, mine.id))?.title).toBe("mine");
+  await close();
+});
+
+test("undo skips a caller with a null record and reverts its callee", async () => {
+  const { deps, caller, close } = await setup();
+  const other = await seed(deps, "A");
+  const out = await caller.beta.renameOther({
+    id: other.id,
+    expectedUpdatedAt: other.updatedAt,
+    title: "B",
+  });
+  expect(out.undo.record).toBeNull();
+  expect((await row(deps, other.id))?.title).toBe("B");
+  await caller.ops.undo({ id: "beta.renameOther", token: out.undo });
+  expect((await row(deps, other.id))?.title).toBe("A");
+  await close();
+});
+
+test("a callee's writer knows it was called; a top-level run's does not", async () => {
+  const { caller, close } = await setup();
+  expect((await caller.beta.probeVia({})).result).toEqual({
+    called: true,
+    top: false,
+  });
+  expect((await caller.alpha.probe({})).result).toBe(false);
   await close();
 });

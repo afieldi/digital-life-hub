@@ -92,7 +92,7 @@ export function implementOperation(
  * created by operations it called, and `ops.undo` soft-deletes them all. It
  * also keeps each called mutation's undo record, so `ops.undo` reverts their
  * other effects (an update, a link) too. A callee with a null record changed
- * nothing to revert and is skipped.
+ * nothing to revert and is skipped. A callee's writer has `viaCall` set.
  */
 export async function runMutationIn<D extends OperationDescription, O>(
   w: ItemWriter,
@@ -136,6 +136,7 @@ export async function runMutationIn<D extends OperationDescription, O>(
         effects: registered.desc.effects,
         itemId: registered.desc.subject(parsed.data),
         created,
+        viaCall: true,
       });
       const { result, undo } = await registered.impl.run(
         calleeScope,

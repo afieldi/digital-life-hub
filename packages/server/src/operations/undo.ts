@@ -82,6 +82,8 @@ export async function revertMutation(
  * Reverts a whole `UndoToken` in `w`'s transaction: the caller's own undo, then
  * each called operation's in reverse call order, then the items it created are
  * soft-deleted. Later changes are reverted before the earlier ones they rest on.
+ * A caller with a null record changed nothing itself and is skipped, as a
+ * callee with one is never kept.
  */
 export async function revertUndoToken(
   w: ItemWriter,
@@ -89,7 +91,9 @@ export async function revertUndoToken(
   op: ImplementedMutation,
   token: z.infer<typeof undoToken>,
 ): Promise<void> {
-  await revertMutation(w, deps, op, token.record);
+  if (token.record !== null && token.record !== undefined) {
+    await revertMutation(w, deps, op, token.record);
+  }
   for (const call of [...token.calls].reverse()) {
     const callee = deps.operations.get(call.operation);
     if (callee?.kind !== "mutation") {

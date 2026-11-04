@@ -131,3 +131,19 @@ test("only the hash is stored", async () => {
   expect(stored).not.toContain(run);
   await close();
 });
+
+test("ops.undo refuses worker and run tokens", async () => {
+  const { db, principalOf, runToken, close } = await setup();
+  const worker = await principalOf(await mintWorkerToken(db));
+  const run = await principalOf(await runToken(RUN_ID));
+  for (const principal of [worker, run]) {
+    const { caller } = testServer(db, [accessServer], { principal });
+    await expect(
+      caller.ops.undo({
+        id: "acc.open",
+        token: { record: null, created: [], calls: [] },
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  }
+  await close();
+});
