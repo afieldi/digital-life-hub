@@ -18,6 +18,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { createElement } from "react";
+import { onTestFinished, vi } from "vitest";
 import { App } from "../src/App";
 import { createApi } from "../src/api/client";
 import { devSignIn } from "../src/auth/signIn";
@@ -52,6 +53,13 @@ export async function signedInApp(
     noOpenRouter?: boolean;
     /** Mounts the test-only fixture module (item type `fixture`) on both sides. */
     fixture?: boolean;
+    /**
+     * The device's clock for this test: `Date` reads it (timers still run).
+     * Restored when the test ends.
+     */
+    now?: Date;
+    /** The device's zone for this test (`TZ`), restored when the test ends. */
+    timeZone?: string;
     /** Wraps the API fetch, e.g. to delay or fail a request. */
     wrapFetch?: (fetch: typeof globalThis.fetch) => typeof globalThis.fetch;
     /** Builds the router in place of the app's own, e.g. to mount one component. */
@@ -68,6 +76,22 @@ export async function signedInApp(
   /** A client that also reaches `fixture.*` (with `fixture: true`). */
   fixture: FixtureClient;
 }> {
+  if (opts.timeZone) {
+    const host = process.env.TZ;
+    // Node applies a new TZ to Date and Intl at once.
+    process.env.TZ = opts.timeZone;
+    onTestFinished(() => {
+      if (host === undefined) delete process.env.TZ;
+      else process.env.TZ = host;
+    });
+  }
+  if (opts.now) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(opts.now);
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+  }
   const api = createTestApi({
     devAuth: true,
     db: opts.db,
