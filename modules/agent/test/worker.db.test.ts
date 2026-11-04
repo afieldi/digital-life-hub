@@ -416,13 +416,99 @@ test("suspend files one request even when retried", async () => {
   const s = await setup();
   const { run } = await withRun(s);
   const first = await suspended(s, run.id, 5);
-  // A retry that reaches a running run again (its first answer lost) files nothing new.
-  await s.deps.db.execute(
-    sql`update agent_runs set status = 'running' where id = ${run.id}`,
-  );
-  await suspended(s, run.id, 5);
+  // The first answer was lost: the same call again changes nothing.
+  const again = await worker(s).agent.suspend({
+    runId: run.id,
+    sessionId: "sess-1",
+    seq: 5,
+    kind: "approval",
+    title: "Approve: merge PR #12",
+    body: "gh pr merge 12",
+  });
+  expect(again.result).toMatchObject({
+    status: "waiting",
+    pending: { requestId: first.itemId, seq: 5 },
+  });
   expect(await requestsFiledAs(s, `${run.id}:5`)).toHaveLength(1);
   expect((await runById(s, run.id))?.pending?.requestId).toBe(first.itemId);
+  await s.close();
+});
+
+test("suspend of a request already filed with the run's next id is CONFLICT", async () => {
+  const s = await setup();
+  const { run } = await withRun(s);
+  await s.file("Approve: anything", {
+    source: "agent",
+    externalId: `${run.id}:5`,
+  });
+  await expect(suspended(s, run.id, 5)).rejects.toMatchObject({
+    code: "CONFLICT",
+  });
+  expect((await runById(s, run.id))?.status).toBe("running");
+  await s.close();
+});
+
+test("fail of a request already filed with the run's next id is CONFLICT", async () => {
+  const s = await setup();
+  const { run } = await withRun(s);
+  await s.file("Needs you: anything", {
+    source: "agent",
+    externalId: `${run.id}:fail:1`,
+  });
+  await expect(
+    worker(s).agent.fail({ runId: run.id, code: "crash", message: "x" }),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect((await runById(s, run.id))?.status).toBe("running");
+  await s.close();
+});
+
+test("suspend for a grant needs its connection", async () => {
+  const s = await setup();
+  const { run } = await withRun(s);
+  await expect(
+    worker(s).agent.suspend({
+      runId: run.id,
+      sessionId: "s",
+      seq: 1,
+      kind: "grant",
+      title: "Use AWS?",
+      body: "",
+    }),
+  ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  expect((await runById(s, run.id))?.status).toBe("running");
+  await s.close();
+});
+
+test("finish twice is a no-op the second time", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s);
+  const w = worker(s);
+  const first = await w.agent.finish({ runId: run.id, report });
+  const done = await completedAt(s, task.id);
+  const again = await w.agent.finish({ runId: run.id, report });
+  expect(again.result).toEqual(first.result);
+  expect(await completedAt(s, task.id)).toEqual(done);
+  await s.close();
+});
+
+test("fail twice files one request", async () => {
+  const s = await setup();
+  const { run } = await withRun(s);
+  const w = worker(s);
+  const first = await w.agent.fail({
+    runId: run.id,
+    code: "crash",
+    message: "x",
+  });
+  const again = await w.agent.fail({
+    runId: run.id,
+    code: "crash",
+    message: "x",
+  });
+  expect(again.result).toEqual(first.result);
+  expect(await requestsFiledAs(s, `${run.id}:fail:1`)).toHaveLength(1);
+  expect(await requestsFiledAs(s, `${run.id}:fail:2`)).toHaveLength(0);
+  expect((await runById(s, run.id))?.failures).toBe(1);
   await s.close();
 });
 

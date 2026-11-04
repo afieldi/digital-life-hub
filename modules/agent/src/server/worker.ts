@@ -8,7 +8,17 @@ import {
   type ScopedWriter,
 } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  max,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import {
   agentAssignments,
@@ -189,6 +199,19 @@ async function deliverMessages(w: ScopedWriter, runId: string, now: Date) {
     .map((m) => ({ id: m.id, at: m.at.toISOString(), body: m.body }));
 }
 
+/**
+ * The last sequence number the run has used: its latest event's, or a
+ * pending request's or decision's if later; 0 for none. A resumed session
+ * goes on after it.
+ */
+async function lastSeqOf(w: ScopedWriter, run: RunTableRow): Promise<number> {
+  const [row] = await w.tx
+    .select({ seq: max(agentRunEvents.seq) })
+    .from(agentRunEvents)
+    .where(eq(agentRunEvents.runId, run.id));
+  return Math.max(row?.seq ?? 0, run.pending?.seq ?? 0, run.decision?.seq ?? 0);
+}
+
 /** What a claim hands the worker: nothing, or a run to start and what its container needs. */
 export type ClaimResult =
   | { run: null }
@@ -201,6 +224,7 @@ export type ClaimResult =
       sessionId: string | null;
       decision: Decision | null;
       messages: { id: string; at: string; body: string }[];
+      lastSeq: number;
     };
 
 export const claim = implementOperation(agentOps.claim, {
@@ -261,6 +285,7 @@ export const claim = implementOperation(agentOps.claim, {
         sessionId: row.sessionId,
         decision,
         messages: await deliverMessages(w, run.id, now),
+        lastSeq: await lastSeqOf(w, row),
       },
       undo: null,
     };
@@ -272,19 +297,30 @@ export const claim = implementOperation(agentOps.claim, {
 /** Ended runs: a worker still calling about one is told so. */
 const ENDED: readonly string[] = ["done", "failed", "cancelled"];
 
-/** Run `runId`, locked; `CONFLICT` unless it is running. */
-async function runningRun(w: ScopedWriter, runId: string) {
+/** Run `runId`, locked. */
+async function lockRun(w: ScopedWriter, runId: string) {
   const [run] = await w.tx
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .for("update");
   if (!run) notFound("No run");
+  return run;
+}
+
+/** `CONFLICT` unless `run` is running. */
+function mustRun(run: RunTableRow) {
   if (run.status !== "running") {
     conflict(
       ENDED.includes(run.status) ? "This run has ended" : "Changed since",
     );
   }
+}
+
+/** Run `runId`, locked; `CONFLICT` unless it is running. */
+async function runningRun(w: ScopedWriter, runId: string) {
+  const run = await lockRun(w, runId);
+  mustRun(run);
   return run;
 }
 
@@ -297,8 +333,19 @@ function needsYou(title: string): string {
   return full.length <= MAX_TITLE ? full : `${full.slice(0, MAX_TITLE - 1)}…`;
 }
 
-/** What suspend and fail need of `requests.file`'s result. */
-const filed = z.object({ request: z.object({ id: z.uuid() }) });
+/**
+ * What suspend and fail need of `requests.file`'s result. A request already
+ * filed with the run's next id wasn't filed by this run, so it is refused.
+ */
+const filedView = z.object({
+  request: z.object({ id: z.uuid() }),
+  existing: z.boolean(),
+});
+function filed(result: unknown) {
+  const out = filedView.parse(result);
+  if (out.existing) conflict("Already filed");
+  return out;
+}
 
 /**
  * Ends a running run as failed: files "Needs you: <task>" with the message
@@ -314,7 +361,7 @@ async function failRun(
 ) {
   move(run, "failed");
   const attempt = run.failures + 1;
-  const { request } = filed.parse(
+  const { request } = filed(
     await allowed(w.call)(requestOps.file, {
       title: needsYou(task.title),
       body: failure.message,
@@ -458,15 +505,20 @@ export const takeMessages = implementOperation(agentOps.takeMessages, {
 
 export const suspend = implementOperation(agentOps.suspend, {
   async run(w, input) {
-    const run = await runningRun(w, input.runId);
+    const run = await lockRun(w, input.runId);
+    // Sent again after a lost answer: it already waits on this request.
+    if (run.status === "waiting" && run.pending?.seq === input.seq) {
+      return { result: toRunRow(run), undo: null };
+    }
+    mustRun(run);
     move(run, "waiting");
     const answer = (label: string, approve: boolean) => ({
       label,
       operation: "agent.decide",
       input: { runId: run.id, seq: input.seq, approve },
     });
-    // Filed once per event: a retried suspend finds the first request.
-    const { request } = filed.parse(
+    // Filed once per event, by its id.
+    const { request } = filed(
       await allowed(w.call)(requestOps.file, {
         title: input.title,
         body: input.body,
@@ -499,7 +551,10 @@ export const suspend = implementOperation(agentOps.suspend, {
 
 export const finish = implementOperation(agentOps.finish, {
   async run(w, input, deps) {
-    const run = await runningRun(w, input.runId);
+    const run = await lockRun(w, input.runId);
+    // Sent again after a lost answer.
+    if (run.status === "done") return { result: toRunRow(run), undo: null };
+    mustRun(run);
     move(run, "done");
     const task = await readTask(w, run.taskId);
     // Through Tasks' own operation, in this transaction; one already completed stays as it is.
@@ -526,7 +581,12 @@ export const finish = implementOperation(agentOps.finish, {
 export const fail = implementOperation(agentOps.fail, {
   async run(w, input, deps) {
     const now = deps.now();
-    const run = await runningRun(w, input.runId);
+    const run = await lockRun(w, input.runId);
+    // Sent again after a lost answer: its "Needs you" is filed.
+    if (run.status === "failed" && run.pending?.kind === "failure") {
+      return { result: toRunRow(run), undo: null };
+    }
+    mustRun(run);
     const task = await readTask(w, run.taskId);
     // A deleted task needs no "Needs you": its run is cancelled instead.
     const row = task

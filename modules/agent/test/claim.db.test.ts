@@ -346,6 +346,39 @@ test("claim delivers a pending decision once", async () => {
   await s.close();
 });
 
+test("claim returns lastSeq after events", async () => {
+  const s = await setup();
+  const { run } = await withRun(s, "queued", {
+    run: { decision: { seq: 4, approve: true, delivered: false } },
+  });
+  await s.deps.db.insert(agentRunEvents).values(
+    [1, 2, 7].map((seq) => ({
+      runId: run.id,
+      seq,
+      kind: "text",
+      data: { text: "x" },
+    })),
+  );
+  expect((await claimed(s)).lastSeq).toBe(7);
+  // A decision later than any event counts.
+  await s.deps.db
+    .update(agentRuns)
+    .set({
+      status: "queued",
+      decision: { seq: 9, approve: false, delivered: false },
+    })
+    .where(eq(agentRuns.id, run.id));
+  expect((await claimed(s)).lastSeq).toBe(9);
+  await s.close();
+});
+
+test("claim returns lastSeq 0 for a run with none", async () => {
+  const s = await setup();
+  await withRun(s, "queued");
+  expect((await claimed(s)).lastSeq).toBe(0);
+  await s.close();
+});
+
 test("claim hands over undelivered messages once", async () => {
   const s = await setup();
   const { run } = await withRun(s, "queued");

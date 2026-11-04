@@ -463,17 +463,22 @@ const suspend = describeOperation({
   description:
     "Parks a run to wait for the person and files the request that asks.",
   appliesTo: ["none"],
-  input: z.object({
-    runId,
-    sessionId: z.string().min(1),
-    seq: z.number().int(),
-    kind: z.enum(["approval", "grant"]),
-    title: z.string().min(1),
-    body: z.string(),
-    tool: z.string().optional(),
-    inputHash: z.string().optional(),
-    connectionId: z.uuid().optional(),
-  }),
+  input: z
+    .object({
+      runId,
+      sessionId: z.string().min(1),
+      seq: z.number().int(),
+      kind: z.enum(["approval", "grant"]),
+      title: z.string().min(1),
+      body: z.string(),
+      tool: z.string().optional(),
+      inputHash: z.string().optional(),
+      connectionId: z.uuid().optional(),
+    })
+    .refine((v) => v.kind !== "grant" || v.connectionId !== undefined, {
+      message: "A grant names its connection",
+      path: ["connectionId"],
+    }),
   subject: () => null,
   effects: ["touchItems"],
   calls: [requestOps.file],
