@@ -1,0 +1,93 @@
+import { z } from "zod";
+
+export const runStatus = z.enum([
+  "queued",
+  "running",
+  "waiting",
+  "done",
+  "failed",
+  "cancelled",
+]);
+export type RunStatus = z.infer<typeof runStatus>;
+
+export const eventKind = z.enum([
+  "text",
+  "tool",
+  "tool_result",
+  "file",
+  "permission",
+  "status",
+]);
+export type EventKind = z.infer<typeof eventKind>;
+
+export const connectionType = z.enum([
+  "github",
+  "aws",
+  "slack",
+  "linear",
+  "gdrive",
+  "mcp",
+  "env",
+]);
+export type ConnectionType = z.infer<typeof connectionType>;
+
+/** The open request a run filed and is waiting on. */
+export const pending = z.object({
+  requestId: z.uuid(),
+  seq: z.number().int(),
+  kind: z.enum(["approval", "grant", "failure"]),
+  connectionId: z.uuid().optional(),
+  tool: z.string().optional(),
+  inputHash: z.string().optional(),
+});
+export type Pending = z.infer<typeof pending>;
+
+/** Your answer to `pending`; `delivered` is set by the `claim` that hands it over. */
+export const decision = z.object({
+  seq: z.number().int(),
+  approve: z.boolean(),
+  delivered: z.boolean(),
+});
+export type Decision = z.infer<typeof decision>;
+
+export const report = z.object({
+  summary: z.string(),
+  links: z.array(z.object({ label: z.string(), url: z.string() })),
+  filesChanged: z.array(z.string()),
+});
+export type Report = z.infer<typeof report>;
+
+export const settings = z.object({
+  defaultConnectionIds: z.array(z.uuid()),
+  maxParallel: z.number().int().min(1),
+  maxRunningMinutes: z.number().int().min(1),
+  maxCostUsd: z.number().positive(),
+  instructions: z.string(),
+  timeZone: z.string().min(1),
+});
+export type Settings = z.infer<typeof settings>;
+
+export const runRow = z.object({
+  id: z.uuid(),
+  taskId: z.uuid(),
+  status: runStatus,
+  sessionId: z.string().nullable(),
+  workspace: z.string().nullable(),
+  connectionIds: z.array(z.uuid()),
+  pending: pending.nullable(),
+  decision: decision.nullable(),
+  failures: z.number().int(),
+  heartbeatAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  startedAt: z.iso.datetime().nullable(),
+  finishedAt: z.iso.datetime().nullable(),
+  failureCode: z.string().nullable(),
+  failureMessage: z.string().nullable(),
+  report: report.nullable(),
+  turns: z.number().int(),
+  inputTokens: z.number().int(),
+  outputTokens: z.number().int(),
+  costUsd: z.number(),
+  image: z.string().nullable(),
+});
+export type RunRow = z.infer<typeof runRow>;
