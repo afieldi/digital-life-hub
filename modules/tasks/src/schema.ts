@@ -5,6 +5,10 @@ import { z } from "zod";
 export const priority = z.enum(["medium", "high"]);
 export type Priority = z.infer<typeof priority>;
 
+/** Who works the task. Only `tasks.setAssignee` changes it. */
+export const assignee = z.enum(["me", "agent"]);
+export type Assignee = z.infer<typeof assignee>;
+
 export const subtaskSummary = z.object({
   total: z.number().int(),
   done: z.number().int(),
@@ -20,6 +24,7 @@ export const taskRow = z.object({
   completedAt: z.string().nullable(),
   due: dueValue.nullable(),
   priority,
+  assignee,
   notes: z.string().nullable(),
   /** The due day in the caller's time zone. */
   day: z.string().nullable(),

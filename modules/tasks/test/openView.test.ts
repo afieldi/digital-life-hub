@@ -21,6 +21,7 @@ function row(over: Partial<TaskRow> & { title: string }): TaskRow {
     completedAt: null,
     due: null,
     priority: "medium",
+    assignee: "me",
     notes: null,
     day: null,
     subtasks: { total: 0, done: 0, next: null },

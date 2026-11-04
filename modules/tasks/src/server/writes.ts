@@ -15,7 +15,7 @@ import { generateKeyBetween } from "fractional-indexing";
 import { z } from "zod";
 import { tasks } from "../db/schema";
 import { taskOps } from "../operations";
-import { priority } from "../schema";
+import { assignee, priority } from "../schema";
 import { hasTaskParent, hasTaskSubtasks, parentsNowDone } from "./links";
 
 type TaskTableRow = typeof tasks.$inferSelect;
@@ -388,6 +388,39 @@ export const rescheduleMany = implementOperation(taskOps.rescheduleMany, {
     for (const r of records) await restore(w, r);
   },
   undoRecord: z.array(restoreRecord),
+});
+
+/** Puts task `id` back to assignee `before`, if it is still at `updatedAt`. */
+const assigneeRecord = z.object({
+  id: z.uuid(),
+  updatedAt: z.string(),
+  before: assignee,
+});
+
+export const setAssignee = implementOperation(taskOps.setAssignee, {
+  async run(w, input) {
+    const { item, row } = await loadTask(w.tx, input.id);
+    // Already assigned so: nothing changes, whatever version the caller had.
+    if (row.assignee === input.assignee) return { result: item, undo: null };
+    const written = await writeTask(w, input, { assignee: input.assignee });
+    return {
+      result: written,
+      undo: {
+        id: written.id,
+        updatedAt: written.updatedAt,
+        before: assignee.parse(row.assignee),
+      },
+    };
+  },
+  async undo(w, record) {
+    if (!record) return;
+    await writeTask(
+      w,
+      { id: record.id, expectedUpdatedAt: record.updatedAt },
+      { assignee: record.before },
+    );
+  },
+  undoRecord: assigneeRecord.nullable(),
 });
 
 export const reorder = implementOperation(taskOps.reorder, {

@@ -19,7 +19,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { dueHeading } from "../dates";
 import { taskOps } from "../operations";
-import { priority, type TaskRow } from "../schema";
+import { assignee, priority, type TaskRow } from "../schema";
 
 type Db = CoreDeps["db"] | Tx;
 
@@ -38,6 +38,7 @@ type RawRow = {
   due_at: string | Date | null;
   due_tz: string | null;
   priority: string;
+  assignee: string;
   notes: string | null;
   sort_key: string;
   sub_total: number;
@@ -58,7 +59,7 @@ function rowsQuery(where: SQL, tail: SQL = sql``): SQL {
   return sql`
     select t.item_id as id, i.title, i.updated_at, i.archived_at,
       t.completed_at, t.due_date::text as due_date, t.due_at, t.due_tz,
-      t.priority, t.notes, t.sort_key,
+      t.priority, t.assignee, t.notes, t.sort_key,
       st.total as sub_total, st.done as sub_done, st.next as sub_next,
       pa.parents, ln.linked_notes
     from tasks t
@@ -120,6 +121,7 @@ function toTaskRow(r: RawRow, tz: string): TaskRow {
     completedAt: r.completed_at ? iso(r.completed_at) : null,
     due,
     priority: priority.parse(r.priority),
+    assignee: assignee.parse(r.assignee),
     notes: r.notes,
     day: dayOfDue(due, tz),
     subtasks: { total: r.sub_total, done: r.sub_done, next: r.sub_next },

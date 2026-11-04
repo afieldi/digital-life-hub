@@ -707,6 +707,15 @@ test("each mutation's undo restores the prior state", async () => {
         }),
     },
     {
+      op: "setAssignee",
+      run: async ({ a }) =>
+        caller.tasks.setAssignee({
+          id: a,
+          expectedUpdatedAt: await v(a),
+          assignee: "agent",
+        }),
+    },
+    {
       op: "addParent",
       run: ({ a, p }) => caller.tasks.addParent({ id: a, parentId: p }),
     },
@@ -759,6 +768,54 @@ test("undo after a later edit conflicts", async () => {
     caller.ops.undo({ id: "tasks.complete", token: out.undo }),
   ).rejects.toMatchObject({ code: "CONFLICT", message: "Changed since" });
   expect((await taskRow(deps, a.id)).completedAt).not.toBeNull();
+  await close();
+});
+
+test("a new task is assigned to me", async () => {
+  const { deps, mk, close } = await setup();
+  const t = await mk("A");
+  expect((await taskRow(deps, t.id)).assignee).toBe("me");
+  await close();
+});
+
+test("setAssignee changes the assignee and bumps the version", async () => {
+  const { deps, mk, caller, close } = await setup();
+  const t = await mk("A");
+  const out = await caller.tasks.setAssignee({
+    id: t.id,
+    expectedUpdatedAt: t.updatedAt,
+    assignee: "agent",
+  });
+  expect((await taskRow(deps, t.id)).assignee).toBe("agent");
+  expect(out.result?.updatedAt).not.toBe(t.updatedAt);
+  expect(out.result?.updatedAt).toBe(await version(deps, t.id));
+  await close();
+});
+
+test("setAssignee to the same value writes nothing", async () => {
+  const { deps, mk, caller, close } = await setup();
+  const t = await mk("A");
+  const out = await caller.tasks.setAssignee({
+    id: t.id,
+    expectedUpdatedAt: t.updatedAt,
+    assignee: "me",
+  });
+  expect(out.undo).toEqual({ record: null, created: [], calls: [] });
+  expect(await version(deps, t.id)).toBe(t.updatedAt);
+  await close();
+});
+
+test("setAssignee undo restores the assignee", async () => {
+  const { deps, mk, caller, close } = await setup();
+  const t = await mk("A");
+  const out = await caller.tasks.setAssignee({
+    id: t.id,
+    expectedUpdatedAt: t.updatedAt,
+    assignee: "agent",
+  });
+  deps.setNow(new Date(deps.now().getTime() + 1000));
+  await caller.ops.undo({ id: "tasks.setAssignee", token: out.undo });
+  expect((await taskRow(deps, t.id)).assignee).toBe("me");
   await close();
 });
 

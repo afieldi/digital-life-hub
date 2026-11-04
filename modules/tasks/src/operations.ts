@@ -18,7 +18,7 @@ import { parseDue } from "@dlh/core/capture";
 import { z } from "zod";
 import { parseTaskInput } from "./capture";
 import { dueHeading } from "./dates";
-import { priority, taskRow } from "./schema";
+import { assignee, priority, taskRow } from "./schema";
 
 const id = z.uuid();
 const expectedUpdatedAt = z.iso.datetime();
@@ -218,6 +218,22 @@ const rescheduleMany = describeOperation({
   summary: (input) =>
     `Reschedule ${input.items.length} tasks to ${dueText(input.due)}`,
   // Off for ⌘K and AI: neither can see the task list to pick from yet.
+  palette: false,
+  ai: false,
+});
+
+const setAssignee = describeOperation({
+  id: "tasks.setAssignee",
+  kind: "mutation",
+  label: "Assign",
+  description:
+    "Marks a task for the agent or takes it back. Backs the agent's assign step.",
+  appliesTo: ["task"],
+  input: z.object({ id, expectedUpdatedAt, assignee }),
+  subject: (input) => input.id,
+  effects: ["updateItem"],
+  summary: (input) =>
+    input.assignee === "agent" ? "Assign to the agent" : "Take back",
   palette: false,
   ai: false,
 });
@@ -424,6 +440,7 @@ export const taskOps = {
   reschedule,
   rescheduleMany,
   reorder,
+  setAssignee,
   addParent,
   removeParent,
   due: dueQuery,

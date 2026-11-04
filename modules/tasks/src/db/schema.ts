@@ -38,9 +38,11 @@ export const tasks = pgTable(
     priority: text("priority").notNull().default("medium"),
     notes: text("notes"),
     sortKey: byteText("sort_key").notNull(),
+    assignee: text("assignee").notNull().default("me"),
   },
   (t) => [
     check("tasks_priority_check", sql`${t.priority} in ('medium', 'high')`),
+    check("tasks_assignee_check", sql`${t.assignee} in ('me', 'agent')`),
     check(
       "tasks_due_exclusive_check",
       sql`${t.dueDate} is null or ${t.dueAt} is null`,

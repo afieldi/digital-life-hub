@@ -13,6 +13,7 @@ import {
   reorder,
   reschedule,
   rescheduleMany,
+  setAssignee,
   update,
 } from "./server/writes";
 
@@ -28,6 +29,7 @@ const tasksServer = defineServerModule(tasksModule, {
     reschedule,
     rescheduleMany,
     reorder,
+    setAssignee,
     addParent,
     removeParent,
     due,
