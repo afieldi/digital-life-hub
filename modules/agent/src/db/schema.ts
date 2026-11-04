@@ -97,15 +97,19 @@ export const agentRunEvents = pgTable(
   ],
 );
 
-export const agentRunMessages = pgTable("agent_run_messages", {
-  id: uuid("id").primaryKey().default(sql`uuidv7()`),
-  runId: uuid("run_id")
-    .notNull()
-    .references(() => agentRuns.id, { onDelete: "cascade" }),
-  at: at("at").notNull().defaultNow(),
-  body: text("body").notNull(),
-  deliveredAt: at("delivered_at"),
-});
+export const agentRunMessages = pgTable(
+  "agent_run_messages",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
+    at: at("at").notNull().defaultNow(),
+    body: text("body").notNull(),
+    deliveredAt: at("delivered_at"),
+  },
+  (t) => [index("agent_run_messages_run_idx").on(t.runId)],
+);
 
 /** Metadata only: what a connection is, never its secret. */
 export const agentConnections = pgTable(

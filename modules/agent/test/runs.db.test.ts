@@ -257,6 +257,31 @@ test("setSettings refuses max_parallel 0", async () => {
   await s.close();
 });
 
+test("setSettings refuses a time zone that isn't one", async () => {
+  const s = await setup();
+  for (const timeZone of ["Mars/Olympus", "not a zone"]) {
+    await expect(
+      s.caller.agent.setSettings({ timeZone }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  }
+  expect((await s.caller.agent.settings({})).timeZone).toBe("UTC");
+  await s.caller.agent.setSettings({ timeZone: "America/New_York" });
+  expect((await s.caller.agent.settings({})).timeZone).toBe("America/New_York");
+  await s.close();
+});
+
+test("setSettings refuses a cost cap under one cent", async () => {
+  const s = await setup();
+  for (const maxCostUsd of [0, 0.005]) {
+    await expect(
+      s.caller.agent.setSettings({ maxCostUsd }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  }
+  await s.caller.agent.setSettings({ maxCostUsd: 0.01 });
+  expect((await s.caller.agent.settings({})).maxCostUsd).toBe(0.01);
+  await s.close();
+});
+
 test("retry undo puts the run back to failed and reopens its request", async () => {
   const s = await setup();
   const failure = await s.file("Needs you: Fix the build", { source: "agent" });

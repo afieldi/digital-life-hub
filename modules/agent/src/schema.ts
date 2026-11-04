@@ -57,13 +57,24 @@ export const report = z.object({
 });
 export type Report = z.infer<typeof report>;
 
+/** Whether `zone` is a time zone `Intl` knows, e.g. "Europe/Warsaw" or "UTC". */
+function isTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const settings = z.object({
   defaultConnectionIds: z.array(z.uuid()),
   maxParallel: z.number().int().min(1),
   maxRunningMinutes: z.number().int().min(1),
-  maxCostUsd: z.number().positive(),
+  // `max_cost_usd` keeps cents, so less than one would store as 0.
+  maxCostUsd: z.number().min(0.01),
   instructions: z.string(),
-  timeZone: z.string().min(1),
+  timeZone: z.string().min(1).refine(isTimeZone, "Unknown time zone"),
 });
 export type Settings = z.infer<typeof settings>;
 

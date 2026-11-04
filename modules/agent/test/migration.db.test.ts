@@ -83,3 +83,12 @@ test("deleting the request item nulls the assignment's request_id", async () => 
   expect(row.requestId).toBeNull();
   await close();
 });
+
+test("a run's messages are indexed by run", async () => {
+  const { db, close } = await setup();
+  const rows = await db.execute<{ indexdef: string }>(
+    sql`select indexdef from pg_indexes where indexname = 'agent_run_messages_run_idx'`,
+  );
+  expect(rows[0]?.indexdef).toContain("(run_id)");
+  await close();
+});

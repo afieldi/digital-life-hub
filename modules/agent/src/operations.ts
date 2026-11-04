@@ -26,7 +26,7 @@ const expectedUpdatedAt = z.iso.datetime();
 const connections = z.array(z.uuid());
 const MAX_EVENTS_PER_CALL = 200;
 
-/** The run states that still hold the task's one slot, and those a Retry can restart. */
+/** The run states that still hold the task's one slot. */
 const LIVE: readonly string[] = ["queued", "running", "waiting"];
 
 /** What ⌘K needs of `agent.runs` for the task on screen. */

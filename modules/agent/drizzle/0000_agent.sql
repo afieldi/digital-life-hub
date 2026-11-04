@@ -78,6 +78,7 @@ CREATE TABLE "agent_settings" (
 ALTER TABLE "agent_run_events" ADD CONSTRAINT "agent_run_events_run_id_agent_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."agent_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_run_messages" ADD CONSTRAINT "agent_run_messages_run_id_agent_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."agent_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "agent_runs_active_task_idx" ON "agent_runs" USING btree ("task_id") WHERE "agent_runs"."status" in ('queued', 'running', 'waiting');--> statement-breakpoint
+CREATE INDEX "agent_run_messages_run_idx" ON "agent_run_messages" USING btree ("run_id");--> statement-breakpoint
 CREATE INDEX "agent_runs_queued_idx" ON "agent_runs" USING btree ("created_at") WHERE "agent_runs"."status" = 'queued';
 --> statement-breakpoint
 INSERT INTO "agent_settings" ("id") VALUES (1);

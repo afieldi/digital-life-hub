@@ -200,7 +200,23 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "agent_run_messages_run_idx": {
+          "name": "agent_run_messages_run_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "agent_run_messages_run_id_agent_runs_id_fk": {
           "name": "agent_run_messages_run_id_agent_runs_id_fk",
