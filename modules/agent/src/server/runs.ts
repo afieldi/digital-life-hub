@@ -11,7 +11,15 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { agentRunMessages, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
-import { pending, type RunRow, runRow } from "../schema";
+import {
+  decision,
+  pending,
+  type RunRow,
+  type RunStatus,
+  runRow,
+  runStatus,
+} from "../schema";
+import { canMove } from "./claimRules";
 
 export type RunTableRow = typeof agentRuns.$inferSelect;
 
@@ -24,6 +32,11 @@ export function conflict(message: string): never {
 
 export function notFound(message: string): never {
   throw new TRPCError({ code: "NOT_FOUND", message });
+}
+
+/** Refuses a forward status change the run lifecycle doesn't allow. */
+export function move(run: RunTableRow, to: RunStatus) {
+  if (!canMove(runStatus.parse(run.status), to)) conflict("Changed since");
 }
 
 /** A writer method the operation's effects allow; absent only if the effects are wrong. */
@@ -234,6 +247,7 @@ export const cancel = implementOperation(agentOps.cancel, {
     if (run.status === "done" || run.status === "failed") {
       conflict("This run has ended");
     }
+    move(run, "cancelled");
     const row = await cancelRun(w, run, deps.now());
     await allowed(w.touchItem)(input.id);
     // The only callee record is the request's, so the undo may touch the task.
@@ -275,6 +289,7 @@ export const retry = implementOperation(agentOps.retry, {
     );
     if (task.assignee !== "agent") conflict("This task is back with you");
     if (await liveRun(w.tx, input.id)) conflict(ALREADY_LIVE);
+    move(run, "queued");
     if (run.pending?.kind === "failure") {
       await resolveRequest(w, run.pending.requestId);
     }
@@ -359,4 +374,104 @@ export const message = implementOperation(agentOps.message, {
   },
   async undo() {},
   undoRecord: z.null(),
+});
+
+/**
+ * Puts run `runId` back to waiting on `pending`, with its decision and
+ * connections as they were, if it is still queued and no claim has run since
+ * (a claim always sets `heartbeat_at`).
+ */
+const decideRecord = z.object({
+  runId: z.uuid(),
+  taskId: z.uuid(),
+  pending,
+  decision: decision.nullable(),
+  connectionIds: z.array(z.uuid()),
+  heartbeatAt: z.iso.datetime().nullable(),
+});
+
+export const decide = implementOperation(agentOps.decide, {
+  async run(w, input) {
+    const [run] = await w.tx
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, input.runId))
+      .for("update");
+    if (!run) notFound("No run");
+    // The same answer again (pressed twice, or on two devices) is a no-op,
+    // whatever has happened to the run since.
+    if (run.decision?.seq === input.seq) {
+      if (run.decision.approve !== input.approve) conflict("Already answered");
+      return { result: toRunRow(run), undo: null };
+    }
+    const asked = run.pending;
+    if (
+      run.status !== "waiting" ||
+      !asked ||
+      asked.kind === "failure" ||
+      asked.seq !== input.seq
+    ) {
+      conflict("Changed since");
+    }
+    move(run, "queued");
+    await resolveRequest(w, asked.requestId);
+    const granted =
+      input.approve && asked.kind === "grant" && asked.connectionId
+        ? asked.connectionId
+        : null;
+    const [row] = await holdingSlot(() =>
+      w.tx
+        .update(agentRuns)
+        .set({
+          status: "queued",
+          pending: null,
+          decision: {
+            seq: input.seq,
+            approve: input.approve,
+            delivered: false,
+          },
+          ...(granted && !run.connectionIds.includes(granted)
+            ? { connectionIds: [...run.connectionIds, granted] }
+            : {}),
+        })
+        .where(eq(agentRuns.id, run.id))
+        .returning(),
+    );
+    if (!row) notFound("No run");
+    await allowed(w.touchItem)(run.taskId);
+    return {
+      result: toRunRow(row),
+      undo: {
+        runId: run.id,
+        taskId: run.taskId,
+        pending: asked,
+        decision: run.decision,
+        connectionIds: run.connectionIds,
+        heartbeatAt: iso(run.heartbeatAt),
+      },
+    };
+  },
+  // Runs before the callee undo of `requests.resolve`, which reopens the request.
+  async undo(w, r) {
+    if (!r) return;
+    const [run] = await w.tx
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, r.runId))
+      .for("update");
+    if (run?.status !== "queued" || iso(run.heartbeatAt) !== r.heartbeatAt) {
+      conflict("Changed since");
+    }
+    await w.tx
+      .update(agentRuns)
+      .set({
+        status: "waiting",
+        pending: r.pending,
+        decision: r.decision,
+        connectionIds: r.connectionIds,
+      })
+      .where(eq(agentRuns.id, r.runId));
+    await allowed(w.touchItem)(r.taskId);
+  },
+  undoRecord: decideRecord.nullable(),
 });

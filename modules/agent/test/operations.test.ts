@@ -66,7 +66,12 @@ test("worker operations that change a run's state touch items; heartbeat and cla
   ] as const) {
     expect(agentOps[key].effects).toEqual(["touchItems"]);
   }
-  expect(agentOps.heartbeat.calls).toEqual([taskOps.get, requestOps.file]);
+  expect(agentOps.heartbeat.calls).toEqual([
+    taskOps.get,
+    requestOps.get,
+    requestOps.resolve,
+    requestOps.file,
+  ]);
   expect(agentOps.claim.calls).toEqual([
     taskOps.get,
     requestOps.get,

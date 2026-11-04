@@ -12,23 +12,21 @@ import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   agentAssignments,
+  agentConnections,
   agentRunEvents,
   agentRunMessages,
   agentRuns,
 } from "../db/schema";
 import { agentOps } from "../operations";
-import {
-  type Decision,
-  type RunRow,
-  type RunStatus,
-  runStatus,
-} from "../schema";
-import { canMove, isDueBy } from "./claimRules";
+import type { Decision, Pending, RunRow } from "../schema";
+import { isDueBy } from "./claimRules";
 import {
   allowed,
   cancelRun,
   conflict,
   holdingSlot,
+  move,
+  notFound,
   type RunTableRow,
   toRunRow,
 } from "./runs";
@@ -38,11 +36,6 @@ import { readSettings } from "./settings";
 const STALE_MS = 2 * 60_000;
 /** Events are kept this long after their run ends. */
 const EVENTS_KEPT_MS = 30 * 24 * 60 * 60_000;
-
-/** Refuses a status change the lifecycle doesn't allow. */
-function move(run: RunTableRow, to: RunStatus) {
-  if (!canMove(runStatus.parse(run.status), to)) conflict("Changed since");
-}
 
 /** Whether `e` is a NOT_FOUND, i.e. the item is deleted. */
 const isNotFound = (e: unknown) =>
@@ -66,6 +59,7 @@ const taskView = z.object({
     completedAt: z.string().nullable(),
     assignee: z.enum(["me", "agent"]),
     due: dueValue.nullable(),
+    updatedAt: z.string(),
   }),
 });
 type TaskView = z.infer<typeof taskView>["task"];
@@ -74,11 +68,15 @@ type TaskView = z.infer<typeof taskView>["task"];
 async function readTask(
   w: ScopedWriter,
   id: string,
-  timeZone: string,
+  timeZone?: string,
 ): Promise<TaskView | null> {
   try {
-    return taskView.parse(await allowed(w.call)(taskOps.get, { id, timeZone }))
-      .task;
+    return taskView.parse(
+      await allowed(w.call)(taskOps.get, {
+        id,
+        ...(timeZone ? { timeZone } : {}),
+      }),
+    ).task;
   } catch (e) {
     if (isNotFound(e)) return null;
     throw e;
@@ -270,3 +268,284 @@ export const claim = implementOperation(agentOps.claim, {
   async undo() {},
   undoRecord: z.null(),
 });
+
+/** Ended runs: a worker still calling about one is told so. */
+const ENDED: readonly string[] = ["done", "failed", "cancelled"];
+
+/** Run `runId`, locked; `CONFLICT` unless it is running. */
+async function runningRun(w: ScopedWriter, runId: string) {
+  const [run] = await w.tx
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .for("update");
+  if (!run) notFound("No run");
+  if (run.status !== "running") {
+    conflict(
+      ENDED.includes(run.status) ? "This run has ended" : "Changed since",
+    );
+  }
+  return run;
+}
+
+/** What suspend and fail need of `requests.file`'s result. */
+const filed = z.object({ request: z.object({ id: z.uuid() }) });
+
+/**
+ * Ends a running run as failed: files "Needs you: <task>" with the message
+ * and a Retry action (once per failure, by `externalId`), keeps that request
+ * as the run's pending one, revokes its tokens and touches its task.
+ */
+async function failRun(
+  w: ScopedWriter,
+  run: RunTableRow,
+  task: { id: string; title: string },
+  failure: { code: string; message: string },
+  now: Date,
+) {
+  move(run, "failed");
+  const attempt = run.failures + 1;
+  const { request } = filed.parse(
+    await allowed(w.call)(requestOps.file, {
+      title: `Needs you: ${task.title}`,
+      body: failure.message,
+      source: "agent",
+      externalId: `${run.id}:fail:${attempt}`,
+      actions: [
+        { label: "Retry", operation: "agent.retry", input: { id: task.id } },
+      ],
+    }),
+  );
+  const [row] = await w.tx
+    .update(agentRuns)
+    .set({
+      status: "failed",
+      failures: attempt,
+      pending: { requestId: request.id, seq: attempt, kind: "failure" },
+      failureCode: failure.code,
+      failureMessage: failure.message,
+      finishedAt: now,
+    })
+    .where(eq(agentRuns.id, run.id))
+    .returning();
+  if (!row) notFound("No run");
+  await revokeRunTokens(w.tx, run.id);
+  await touchTask(w, run.taskId);
+  return row;
+}
+
+/** Cancels a running run whose task is gone (`taskLive` false) or no longer the agent's. */
+async function cancelRunning(
+  w: ScopedWriter,
+  run: RunTableRow,
+  taskLive: boolean,
+  now: Date,
+) {
+  move(run, "cancelled");
+  const row = await cancelRun(w, run, now);
+  if (taskLive) await touchTask(w, run.taskId);
+  return row;
+}
+
+/** The cap a heartbeat has reached, if any: the cost so far, or the time since the first start. */
+function capReached(
+  costUsd: number,
+  startedAt: Date,
+  now: Date,
+  limits: { maxCostUsd: number; maxRunningMinutes: number },
+) {
+  if (costUsd >= limits.maxCostUsd) {
+    const cap = limits.maxCostUsd.toFixed(2);
+    return { code: "cost_cap", message: `Cost cap reached ($${cap})` };
+  }
+  if (
+    now.getTime() - startedAt.getTime() >=
+    limits.maxRunningMinutes * 60_000
+  ) {
+    const cap = limits.maxRunningMinutes;
+    return { code: "time_cap", message: `Time cap reached (${cap} min)` };
+  }
+  return null;
+}
+
+export const heartbeat = implementOperation(agentOps.heartbeat, {
+  async run(w, input, deps) {
+    const now = deps.now();
+    const [run] = await w.tx
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, input.runId))
+      .for("update");
+    // Requeued by the stale sweep, cancelled or ended: this container stops.
+    if (run?.status !== "running") {
+      return { result: { stop: true }, undo: null };
+    }
+    const [beaten] = await w.tx
+      .update(agentRuns)
+      .set({
+        heartbeatAt: now,
+        turns: input.turns,
+        inputTokens: input.inputTokens,
+        outputTokens: input.outputTokens,
+        costUsd: String(input.costUsd),
+      })
+      .where(eq(agentRuns.id, run.id))
+      .returning();
+    if (!beaten) notFound("No run");
+    const task = await readTask(w, run.taskId);
+    if (!task || task.completedAt !== null || task.assignee !== "agent") {
+      await cancelRunning(w, beaten, task !== null, now);
+      return { result: { stop: true }, undo: null };
+    }
+    const settings = await readSettings(w.tx);
+    const cap = capReached(
+      input.costUsd,
+      beaten.startedAt ?? now,
+      now,
+      settings,
+    );
+    if (cap) {
+      await failRun(w, beaten, task, cap, now);
+      return { result: { stop: true }, undo: null };
+    }
+    return { result: { stop: false }, undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
+export const appendEvents = implementOperation(agentOps.appendEvents, {
+  async run(w, input) {
+    await runningRun(w, input.runId);
+    if (input.events.length > 0) {
+      await w.tx
+        .insert(agentRunEvents)
+        .values(
+          input.events.map((e) => ({
+            runId: input.runId,
+            seq: e.seq,
+            at: new Date(e.at),
+            kind: e.kind,
+            data: e.data,
+          })),
+        )
+        // A batch sent again after a lost answer adds nothing twice.
+        .onConflictDoNothing();
+    }
+    return { result: {}, undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
+export const takeMessages = implementOperation(agentOps.takeMessages, {
+  async run(w, input, deps) {
+    await runningRun(w, input.runId);
+    const messages = await deliverMessages(w, input.runId, deps.now());
+    return { result: { messages }, undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
+export const suspend = implementOperation(agentOps.suspend, {
+  async run(w, input) {
+    const run = await runningRun(w, input.runId);
+    move(run, "waiting");
+    const answer = (label: string, approve: boolean) => ({
+      label,
+      operation: "agent.decide",
+      input: { runId: run.id, seq: input.seq, approve },
+    });
+    // Filed once per event: a retried suspend finds the first request.
+    const { request } = filed.parse(
+      await allowed(w.call)(requestOps.file, {
+        title: input.title,
+        body: input.body,
+        source: "agent",
+        externalId: `${run.id}:${input.seq}`,
+        actions: [answer("Approve", true), answer("Decline", false)],
+      }),
+    );
+    const asked: Pending = {
+      requestId: request.id,
+      seq: input.seq,
+      kind: input.kind,
+      ...(input.connectionId ? { connectionId: input.connectionId } : {}),
+      ...(input.tool ? { tool: input.tool } : {}),
+      ...(input.inputHash ? { inputHash: input.inputHash } : {}),
+    };
+    const [row] = await w.tx
+      .update(agentRuns)
+      .set({ status: "waiting", sessionId: input.sessionId, pending: asked })
+      .where(eq(agentRuns.id, run.id))
+      .returning();
+    if (!row) notFound("No run");
+    await revokeRunTokens(w.tx, run.id);
+    await touchTask(w, run.taskId);
+    return { result: toRunRow(row), undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
+export const finish = implementOperation(agentOps.finish, {
+  async run(w, input, deps) {
+    const run = await runningRun(w, input.runId);
+    move(run, "done");
+    const task = await readTask(w, run.taskId);
+    // Through Tasks' own operation, in this transaction; one already completed stays as it is.
+    if (task && task.completedAt === null) {
+      await allowed(w.call)(taskOps.complete, {
+        id: task.id,
+        expectedUpdatedAt: task.updatedAt,
+      });
+    }
+    const [row] = await w.tx
+      .update(agentRuns)
+      .set({ status: "done", report: input.report, finishedAt: deps.now() })
+      .where(eq(agentRuns.id, run.id))
+      .returning();
+    if (!row) notFound("No run");
+    await revokeRunTokens(w.tx, run.id);
+    await touchTask(w, run.taskId);
+    return { result: toRunRow(row), undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
+export const fail = implementOperation(agentOps.fail, {
+  async run(w, input, deps) {
+    const now = deps.now();
+    const run = await runningRun(w, input.runId);
+    const task = await readTask(w, run.taskId);
+    // A deleted task needs no "Needs you": its run is cancelled instead.
+    const row = task
+      ? await failRun(w, run, task, input, now)
+      : await cancelRunning(w, run, false, now);
+    return { result: toRunRow(row), undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
+export const registerConnection = implementOperation(
+  agentOps.registerConnection,
+  {
+    async run(w, input) {
+      const [row] = await w.tx
+        .insert(agentConnections)
+        .values(input)
+        .onConflictDoUpdate({
+          target: agentConnections.name,
+          set: { type: input.type, scopeSummary: input.scopeSummary },
+        })
+        .returning({ id: agentConnections.id });
+      if (!row) throw new Error("connection not written");
+      return { result: { id: row.id }, undo: null };
+    },
+    async undo() {},
+    undoRecord: z.null(),
+  },
+);

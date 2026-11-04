@@ -242,7 +242,8 @@ const decide = describeOperation({
   input: z.object({ runId, seq: z.number().int(), approve: z.boolean() }),
   subject: () => null,
   effects: ["touchItems"],
-  calls: [requestOps.resolve],
+  // `requests.get` reads the request's version to resolve it.
+  calls: [requestOps.get, requestOps.resolve],
   access: "user",
   palette: false,
   ai: false,
@@ -409,9 +410,10 @@ const heartbeat = describeOperation({
     costUsd: z.number().min(0),
   }),
   subject: () => null,
-  // Cancels the run when its task is done, deleted or taken back, and fails it at a cap.
+  // Cancels the run when its task is done, deleted or taken back (resolving
+  // any open approval), and fails it at a cap.
   effects: ["touchItems"],
-  calls: [taskOps.get, requestOps.file],
+  calls: [taskOps.get, requestOps.get, requestOps.resolve, requestOps.file],
   summary: () => "Heartbeat",
   ...worker,
 });
@@ -488,7 +490,8 @@ const finish = describeOperation({
   input: z.object({ runId, report }),
   subject: () => null,
   effects: ["touchItems"],
-  calls: [taskOps.complete],
+  // `tasks.get` reads the task's version to complete it.
+  calls: [taskOps.get, taskOps.complete],
   summary: () => "Finish run",
   ...worker,
 });
@@ -502,7 +505,8 @@ const fail = describeOperation({
   input: z.object({ runId, code: z.string().min(1), message: z.string() }),
   subject: () => null,
   effects: ["touchItems"],
-  calls: [requestOps.file],
+  // `tasks.get` reads the task's title for the request.
+  calls: [taskOps.get, requestOps.file],
   summary: () => "Fail run",
   ...worker,
 });
