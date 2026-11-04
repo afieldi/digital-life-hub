@@ -201,11 +201,6 @@ test("unassign cancels the active run", async () => {
     sql`select 1 from service_tokens where run_id = ${runId} and revoked_at is null`,
   );
   expect(live).toHaveLength(0);
-  // Undo gives the task back to the agent; the run stays cancelled.
-  await caller.ops.undo({ id: "agent.unassign", token: back.undo });
-  expect(await assigneeOf(deps, task.id)).toBe("agent");
-  const [run] = await runsOf(deps, task.id);
-  expect(run?.status).toBe("cancelled");
   await close();
 });
 
@@ -235,5 +230,38 @@ test("unassign of a waiting run resolves its grant request", async () => {
     .where(eq(requests.itemId, grant.id));
   expect(req?.outcome).toBe("handled");
   expect(await assigneeOf(deps, task.id)).toBe("me");
+  await close();
+});
+
+test("unassign undo restores the assignee and the run", async () => {
+  const { deps, caller, mkTask, file, close } = await setup();
+  const task = await mkTask();
+  const out = await caller.agent.assign({
+    id: task.id,
+    expectedUpdatedAt: task.updatedAt,
+  });
+  const grant = await file("Use the AWS connection?", { source: "agent" });
+  const pendingGrant = { requestId: grant.id, seq: 3, kind: "grant" } as const;
+  await deps.db
+    .update(agentRuns)
+    .set({ status: "waiting", pending: pendingGrant })
+    .where(eq(agentRuns.id, out.result.run.id));
+  const back = await caller.agent.unassign({
+    id: task.id,
+    expectedUpdatedAt: await version(deps, task.id),
+  });
+  await caller.ops.undo({ id: "agent.unassign", token: back.undo });
+  expect(await assigneeOf(deps, task.id)).toBe("agent");
+  const [run] = await runsOf(deps, task.id);
+  expect(run).toMatchObject({
+    status: "waiting",
+    pending: pendingGrant,
+    finishedAt: null,
+  });
+  const [req] = await deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, grant.id));
+  expect(req?.outcome).toBeNull();
   await close();
 });

@@ -123,6 +123,68 @@ export async function cancelRun(w: ScopedWriter, run: RunTableRow, now: Date) {
   return row;
 }
 
+/**
+ * Puts a cancelled run back as it was (`uncancel`), if it is still cancelled
+ * and no claim has run since (a claim always sets `heartbeat_at`). `touch`:
+ * whether the undo may touch the task, i.e. no callee undo checks its version.
+ */
+export const cancelRecord = z.object({
+  runId: z.uuid(),
+  taskId: z.uuid(),
+  status: z.enum(["queued", "running", "waiting"]),
+  pending: pending.nullable(),
+  finishedAt: z.iso.datetime().nullable(),
+  heartbeatAt: z.iso.datetime().nullable(),
+  touch: z.boolean(),
+});
+export type CancelRecord = z.infer<typeof cancelRecord>;
+
+/** The undo record of cancelling `before` (the run as it was). */
+export function cancelUndo(before: RunTableRow, touch: boolean): CancelRecord {
+  return {
+    runId: before.id,
+    taskId: before.taskId,
+    status: runStatusOf(before.status),
+    pending: before.pending,
+    finishedAt: iso(before.finishedAt),
+    heartbeatAt: iso(before.heartbeatAt),
+    touch,
+  };
+}
+
+function runStatusOf(status: string): CancelRecord["status"] {
+  return cancelRecord.shape.status.parse(status);
+}
+
+/**
+ * Undo of cancel and Back to me. Runs before the callee undos, which reopen
+ * the approval or grant request (and give the task back to the agent). Its
+ * revoked run tokens stay revoked: the next claim mints a new one.
+ */
+export async function uncancel(w: ScopedWriter, r: CancelRecord) {
+  const [run] = await w.tx
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, r.runId))
+    .for("update");
+  if (run?.status !== "cancelled" || iso(run.heartbeatAt) !== r.heartbeatAt) {
+    conflict("Changed since");
+  }
+  // The task has a live run of its own since (assigned again): it holds the one slot.
+  if (await liveRun(w.tx, r.taskId)) conflict("Changed since");
+  await w.tx
+    .update(agentRuns)
+    .set({
+      // A running run's container stopped when it was cancelled, so it goes
+      // back to the queue and the next claim resumes its session.
+      status: r.status === "running" ? "queued" : r.status,
+      pending: r.pending,
+      finishedAt: r.finishedAt === null ? null : new Date(r.finishedAt),
+    })
+    .where(eq(agentRuns.id, r.runId));
+  if (r.touch) await allowed(w.touchItem)(r.taskId);
+}
+
 export const cancel = implementOperation(agentOps.cancel, {
   async run(w, input, deps) {
     const run = await latestRun(w.tx, input.id);
@@ -134,15 +196,17 @@ export const cancel = implementOperation(agentOps.cancel, {
     }
     const row = await cancelRun(w, run, deps.now());
     await allowed(w.touchItem)(input.id);
-    return { result: toRunRow(row), undo: null };
+    // The only callee record is the request's, so the undo may touch the task.
+    return { result: toRunRow(row), undo: cancelUndo(run, true) };
   },
-  async undo() {},
-  undoRecord: z.null(),
+  undo: uncancel,
+  undoRecord: cancelRecord.nullable(),
 });
 
 /**
  * Puts run `runId` back as it was before Retry, if it is still queued and
- * no claim has started it since (a claim sets `started_at`).
+ * no claim has run since (a claim always sets `heartbeat_at`; `started_at`
+ * keeps the first start).
  */
 const retryRecord = z.object({
   runId: z.uuid(),
@@ -152,7 +216,7 @@ const retryRecord = z.object({
   failureCode: z.string().nullable(),
   failureMessage: z.string().nullable(),
   finishedAt: z.iso.datetime().nullable(),
-  startedAt: z.iso.datetime().nullable(),
+  heartbeatAt: z.iso.datetime().nullable(),
 });
 
 export const retry = implementOperation(agentOps.retry, {
@@ -187,7 +251,7 @@ export const retry = implementOperation(agentOps.retry, {
         failureCode: run.failureCode,
         failureMessage: run.failureMessage,
         finishedAt: iso(run.finishedAt),
-        startedAt: iso(run.startedAt),
+        heartbeatAt: iso(run.heartbeatAt),
       },
     };
   },
@@ -198,7 +262,7 @@ export const retry = implementOperation(agentOps.retry, {
       .from(agentRuns)
       .where(eq(agentRuns.id, r.runId))
       .for("update");
-    if (run?.status !== "queued" || iso(run.startedAt) !== r.startedAt) {
+    if (run?.status !== "queued" || iso(run.heartbeatAt) !== r.heartbeatAt) {
       conflict("Changed since");
     }
     await w.tx

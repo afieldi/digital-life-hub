@@ -99,7 +99,7 @@ test("cancel stops the latest run, revokes its tokens and touches the task", asy
   });
   expect(out?.result).toMatchObject({ id: run.id, status: "cancelled" });
   expect(out?.result.finishedAt).not.toBeNull();
-  expect(out?.undo.record).toBeNull();
+  expect(out?.undo.record).toMatchObject({ runId: run.id, status: "running" });
   const live = await s.deps.db.execute(
     sql`select 1 from service_tokens where run_id = ${run.id} and revoked_at is null`,
   );
@@ -287,7 +287,7 @@ test("retry undo puts the run back to failed and reopens its request", async () 
   await s.close();
 });
 
-test("retry undo after the run was claimed conflicts", async () => {
+test("retry undo after the run was claimed and requeued conflicts", async () => {
   const s = await setup();
   const failure = await s.file("Needs you: Fix the build", { source: "agent" });
   const { task, run } = await withRun(s, "failed", {
@@ -297,7 +297,8 @@ test("retry undo after the run was claimed conflicts", async () => {
   const out = await s.caller.agent.retry({ id: task.id });
   await s.deps.db
     .update(agentRuns)
-    .set({ status: "running", startedAt: new Date() })
+    // Claimed (heartbeat set), then sent back to the queue by the stale sweep.
+    .set({ heartbeatAt: new Date() })
     .where(eq(agentRuns.id, run.id));
   await expect(
     s.caller.ops.undo({ id: "agent.retry", token: out.undo }),
@@ -306,7 +307,7 @@ test("retry undo after the run was claimed conflicts", async () => {
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.id, run.id));
-  expect(after?.status).toBe("running");
+  expect(after?.status).toBe("queued");
   const [req] = await s.deps.db
     .select()
     .from(requests)
@@ -349,5 +350,62 @@ test("cancel of a failed run leaves its failure request", async () => {
     .from(requests)
     .where(eq(requests.itemId, failure.id));
   expect(req?.outcome).toBeNull();
+  await s.close();
+});
+
+test("cancel undo restores a waiting run and reopens its request", async () => {
+  const s = await setup();
+  const ask = await s.file("Merge the PR?", { source: "agent" });
+  const pendingAsk = { requestId: ask.id, seq: 7, kind: "approval" } as const;
+  const { task, run } = await withRun(s, "waiting", { pending: pendingAsk });
+  const out = await s.caller.agent.cancel({ id: task.id });
+  await expectTracked(s.deps, { itemId: task.id }, () =>
+    s.caller.ops.undo({ id: "agent.cancel", token: out.undo }),
+  );
+  const [after] = await s.deps.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, run.id));
+  expect(after).toMatchObject({
+    status: "waiting",
+    pending: pendingAsk,
+    finishedAt: null,
+  });
+  const [req] = await s.deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, ask.id));
+  expect(req?.outcome).toBeNull();
+  await s.close();
+});
+
+test("cancel undo of a running run puts it back in the queue", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s, "running", {
+    heartbeatAt: new Date("2026-11-04T10:00:00.000Z"),
+  });
+  const out = await s.caller.agent.cancel({ id: task.id });
+  await s.caller.ops.undo({ id: "agent.cancel", token: out.undo });
+  const [after] = await s.deps.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, run.id));
+  expect(after).toMatchObject({ status: "queued", finishedAt: null });
+  await s.close();
+});
+
+test("cancel undo after a retry conflicts", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s, "running");
+  const out = await s.caller.agent.cancel({ id: task.id });
+  await s.caller.agent.retry({ id: task.id });
+  await expect(
+    s.caller.ops.undo({ id: "agent.cancel", token: out.undo }),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Changed since" });
+  const [after] = await s.deps.db
+    .select()
+    .from(agentRuns)
+    .where(eq(agentRuns.id, run.id));
+  expect(after?.status).toBe("queued");
   await s.close();
 });

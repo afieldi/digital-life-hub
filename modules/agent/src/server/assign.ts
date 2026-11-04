@@ -6,7 +6,16 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { agentAssignments, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
-import { allowed, cancelRun, conflict, liveRun, toRunRow } from "./runs";
+import {
+  allowed,
+  cancelRecord,
+  cancelRun,
+  cancelUndo,
+  conflict,
+  liveRun,
+  toRunRow,
+  uncancel,
+} from "./runs";
 import { readSettings } from "./settings";
 
 /**
@@ -163,13 +172,16 @@ export const unassign = implementOperation(agentOps.unassign, {
     const live = await liveRun(w.tx, input.id);
     const run = live ? await cancelRun(w, live, deps.now()) : null;
     // setAssignee's bump publishes the task. Only when it changed nothing (the
-    // task was already yours) is touching safe, and needed to show the run.
-    if (run && task.updatedAt === input.expectedUpdatedAt) {
-      await allowed(w.touchItem)(input.id);
-    }
-    // The callee's record gives the task back to the agent; the run stays cancelled.
-    return { result: { task, run: run && toRunRow(run) }, undo: null };
+    // task was already yours) is touching safe, and needed to show the run;
+    // the undo touches on the same terms, so setAssignee's undo can't conflict.
+    const touch = task.updatedAt === input.expectedUpdatedAt;
+    if (run && touch) await allowed(w.touchItem)(input.id);
+    return {
+      result: { task, run: run && toRunRow(run) },
+      undo: live ? cancelUndo(live, touch) : null,
+    };
   },
-  async undo() {},
-  undoRecord: z.null(),
+  // Restores the run; the callee records reopen its request and give the task back to the agent.
+  undo: uncancel,
+  undoRecord: cancelRecord.nullable(),
 });
