@@ -15,6 +15,10 @@ import type { ImplementedMutation } from "./implement";
 export const undoToken = z.object({
   record: z.unknown().optional(),
   created: z.array(z.uuid()),
+  // Absent from tokens stored before callee undos were kept.
+  calls: z
+    .array(z.object({ operation: z.string(), record: z.unknown().optional() }))
+    .default([]),
 });
 
 /** Effects whose writes an undo reverses with the opposite method. */
@@ -48,7 +52,7 @@ export async function deleteCreated(
 /**
  * Reverts a mutation with its own `undo` in `w`'s transaction. The record, not
  * an input, names what to revert, so the writer has no subject. Created items
- * are not touched: callers soft-delete them first with `deleteCreated`.
+ * are not touched: `revertUndoToken` soft-deletes them last.
  */
 export async function revertMutation(
   w: ItemWriter,
@@ -74,11 +78,40 @@ export async function revertMutation(
   await op.impl.undo(scoped, parsed.data, deps);
 }
 
+/**
+ * Reverts a whole `UndoToken` in `w`'s transaction: the caller's own undo, then
+ * each called operation's in reverse call order, then the items it created are
+ * soft-deleted. Later changes are reverted before the earlier ones they rest on.
+ * A caller with a null record changed nothing itself and is skipped, as a
+ * callee with one is never kept.
+ */
+export async function revertUndoToken(
+  w: ItemWriter,
+  deps: CoreDeps,
+  op: ImplementedMutation,
+  token: z.infer<typeof undoToken>,
+): Promise<void> {
+  if (token.record !== null && token.record !== undefined) {
+    await revertMutation(w, deps, op, token.record);
+  }
+  for (const call of [...token.calls].reverse()) {
+    const callee = deps.operations.get(call.operation);
+    if (callee?.kind !== "mutation") {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `unknown operation: ${call.operation}`,
+      });
+    }
+    await revertMutation(w, deps, callee, call.record);
+  }
+  await deleteCreated(w, token.created);
+}
+
 export const opsRouter = router({
   /**
-   * Reverts a mutation from its `UndoToken`, in one transaction: created items
-   * first, then the operation's `undo`. Refused with `CONFLICT` "Changed since"
-   * when an item it reverts changed after the mutation.
+   * Reverts a mutation from its `UndoToken` in one transaction with
+   * `revertUndoToken`. Refused as a whole with `CONFLICT` "Changed since" when
+   * an item it or a called operation reverts changed after the mutation.
    */
   undo: protectedProcedure
     .input(z.object({ id: z.string(), token: undoToken }))
@@ -98,10 +131,9 @@ export const opsRouter = router({
         });
       }
       try {
-        await writeItems(ctx.deps, async (w) => {
-          await deleteCreated(w, input.token.created);
-          await revertMutation(w, ctx.deps, op, input.token.record);
-        });
+        await writeItems(ctx.deps, (w) =>
+          revertUndoToken(w, ctx.deps, op, input.token),
+        );
       } catch (e) {
         if (e instanceof TRPCError && e.code === "CONFLICT") {
           throw new TRPCError({

@@ -153,3 +153,29 @@ export const aiSettings = pgTable(
   },
   (t) => [check("ai_settings_single_row", sql`${t.id} = 1`)],
 );
+
+/**
+ * Tokens the API signs for callers other than you: the agent host's worker,
+ * and one per agent run. `run_id` names a module's run, so it has no FK.
+ */
+export const serviceTokens = pgTable(
+  "service_tokens",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    kind: text("kind").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    runId: uuid("run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("service_tokens_kind_check", sql`${t.kind} in ('worker', 'run')`),
+    check(
+      "service_tokens_run_check",
+      sql`(${t.kind} = 'run') = (${t.runId} is not null)`,
+    ),
+    index("service_tokens_run_idx").on(t.runId),
+  ],
+);

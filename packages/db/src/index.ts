@@ -13,5 +13,6 @@ export {
   itemViews,
   links,
   loginAttempts,
+  serviceTokens,
   sessions,
 } from "./schema";

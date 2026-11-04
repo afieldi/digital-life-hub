@@ -1,5 +1,10 @@
 import type { AiActionDescription } from "./ai/actions";
-import type { HomeWidget, ModuleManifest, PaletteAction } from "./module";
+import type {
+  DetailPanel,
+  HomeWidget,
+  ModuleManifest,
+  PaletteAction,
+} from "./module";
 import { toAiAction } from "./operations/ai";
 import type { OperationDescription } from "./operations/describe";
 
@@ -19,6 +24,8 @@ export interface ModuleRegistry {
   operations: OperationDescription[];
   /** Every module's Home widgets, in `order`; `id` is `<module>.<widget>`. */
   homeWidgets: HomeWidget[];
+  /** Every module's item-page panels, in `order`; `id` is `<module>.<panel>`. */
+  detailPanels: DetailPanel[];
 }
 
 export interface ReservedShell {
@@ -42,6 +49,7 @@ export function collectModules(
   const aiActionOwners = new Map<string, string>();
   const operations: OperationDescription[] = [];
   const homeWidgets: HomeWidget[] = [];
+  const detailPanels: DetailPanel[] = [];
   const operationOwners = new Map<string, string>();
 
   for (const m of manifests) {
@@ -130,6 +138,17 @@ export function collectModules(
       homeWidgets.push({ ...w, id: `${m.id}.${w.id}` });
     }
 
+    const panelIds = new Set<string>();
+    for (const p of m.detailPanels ?? []) {
+      if (panelIds.has(p.id)) {
+        throw new ModuleRegistryError(
+          `Duplicate detail panel id "${p.id}" in module "${m.id}"`,
+        );
+      }
+      panelIds.add(p.id);
+      detailPanels.push({ ...p, id: `${m.id}.${p.id}` });
+    }
+
     for (const o of m.operations ?? []) {
       const owner = operationOwners.get(o.id);
       if (owner) {
@@ -155,6 +174,7 @@ export function collectModules(
   // Stable: widgets with the same order keep registry order.
   const last = Number.MAX_SAFE_INTEGER;
   homeWidgets.sort((a, b) => (a.order ?? last) - (b.order ?? last));
+  detailPanels.sort((a, b) => (a.order ?? last) - (b.order ?? last));
   return {
     modules: manifests,
     nav,
@@ -163,6 +183,7 @@ export function collectModules(
     aiActions,
     operations,
     homeWidgets,
+    detailPanels,
   };
 }
 

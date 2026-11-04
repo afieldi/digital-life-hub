@@ -233,7 +233,7 @@ test("file twice with one (source, externalId) gives one request", async () => {
   const second = await caller.requests.file({ ...input, title: "Other" });
   expect(second.result.existing).toBe(true);
   expect(second.result.request).toEqual(first.result.request);
-  expect(second.undo).toEqual({ record: null, created: [] });
+  expect(second.undo).toEqual({ record: null, created: [], calls: [] });
   expect(await count(deps, "requests")).toBe(1);
   // The same id under another source is another request.
   const agent = await caller.requests.file({ ...input, source: "agent" });
@@ -267,7 +267,7 @@ test("file after delete returns the deleted request and writes nothing", async (
     existing: true,
     request: { id: r.id },
   });
-  expect(again.undo).toEqual({ record: null, created: [] });
+  expect(again.undo).toEqual({ record: null, created: [], calls: [] });
   expect(await count(deps, "items")).toBe(items);
   expect(await version(deps, r.id)).toBe(v);
   expect((await itemRow(deps, r.id)).deleted).toBe(true);
@@ -368,7 +368,7 @@ test("resolve twice with a stale version is a no-op", async () => {
     outcome: "handled",
   });
   expect(second.result).toEqual(first.result);
-  expect(second.undo).toEqual({ record: null, created: [] });
+  expect(second.undo).toEqual({ record: null, created: [], calls: [] });
   expect((await requestRow(deps, r.id)).resolvedAt).toEqual(
     new Date("2026-10-30T12:00:00.000Z"),
   );
@@ -432,7 +432,7 @@ test("resolve task with another taskId on a task-resolved request is CONFLICT", 
     outcome: "task",
     taskId: task.id,
   });
-  expect(again.undo).toEqual({ record: null, created: [] });
+  expect(again.undo).toEqual({ record: null, created: [], calls: [] });
   expect(await relatesFrom(deps, r.id)).toMatchObject([
     { to_id: task.id, context: "outcome" },
   ]);

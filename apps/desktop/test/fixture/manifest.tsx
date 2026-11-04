@@ -46,6 +46,14 @@ export const fixtureManifest = defineModule({
       component: () => <p>Fixture widget on Home</p>,
     },
   ],
+  detailPanels: [
+    {
+      itemType: "task",
+      id: "onTask",
+      label: "Fixture panel",
+      component: ({ itemId }) => <p>Fixture panel for {itemId}</p>,
+    },
+  ],
   paletteActions: [
     {
       id: "fixture.hello",

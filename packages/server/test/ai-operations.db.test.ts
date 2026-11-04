@@ -73,6 +73,20 @@ const renameDesc = describeOperation({
   summary: (i) => `Rename to ${i.title}`,
 });
 
+/** Renames through test.rename and has nothing of its own to undo. */
+const renameViaDesc = describeOperation({
+  id: "test.renameVia",
+  kind: "mutation",
+  label: "Rename via",
+  description: "Renames the test item through test.rename.",
+  appliesTo: ["test"],
+  input: z.object({ ...versioned, title: z.string().min(1) }),
+  subject: (i) => i.id,
+  effects: ["updateItem"],
+  summary: (i) => `Rename via to ${i.title}`,
+  calls: [renameDesc],
+});
+
 const findDesc = describeOperation({
   id: "test.find",
   kind: "query",
@@ -168,6 +182,16 @@ const testModule = defineServerModule({
         title: z.string(),
         updatedAt: z.string(),
       }),
+    }),
+    renameVia: implementOperation(renameViaDesc, {
+      async run(w, input) {
+        if (!w.call) throw new Error("no call");
+        return { result: await w.call(renameDesc, input), undo: null };
+      },
+      async undo() {
+        throw new Error("a null record has nothing to undo");
+      },
+      undoRecord: z.null(),
     }),
     find: implementOperation(findDesc, {
       async run(deps, input) {
@@ -378,6 +402,26 @@ test("operation do runs the mutation with Undo", async () => {
     properties: Record<string, unknown>;
   };
   expect(Object.keys(schema.properties)).toEqual(["title"]);
+  expect((await getItem(s.db, a.id)).title).toBe("New");
+
+  s.tick();
+  await undo(s.deps, { requestId: res.requestId });
+  expect((await getItem(s.db, a.id)).title).toBe("Old");
+  expect((await rowOf(s.db, res.requestId)).status).toBe("undone");
+  await s.close();
+});
+
+test("AI Undo reverts a called operation's update", async () => {
+  const s = await setup();
+  const a = await s.mk("Old");
+  s.fake.queue(JSON.stringify({ title: "New" }));
+  const res = await prepare(s.deps, {
+    text: "rename to New",
+    itemId: a.id,
+    actionId: "test.renameVia",
+    kind: "do",
+  });
+  expect(res.status).toBe("applied");
   expect((await getItem(s.db, a.id)).title).toBe("New");
 
   s.tick();
@@ -683,7 +727,7 @@ test("undo soft-deletes created items", async () => {
   expect(row.undo).toEqual({
     kind: "operation",
     operation: "test.create",
-    token: { record: null, created: [made.id] },
+    token: { record: null, created: [made.id], calls: [] },
   });
   s.tick();
   await undo(s.deps, { requestId: res.requestId });
@@ -717,6 +761,7 @@ test("actions derived from operations pass collectAiRunners", async () => {
     ["test.relate", ["suggest", "do"]],
     ["test.create", ["suggest", "do"]],
     ["test.rename", ["suggest", "do"]],
+    ["test.renameVia", ["suggest", "do"]],
     ["test.find", ["ask"]],
     ["test.poke", ["suggest", "do"]],
   ]);
@@ -729,6 +774,7 @@ test("actions derived from operations pass collectAiRunners", async () => {
     "test.relate",
     "test.create",
     "test.rename",
+    "test.renameVia",
     "test.find",
     "test.poke",
   ]);

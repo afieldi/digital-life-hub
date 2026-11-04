@@ -224,3 +224,19 @@ test("createItem records created ids", async () => {
   expect(created).toEqual([made?.id]);
   await close();
 });
+
+test("touchItem is absent without touchItems, and touches any item with it", async () => {
+  const { deps, a, b, close } = await setup();
+  await writeItems(deps, async (w) => {
+    const without = scopedWriter(w, {
+      effects: ["updateItem", "writeOtherItems"],
+      itemId: a.id,
+    });
+    expect(without.touchItem).toBeUndefined();
+    const s = scopedWriter(w, { effects: ["touchItems"], itemId: a.id });
+    expect(s.touchItem).toBeDefined();
+    const touched = await s.touchItem?.(b.id);
+    expect(touched?.id).toBe(b.id);
+  });
+  await close();
+});

@@ -21,6 +21,11 @@ export type ScopedWriter = Pick<ItemWriter, "tx"> &
       op: D,
       input: z.input<D["input"]>,
     ) => Promise<unknown>;
+    /**
+     * True when this writer is a called operation's, inside another
+     * operation's run; absent for a top-level run.
+     */
+    viaCall?: boolean;
   };
 
 function forbidden(): never {
@@ -39,12 +44,19 @@ function forbidden(): never {
  */
 export function scopedWriter(
   w: ItemWriter,
-  scope: { effects: AiEffect[]; itemId: string | null; created?: string[] },
+  scope: {
+    effects: AiEffect[];
+    itemId: string | null;
+    created?: string[];
+    viaCall?: boolean;
+  },
 ): ScopedWriter {
   const has = (e: AiEffect) => scope.effects.includes(e);
   const anywhere = has("writeOtherItems");
   const inScope = (id: string) => anywhere || id === scope.itemId;
-  const out: ScopedWriter = { tx: w.tx };
+  const out: ScopedWriter = scope.viaCall
+    ? { tx: w.tx, viaCall: true }
+    : { tx: w.tx };
 
   if (has("updateItem")) {
     out.updateItem = async (i) => {
@@ -74,6 +86,10 @@ export function scopedWriter(
       if (link && !inScope(link.fromId)) forbidden();
       return w.removeLink(id);
     };
+  }
+  if (has("touchItems")) {
+    // A state change on one item is shown on others (a run on its task), so any item.
+    out.touchItem = (id) => w.touchItem(id);
   }
   if (has("deleteItems")) {
     out.setDeleted = async (i) => {

@@ -6,13 +6,20 @@ import { type ScopedWriter, scopedWriter } from "../ai/scoped";
 import { type ItemWriter, writeItems } from "../items/writer";
 import type { CoreDeps } from "../trpc";
 
-/** What `ops.undo` needs to revert a mutation: its record and the items it created. */
-export type UndoToken = { record: unknown; created: string[] };
+/**
+ * What `ops.undo` needs to revert a mutation: its record, the items it created,
+ * and the undo record of each mutation it called, in call order.
+ */
+export type UndoToken = {
+  record: unknown;
+  created: string[];
+  calls: { operation: string; record: unknown }[];
+};
 
 /**
  * A mutation's server half. `run` writes through the scoped writer and returns
  * its result and an undo record; `undo` reverts with a record that passed
- * `undoRecord`. Items `run` created are soft-deleted by Core before `undo` runs.
+ * `undoRecord`. Items `run` created are soft-deleted by Core after `undo` runs.
  * A run that changed nothing returns a null record and creates nothing, so no
  * Undo is offered.
  */
@@ -82,9 +89,10 @@ export function implementOperation(
  * Runs a mutation in `w`'s transaction with Core's scoped writer: only the
  * methods its effects allow, on `subject(input)` unless it declares
  * `writeOtherItems`. The token lists the items it created, including those
- * created by operations it called, and `ops.undo` soft-deletes them all. A
- * callee's own undo record is dropped: its other effects (an update, a link)
- * are not reverted by the caller's undo.
+ * created by operations it called, and `ops.undo` soft-deletes them all. It
+ * also keeps each called mutation's undo record, so `ops.undo` reverts their
+ * other effects (an update, a link) too. A callee with a null record changed
+ * nothing to revert and is skipped. A callee's writer has `viaCall` set.
  */
 export async function runMutationIn<D extends OperationDescription, O>(
   w: ItemWriter,
@@ -93,6 +101,7 @@ export async function runMutationIn<D extends OperationDescription, O>(
   input: InputOf<D>,
 ): Promise<{ result: O; undo: UndoToken }> {
   const created: string[] = [];
+  const calls: UndoToken["calls"] = [];
   const scoped = scopedWriter(w, {
     effects: op.desc.effects,
     itemId: op.desc.subject(input),
@@ -127,17 +136,21 @@ export async function runMutationIn<D extends OperationDescription, O>(
         effects: registered.desc.effects,
         itemId: registered.desc.subject(parsed.data),
         created,
+        viaCall: true,
       });
-      const { result } = await registered.impl.run(
+      const { result, undo } = await registered.impl.run(
         calleeScope,
         parsed.data,
         deps,
       );
+      if (undo !== null && undo !== undefined) {
+        calls.push({ operation: registered.desc.id, record: undo });
+      }
       return result;
     };
   }
   const { result, undo } = await op.impl.run(scoped, input, deps);
-  return { result, undo: { record: undo, created } };
+  return { result, undo: { record: undo, created, calls } };
 }
 
 /** `runMutationIn`, in a transaction of its own. */

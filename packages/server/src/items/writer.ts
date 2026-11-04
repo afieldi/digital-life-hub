@@ -36,6 +36,11 @@ export interface ItemWriter {
     expectedUpdatedAt: string;
     deleted: boolean;
   }): Promise<Item>;
+  /**
+   * Bumps the item's version with no version check, so screens showing it
+   * refresh (a run's state changed, say). `NOT_FOUND` for a missing or deleted item.
+   */
+  touchItem(id: string): Promise<Item>;
   addLink(i: {
     fromId: string;
     toId: string;
@@ -67,6 +72,11 @@ function parseTitle(title: string): string {
     });
   }
   return parsed.data;
+}
+
+/** The next `updated_at`: now, but always past the current one. */
+function bumpedUpdatedAt(now: string): SQL {
+  return sql`greatest(${now}::timestamptz, ${items.updatedAt} + interval '1 millisecond')`;
 }
 
 /**
@@ -101,7 +111,7 @@ export async function writeItems<T>(
         .update(items)
         .set({
           ...set,
-          updatedAt: sql`greatest(${now}::timestamptz, ${items.updatedAt} + interval '1 millisecond')`,
+          updatedAt: bumpedUpdatedAt(now),
         })
         .where(
           and(eq(items.id, id), eq(items.updatedAt, expected), deletedCheck),
@@ -191,7 +201,7 @@ export async function writeItems<T>(
           .update(items)
           .set({
             deletedAt: i.deleted ? parentDeletedAt : null,
-            updatedAt: sql`greatest(${deps.now().toISOString()}::timestamptz, ${items.updatedAt} + interval '1 millisecond')`,
+            updatedAt: bumpedUpdatedAt(deps.now().toISOString()),
           })
           .where(
             and(
@@ -204,6 +214,18 @@ export async function writeItems<T>(
           .returning({ id: items.id });
         for (const r of rows) changed.add(r.id);
         return item;
+      },
+      async touchItem(id) {
+        const [row] = await tx
+          .update(items)
+          .set({ updatedAt: bumpedUpdatedAt(deps.now().toISOString()) })
+          .where(and(eq(items.id, id), isNull(items.deletedAt)))
+          .returning();
+        if (!row) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "item not found" });
+        }
+        changed.add(id);
+        return toItem(row);
       },
       addLink: (i) => insertLink(tx, i, (id) => changed.add(id)),
       removeLink: (id) => deleteLink(tx, id, (itemId) => changed.add(itemId)),

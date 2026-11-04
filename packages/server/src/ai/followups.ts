@@ -8,11 +8,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { type ItemWriter, writeItems } from "../items/writer";
 import { runMutationIn } from "../operations/implement";
-import { deleteCreated, revertMutation } from "../operations/undo";
+import { deleteCreated, revertUndoToken, undoToken } from "../operations/undo";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
 import { AiError, aiErrorMessage, firstLine } from "./errors";
-import { operationUndo, subjectAllowed } from "./operation-runner";
+import { subjectAllowed } from "./operation-runner";
 import {
   aiFailure,
   badRequest,
@@ -70,7 +70,8 @@ export function toolsFor(
       created?.push(...done.undo.created);
       return done;
     },
-    revert: (op, record) => revertMutation(w, deps, op, record),
+    revert: (op, token) =>
+      revertUndoToken(w, deps, op, undoToken.parse({ created: [], ...token })),
   };
 }
 
@@ -98,7 +99,8 @@ function storedUndo(created: string[] | undefined, record: unknown): unknown {
 
 /**
  * What to delete and what to hand the runner's `undo` for a stored record. An
- * operation runner's tagged record lists what it created; a hand-written
+ * operation runner's tagged record carries its whole token, so its undo deletes
+ * what it created after reverting (`created` is empty here); a hand-written
  * runner's is wrapped in `createdUndo`. Anything else is passed on as is and
  * deletes nothing.
  */
@@ -107,9 +109,7 @@ function unwrapUndo(
   stored: unknown,
 ): { created: string[]; record: unknown } {
   if (runner.operation) {
-    const parsed = operationUndo.safeParse(stored);
-    const ok = parsed.success && parsed.data.operation === runner.action.id;
-    return { created: ok ? parsed.data.token.created : [], record: stored };
+    return { created: [], record: stored };
   }
   const wrapped = createdUndo.safeParse(stored);
   return wrapped.success
@@ -269,9 +269,11 @@ export async function cancel(
 }
 
 /**
- * Reverts an applied request with its stored undo record, once: items it
- * created are soft-deleted, then the runner's `undo` runs. Refused as
- * `stale` (and left applied) if the item changed since.
+ * Reverts an applied request with its stored undo record, once. An operation
+ * runner's `undo` reverts its whole token through `tools.revert`
+ * (`revertUndoToken`); for a hand-written runner, items it created are
+ * soft-deleted, then its `undo` runs. Refused as `stale` (and left applied) if
+ * an item changed since.
  */
 export async function undo(
   deps: CoreDeps,

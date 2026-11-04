@@ -302,7 +302,7 @@ export const makeTask = implementOperation(requestOps.makeTask, {
       undo: { id: request.id, updatedAt: request.updatedAt },
     };
   },
-  // Core soft-deletes the task first, even if it was edited since.
+  // Core soft-deletes the task after this reopens the request, even if it was edited since.
   undo: undoByReopening,
   undoRecord: reopenRecord,
 });

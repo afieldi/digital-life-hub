@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { AuthStore, LoginAttempt, SessionRow } from "./store";
 
-export function memoryAuthStore(): AuthStore {
+/**
+ * Sessions and login attempts in memory. Service tokens live only in the
+ * database, so it knows none unless given `findServiceToken`.
+ */
+export function memoryAuthStore(
+  opts: { findServiceToken?: AuthStore["findServiceToken"] } = {},
+): AuthStore {
   const attempts = new Map<string, LoginAttempt>();
   const sessions = new Map<string, SessionRow>();
 
@@ -49,6 +55,9 @@ export function memoryAuthStore(): AuthStore {
       if (!row || row.revokedAt) return false;
       sessions.set(id, { ...row, revokedAt: now });
       return true;
+    },
+    async findServiceToken(token) {
+      return opts.findServiceToken ? opts.findServiceToken(token) : null;
     },
   };
 }

@@ -88,21 +88,40 @@ export function isConflict(err: unknown): boolean {
 }
 
 /**
- * The undo token of a write's result, when it has one and the write changed
- * something. A write may run another module's operation, whose result may not
- * carry one.
+ * The undo token of a write's result, with the undo records of the operations
+ * it called, when it has one and the write changed something. A write may run
+ * another module's operation, whose result may not carry one.
  */
 export function undoOf(res: unknown): UndoToken | null {
   if (typeof res !== "object" || res === null) return null;
   const undo = (res as { undo?: unknown }).undo;
   if (typeof undo !== "object" || undo === null) return null;
-  const { record, created } = undo as { record?: unknown; created?: unknown };
+  const { record, created, calls } = undo as {
+    record?: unknown;
+    created?: unknown;
+    calls?: unknown;
+  };
   if (!Array.isArray(created) || !created.every((c) => typeof c === "string")) {
     return null;
   }
-  // A write that changed nothing has nothing to undo.
-  if (record == null && created.length === 0) return null;
-  return { record, created };
+  if (calls === undefined) {
+    // A write that changed nothing has nothing to undo.
+    return record == null && created.length === 0 ? null : { record, created };
+  }
+  if (!Array.isArray(calls) || !calls.every(isCall)) return null;
+  // Nothing changed, by the write itself or by an operation it called.
+  if (record == null && created.length === 0 && calls.length === 0) {
+    return null;
+  }
+  return { record, created, calls };
+}
+
+function isCall(c: unknown): c is { operation: string; record?: unknown } {
+  return (
+    typeof c === "object" &&
+    c !== null &&
+    typeof (c as { operation?: unknown }).operation === "string"
+  );
 }
 
 export type ModuleWrite<T> = {

@@ -100,7 +100,7 @@ Rewrite the task's notes (the item's body) so they are clearer and easier to sca
   },
   undoRecord: rewriteUndo,
   async undo(_w, { record }, tools) {
-    await tools.revert(update, record);
+    await tools.revert(update, { record });
   },
   devFake: ({ suggest }) =>
     suggest

@@ -1,3 +1,4 @@
+import type { Item } from "@dlh/core";
 import { items } from "@dlh/db";
 import { eq } from "drizzle-orm";
 import { writeItems } from "../src/items/writer";
@@ -166,5 +167,40 @@ test("updateItem with no fields still advances the version and publishes", async
   );
   const [row] = await db.select().from(items).where(eq(items.id, a.id));
   expect(row.updatedAt.toISOString() > a.updatedAt).toBe(true);
+  await close();
+});
+
+test("touchItem bumps the version and publishes without expectedUpdatedAt", async () => {
+  const { db, deps, close } = await setup();
+  const a = await writeItems(deps, (w) =>
+    w.createItem({ type: "test", title: "a" }),
+  );
+  let touched!: Item;
+  await expectTracked(deps, { itemId: a.id }, async () => {
+    touched = await writeItems(deps, (w) => w.touchItem(a.id));
+  });
+  expect(touched.updatedAt > a.updatedAt).toBe(true);
+  expect(touched.title).toBe("a");
+  const [row] = await db.select().from(items).where(eq(items.id, a.id));
+  expect(row.updatedAt.toISOString()).toBe(touched.updatedAt);
+  await close();
+});
+
+test("touchItem on a deleted item is NOT_FOUND", async () => {
+  const { deps, close } = await setup();
+  const a = await writeItems(deps, (w) =>
+    w.createItem({ type: "test", title: "a" }),
+  );
+  await writeItems(deps, (w) =>
+    w.setDeleted({ id: a.id, expectedUpdatedAt: a.updatedAt, deleted: true }),
+  );
+  await expect(
+    writeItems(deps, (w) => w.touchItem(a.id)),
+  ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await expect(
+    writeItems(deps, (w) =>
+      w.touchItem("019a0000-0000-7000-8000-000000000000"),
+    ),
+  ).rejects.toMatchObject({ code: "NOT_FOUND" });
   await close();
 });

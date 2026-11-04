@@ -14,11 +14,18 @@ declare module "@dlh/server" {
 
 export type AppDeps = CoreDeps & ApiDeps;
 
+/** A session's token signs in as you; otherwise it may be a service token. */
 export async function createContext(
   deps: AppDeps,
   authorization: string | null | undefined,
 ): Promise<Context> {
   const token = bearerToken(authorization);
-  const row = token ? await authenticate(deps.store, token, deps.now()) : null;
-  return { deps, session: row ? { id: row.id, email: row.email } : null };
+  if (!token) return { deps, session: null, principal: null };
+  const row = await authenticate(deps.store, token, deps.now());
+  if (row) {
+    const session = { id: row.id, email: row.email };
+    return { deps, session, principal: { kind: "user", session } };
+  }
+  const principal = await deps.store.findServiceToken(token);
+  return { deps, session: null, principal };
 }

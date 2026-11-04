@@ -26,6 +26,7 @@ test("migrations create sessions with uuidv7 ids", async () => {
     "items",
     "links",
     "login_attempts",
+    "service_tokens",
     "sessions",
   ]);
   await close();

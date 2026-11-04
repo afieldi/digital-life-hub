@@ -3,6 +3,7 @@ import {
   UNDO_TOAST_MS,
   useCommandBar,
   useCoreApi,
+  useDetailPanels,
   useRecordView,
 } from "@dlh/client";
 import { deviceTimeZone, formatWhen, todayIn } from "@dlh/core";
@@ -51,7 +52,7 @@ const PRIORITIES: { id: Priority; label: string }[] = [
 /**
  * The Detail panel (`/tasks/$id`): done, due, priority, the tasks it is a
  * subtask of, its subtasks, notes (saved as you type), links, and when it was
- * created and edited. ⋯ holds the task's operations and AI. Records the view.
+ * created and edited, then the panels other modules add. ⋯ holds the task's operations and AI. Records the view.
  */
 export function TaskDetail({
   id,
@@ -79,6 +80,7 @@ export function TaskDetail({
   const { draft, edit } = useTaskEditor(id, cache, detail.refetch);
   const [addingParent, setAddingParent] = useState(false);
   const parentSearch = useRef<HTMLDivElement>(null);
+  const panels = useDetailPanels("task");
 
   // "Make subtask of…" opens the picker; focus its field once it is there.
   useEffect(() => {
@@ -179,6 +181,9 @@ export function TaskDetail({
           {editedLine(item.data.createdAt, task.updatedAt, timeZone, today)}
         </Caption>
       ) : null}
+      {panels.map((Panel) => (
+        <Panel.component key={Panel.id} itemId={id} />
+      ))}
     </SidePanel>
   );
 }

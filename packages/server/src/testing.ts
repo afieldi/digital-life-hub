@@ -23,7 +23,13 @@ import {
   type ImplementedOperation,
   implementOperation,
 } from "./operations/implement";
-import { type Context, type CoreDeps, type DeleteWith, router } from "./trpc";
+import {
+  type Context,
+  type CoreDeps,
+  type DeleteWith,
+  type Principal,
+  router,
+} from "./trpc";
 
 export { freshTestDb } from "@dlh/db/testing";
 
@@ -125,15 +131,24 @@ export const TEST_SESSION = { id: "s", email: "arek@example.com" };
 /**
  * `testDeps` wired to `modules` as the API composes them (their item types,
  * operations, deleteWith and AI runners, with Core's), and a caller over
- * Core's and the modules' routers, signed in. `itemTypes` adds more types,
- * e.g. one a test links to.
+ * Core's and the modules' routers, signed in as you, or as `principal` when
+ * given (`null` for no one). `itemTypes` adds more types, e.g. one a test
+ * links to.
  */
 export function testServer<const Mods extends readonly ServerModule[]>(
   db: Db,
   modules: Mods,
-  opts: { itemTypes?: string[]; now?: () => Date } = {},
+  opts: {
+    itemTypes?: string[];
+    now?: () => Date;
+    principal?: Principal | null;
+  } = {},
 ) {
   const composed = composeServer(modules);
+  const principal: Principal | null =
+    opts.principal === undefined
+      ? { kind: "user", session: TEST_SESSION }
+      : opts.principal;
   const deps = testDeps(db, {
     itemTypes: [...composed.itemTypes, ...(opts.itemTypes ?? [])],
     ...(opts.now ? { now: opts.now } : {}),
@@ -145,7 +160,8 @@ export function testServer<const Mods extends readonly ServerModule[]>(
     // Where the API augments ApiDeps with its own deps (auth, config), this
     // has none of them; Core's and the modules' routers never read them.
     deps: deps as unknown as Context["deps"],
-    session: TEST_SESSION,
+    session: principal?.kind === "user" ? principal.session : null,
+    principal,
   });
   return { deps, caller, operations: composed.operations };
 }
