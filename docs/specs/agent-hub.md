@@ -84,24 +84,42 @@ packages/agent-runner NEW: inside the container. Agent SDK session, canUseTool h
 
 ## Core changes
 
-Already in place and used as they are: operation calls (`w.call`, one level deep, queries included), and the Queue's `agent` source and actions on requests. A request the agent files has `externalId` `<runId>:<seq>`, the event that raised it, so a retried `suspend` files once.
+Already in place and used as they are: operation calls (`w.call`, one level deep, queries included), and the Queue's `agent` source and actions on requests. A request the agent files has `externalId` `<runId>:<seq>`, the event that raised it, so a retried `suspend` files once. `fail` files with `<runId>:fail:<n>` (see Run lifecycle).
 
 **Service tokens.** Today a request carries a Google session. Two more kinds of principal, both signed by the API and accepted by the tRPC context and `/changes`:
 
 - **Worker token:** configured on the agent host. Calls only `agent` worker operations, and may listen on `/changes`.
 - **Run token:** minted by `agent.claim` for one run, revoked when the run leaves `running`. Calls hub operations marked for AI, with their usual effects. It may not call `agent` operations other than through the worker.
 
-**Callee undo records.** Today Undo deletes the items a called operation created but leaves its updates. `UndoToken` becomes `{ record, created, calls: [{ operation, record }] }`: each called mutation's undo record is kept in call order. `ops.undo` runs, in one transaction, the caller's own undo, then each callee's undo in reverse order, then deletes the created items. If any item changed since, the whole Undo is `CONFLICT` "Changed since". Queue's `makeTask` gets this too.
+A token is a random 32-byte base64url string, stored only as its SHA-256 hash. A revoked or unknown token is `UNAUTHORIZED`.
+
+**Who may call an operation.** `OperationDescription.access` is `"everyone" | "user" | "worker"`.
+
+| `access` | Callable by |
+| --- | --- |
+| `everyone` | You or a run |
+| `user` | Only you |
+| `worker` | Only the worker token |
+
+- Left out, it is `everyone` when `ai !== false` and `user` otherwise.
+- `describeOperation` refuses `access: "worker"` unless `palette: false` and `ai: false` are both set.
+- Operation calls skip the access check: a callee runs as its caller already ran.
+- A token calling an operation it may not is `FORBIDDEN`.
+- Agent's own operations that are AI-callable set `access: "user"`, so a run can't start, cancel or reassign runs.
+
+**Principal.** `Context` keeps `session` (yours, unchanged) and gains `principal: Principal | null`: `{ kind: "user"; session }`, `{ kind: "worker"; tokenId }` or `{ kind: "run"; tokenId; runId }`. `protectedProcedure` stays person-only.
+
+**Callee undo records.** Today Undo deletes the items a called operation created but leaves its updates. `UndoToken` becomes `{ record, created, calls: [{ operation, record }] }`: each called mutation's undo record is kept in call order. `ops.undo` runs, in one transaction, the caller's own undo, then each callee's undo in reverse order, then deletes the created items. If any item changed since, the whole Undo is `CONFLICT` "Changed since" and reverts nothing. Queue's `makeTask` gets this too: `tasks.create`'s undo is a no-op, so reopening the request doesn't need the task deleted first. A caller must not touch an item after a callee updated it in the same mutation, or the callee's undo conflicts.
 
 **Detail panels.** `defineModule` takes `detailPanels: [{ itemType, id, component, order? }]`. An item page renders the panels registered for its type, sorted by `order`, so Tasks shows the Agent panel without importing agent code.
 
-**Touching an item.** `w.touchItem(id)` bumps an item's version and publishes it to `/changes`, with no `expectedUpdatedAt`. Run state changes use it; it changes no field, so it never conflicts with your edits.
+**Touching an item.** `w.touchItem(id)` bumps an item's version and publishes it to `/changes`, with no `expectedUpdatedAt`. Run state changes use it; it changes no field, so it never conflicts with your edits. It needs the `touchItems` effect on the operation, which AI may not run without asking first.
 
 ## Run lifecycle
 
-**Making an AI task.** `agent.assign({ taskId, connections? })` calls `tasks.setAssignee` with `agent`, stores the connections (the default set when left out) and queues a run, in one transaction. Its Undo cancels the queued run, then reverts `setAssignee` through the callee undo record. `agent.unassign` sets the assignee back to `me` and cancels any active run.
+**Making an AI task.** `agent.assign({ taskId, connections? })` calls `tasks.setAssignee` with `agent`, stores the connections (the default set when left out) and queues a run, in one transaction. It does not touch the task itself, because `setAssignee` already bumped it. Its Undo cancels the queued run, then reverts `setAssignee` through the callee undo record. `agent.unassign` sets the assignee back to `me` and cancels any active run.
 
-**Give to agent.** From a request, `agent.assignRequest({ requestId, expectedUpdatedAt, title?, notes?, connections? })` makes the task through `tasks.create` (the request's title and body by default), calls `tasks.setAssignee`, resolves the request as `task` through `requests.resolve`, and queues a run, in one transaction. Each is a direct call, so calls stay one level deep. Its Undo reverts `requests.resolve` and `tasks.setAssignee` through their callee undo records and soft-deletes the task, which cancels the queued run.
+**Give to agent.** From a request, `agent.assignRequest({ requestId, expectedUpdatedAt, title?, notes?, connections? })` makes the task through `tasks.create` (the request's title and body by default), calls `tasks.setAssignee`, resolves the request as `task` through `requests.resolve`, stores the request's id on the assignment (`request_id`), and queues a run, in one transaction. Each is a direct call, so calls stay one level deep. Its Undo reverts `requests.resolve` and `tasks.setAssignee` through their callee undo records and soft-deletes the task, which cancels the queued run. Once the run has been claimed, the task has changed and the Undo is `CONFLICT` "Changed since", reverting nothing.
 
 ```
 queued → running → done
@@ -111,13 +129,16 @@ queued → running → done
 cancelled from queued, running or waiting
 ```
 
-- **Claim.** The worker listens on `/changes` with its worker token and calls `agent.claim` when a task changes, and every 30 seconds as a fallback. It gets the oldest queued run whose task is open (`completed_at` is null), still assigned to the agent and due by now (or has no due time), while fewer than the parallel limit (3) are running. The claim moves it to `running`, mints its run token and returns what the container needs.
+- **Claim.** The worker listens on `/changes` with its worker token and calls `agent.claim` when a task changes, and every 30 seconds as a fallback. It gets the oldest queued run whose task is open (`completed_at` is null), still assigned to the agent and due by now (or has no due time), while fewer than the parallel limit (3) are running. The claim moves it to `running`, mints its run token and returns what the container needs, including the request the task came from, read with `requests.get` on the assignment's `request_id`. A task made with Make task and then assigned has no `request_id`, so no quoted request.
+  - Claims are serialised by `pg_advisory_xact_lock(hashtext('agent.claim'))`, so the parallel limit can't be overshot.
+  - Before choosing a run, `claim` sweeps: running runs with no heartbeat for 2 minutes go back to `queued` and their tokens are revoked; events of runs that ended more than 30 days ago are deleted; a queued or waiting run whose task was completed, deleted or unassigned is cancelled.
+  - If the run has a `decision` not yet delivered, `claim` returns it for the next message and sets `decision.delivered = true`. It does not clear `decision`.
 - **Done.** The runner's last step is `finish`: the report is written and the task completed through `tasks.complete`, in one transaction.
-- **Failed.** A crash, a timeout, a cap, a Gateway refusal, or the agent saying it is stuck. `fail` files a request "Needs you: \<task\>" with the reason and a Retry action. The workspace is kept, so Retry resumes the session.
-- **Waiting.** `suspend` records the session id, files the approval or grant request and moves the run to `waiting`; the worker stops the container. Your answer through `decide` queues the run again; the next claim starts a container on the same workspace, resumes the session and sends your decision as the next message.
-- **Heartbeat.** A running run's worker calls `heartbeat` every 30 seconds. A run with no heartbeat for 2 minutes goes back to `queued` and resumes from its session.
+- **Failed.** A crash, a timeout, a cap, a Gateway refusal, or the agent saying it is stuck. `fail` files a request "Needs you: \<task\>" with the reason and a Retry action, with `externalId` `<runId>:fail:<failures + 1>`, and increments `failures`, so a retried `fail` files once. The workspace is kept, so Retry resumes the session. Retry resolves the run's open failure request as `handled` through `requests.resolve`, which is what `requests.file` requires of an action's operation.
+- **Waiting.** `suspend` records the session id, files the approval or grant request and moves the run to `waiting`; the worker stops the container. Your answer through `decide` stores `decision` and queues the run again; the next claim starts a container on the same workspace, resumes the session and sends your decision as the next message.
+- **Heartbeat.** A running run's worker calls `heartbeat` every 30 seconds. A run with no heartbeat for 2 minutes goes back to `queued` and resumes from its session; the sweep in `claim` does this. `heartbeat` returns `{ stop: boolean }`: when the task is completed, deleted or no longer assigned to the agent, it sets the run to `cancelled`, revokes its token and returns `stop: true`, so Tasks needs no hook into Agent. `finish` after that is `CONFLICT` and does not complete the task twice.
 - **Limits** (settings): a cost cap of $10 and 240 minutes of running time per run. Reaching one fails the run with the reason ("Cost cap reached ($10.00)"); Retry continues with a fresh allowance. Turns and tokens are counted for display only. A monthly budget on the Gateway key is the last limit. The defaults are revisited after the Gateway check.
-- **Your changes to the task.** Completing, deleting or unassigning a task mid-run cancels the run. Deleting the task removes its runs by cascade, and the workspace goes on its 7-day timer.
+- **Your changes to the task.** Completing, deleting or unassigning a task mid-run cancels the run, at the next `heartbeat` for a running run and at the next `claim` for a queued or waiting one. Deleting the task removes its runs by cascade, and the workspace goes on its 7-day timer.
 
 ## Data model
 
@@ -127,16 +148,18 @@ cancelled from queued, running or waiting
 
 | Table | Columns | Notes |
 | --- | --- | --- |
-| `agent_assignments` | `task_id` (FK `items`, cascade), `connection_ids` uuid[] | The connections a task starts with |
-| `agent_runs` | `id`, `task_id` (FK `items`, cascade), `status`, `session_id`, `workspace`, `connection_ids`, `waiting_on`, `heartbeat_at`, `created_at`, `started_at`, `finished_at`, `failure_code`, `failure_message`, `report` jsonb, `turns`, `input_tokens`, `output_tokens`, `cost_usd`, `image` | `status`: `queued`, `running`, `waiting`, `done`, `failed`, `cancelled`. `connection_ids` is the start set plus grants. `waiting_on` is the request's item id. `image` is the digest it ran on. Unique on `task_id` where `status` is `queued`, `running` or `waiting` |
+| `agent_assignments` | `task_id` (FK `items`, cascade), `connection_ids` uuid[], `request_id` uuid null | The connections a task starts with. `request_id` is set by `assignRequest`; `claim` reads the request with `requests.get` on it. Null for a task made with Make task |
+| `agent_runs` | `id`, `task_id` (FK `items`, cascade), `status`, `session_id`, `workspace`, `connection_ids`, `pending`, `decision`, `failures`, `heartbeat_at`, `created_at`, `started_at`, `finished_at`, `failure_code`, `failure_message`, `report` jsonb, `turns`, `input_tokens`, `output_tokens`, `cost_usd`, `image` | `status`: `queued`, `running`, `waiting`, `done`, `failed`, `cancelled`. `connection_ids` is the start set plus grants. `pending` is `{ requestId, seq, kind: "approval" \| "grant" \| "failure", connectionId?, tool?, inputHash? }`, the open request the run filed. `decision` is `{ seq, approve, delivered }`, set by `decide` and marked `delivered` by the `claim` that hands it over. `failures` int, default 0, counts `fail` calls. `image` is the digest it ran on. Unique on `task_id` where `status` is `queued`, `running` or `waiting` |
 | `agent_run_events` | `run_id`, `seq`, `at`, `kind`, `data` jsonb | `kind`: `text`, `tool`, `tool_result`, `file`, `permission`, `status`. Primary key `(run_id, seq)`. Removed 30 days after the run ends |
 | `agent_run_messages` | `id`, `run_id`, `at`, `body`, `delivered_at` | Your messages; `delivered_at` set when the runner takes them |
 | `agent_connections` | `id`, `name`, `type`, `scope_summary`, `created_at`, `disabled_at` | `type`: `github`, `aws`, `slack`, `linear`, `gdrive`, `mcp`, `env`. Metadata only |
-| `agent_settings` | One row: `default_connection_ids`, `max_parallel` (3), `max_running_minutes` (240), `max_cost_usd` (10), `instructions` | A module table, like Core's `ai_settings` |
+| `agent_settings` | One row: `default_connection_ids`, `max_parallel` (3), `max_running_minutes` (240), `max_cost_usd` (10), `time_zone` (`UTC`), `instructions` | A module table, like Core's `ai_settings`. `time_zone` reads all-day due dates for "due by now"; Settings → Agent sets it |
 
 `report` is `{ summary, links: [{ label, url }], filesChanged: string[] }`.
 
 ## Operations (Agent)
+
+An operation's id is `<module>.<key>`, so every name below is flat: `agent.assign`, `agent.connections`, `agent.settings` and so on.
 
 | Operation | Kind | Input | ⌘K | AI |
 | --- | --- | --- | --- | --- |
@@ -146,20 +169,21 @@ cancelled from queued, running or waiting
 | `message` | mutation | `{ runId, body }` | "Tell the agent…" | ✗ |
 | `cancel` | mutation | `{ runId }` | "Cancel run" | ✓ |
 | `retry` | mutation | `{ runId }` | "Retry run" | ✓ |
-| `decide` | mutation | `{ runId, requestId, approve }` | ✗ | ✗ |
+| `decide` | mutation | `{ runId, seq, approve }` | ✗ | ✗ |
 | `run` | query | `{ runId }` | ✗ | ✗ |
 | `runs` | query | `{ taskId }` or `{ status? }` | ✗ | ✓ |
 | `events` | query | `{ runId, after? }` | ✗ | ✗ |
-| `connections.list` | query | `{}` | ✗ | ✗ |
-| `connections.setDefault`, `connections.disable` | mutation | `{ id, … }` | ✗ | ✗ |
-| `settings.get` / `settings.set` | query / mutation | — / partial settings | ✗ | ✗ |
+| `connections` | query | `{}` | ✗ | ✗ |
+| `setDefaultConnections`, `disableConnection` | mutation | `{ id, … }` | ✗ | ✗ |
+| `settings` / `setSettings` | query / mutation | — / partial settings | ✗ | ✗ |
 
 - `message` is refused unless the run is `running` or `waiting`; a message to a waiting run is delivered on resume.
-- `cancel` stops the container and keeps the workspace. `retry` queues a `failed` or `cancelled` run again with the same session.
-- `decide` records the answer, resolves the request through `requests.resolve` (outcome `handled`) and queues the run. The same answer twice is a no-op; a different one is `CONFLICT`. It is the operation behind the Approve and Decline actions.
+- `cancel` stops the container and keeps the workspace. `retry` queues a `failed` or `cancelled` run again with the same session, and resolves the run's open failure request as `handled` (it declares `calls: [requests.resolve]`).
+- AI-callable agent operations set `access: "user"`: a run token gets `FORBIDDEN` on them.
+- `decide` records the answer as `decision` `{ seq, approve, delivered: false }`, resolves the request through `requests.resolve` (outcome `handled`) and queues the run. The request is filed after the event, so its actions name the event `seq`, not a request id. A `seq` that isn't the run's current `pending.seq` is `CONFLICT`. When the stored `decision` has the same `seq` and answer it is a no-op; the same `seq` with a different answer is `CONFLICT`. It is the operation behind the Approve and Decline actions.
 - `events` returns events after `seq`, at most 500.
 
-**Worker operations** take only the worker token, and are off for ⌘K and AI: `claim`, `heartbeat`, `appendEvents` (batched), `takeMessages`, `suspend({ runId, sessionId, request })`, `finish({ runId, report })`, `fail({ runId, code, message })`, `connections.register` (used by the CLI). `suspend` and `fail` file their request through `requests.file`.
+**Worker operations** take only the worker token, and are off for ⌘K and AI: `claim`, `heartbeat` (returns `{ stop }`), `appendEvents` (batched), `takeMessages`, `suspend({ runId, sessionId, request })`, `finish({ runId, report })`, `fail({ runId, code, message })`, `registerConnection` (used by the CLI). They have `access: "worker"`. `suspend` and `fail` file their request through `requests.file`.
 
 ## Containers
 
@@ -179,7 +203,7 @@ cancelled from queued, running or waiting
 
 ## Connections
 
-**Adding one.** On the agent host: `pnpm agent connection add <type> "<name>"`. It prompts for the secret, so the secret stays out of shell history, stores it in `apps/agent`'s store, and registers the metadata through `connections.register`. The store is a SQLite file on the host, encrypted with `AGENT_SECRETS_KEY` from the host's environment. The API and the desktop app never see a secret; Settings lists connections, sets the default set and disables one.
+**Adding one.** On the agent host: `pnpm agent connection add <type> "<name>"`. It prompts for the secret, so the secret stays out of shell history, stores it in `apps/agent`'s store, and registers the metadata through `registerConnection`. The store is a SQLite file on the host, encrypted with `AGENT_SECRETS_KEY` from the host's environment. The API and the desktop app never see a secret; Settings lists connections, sets the default set and disables one.
 
 **Into a run**
 
@@ -244,7 +268,10 @@ Repos add their own `CLAUDE.md`. Your messages during the run arrive as user mes
 | Container won't start | The run fails with the Docker error's first line; Retry |
 | Workspace removed before a Retry | A fresh session on a fresh workspace |
 | Task completed, deleted or unassigned mid-run | The run is cancelled |
-| `decide` on an answered request | No-op for the same answer, `CONFLICT` for a different one |
+| `decide` on an answered request | No-op for the same `seq` and answer, `CONFLICT` for a different answer |
+| `decide` with a `seq` that isn't the run's pending one | `CONFLICT` |
+| `finish` after the run was cancelled | `CONFLICT`; the task is not completed |
+| A run token calls an operation it may not | `FORBIDDEN`; a revoked token is `UNAUTHORIZED` |
 | `message` to a run that has ended | `BAD_REQUEST` "This run has ended" |
 
 ## Testing
