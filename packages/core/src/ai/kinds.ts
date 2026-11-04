@@ -41,6 +41,7 @@ export const aiEffect = z.enum([
   "removeLinks",
   "deleteItems",
   "setArchived",
+  "touchItems",
   "writeOtherItems",
 ]);
 export type AiEffect = z.infer<typeof aiEffect>;

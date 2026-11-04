@@ -5,6 +5,7 @@ import {
   OpenItemProvider,
   ShellProvider,
   useCommandBar,
+  useDetailPanels,
   useGoChordPending,
   useHomeWidgets,
   useItemHref,
@@ -147,6 +148,7 @@ test("useCommandBar, useItemHref, useItemType, useItemsChanged, useGoChordPendin
             openExternal: async () => {},
             goChordPending: () => true,
             homeWidgets: [widget],
+            detailPanels: [],
           }}
         >
           {children}
@@ -179,6 +181,48 @@ test("useCommandBar, useItemHref, useItemType, useItemsChanged, useGoChordPendin
   expect(bare.result.current.widgets).toEqual([]);
 });
 
+test("useDetailPanels returns one type's panels in order", () => {
+  const panel = (itemType: string, id: string, order?: number) => ({
+    itemType,
+    id,
+    label: id,
+    order,
+    component: () => null,
+  });
+  const detailPanels = [
+    panel("task", "late"),
+    panel("note", "other"),
+    panel("task", "second", 2),
+    panel("task", "first", 1),
+    panel("task", "later"),
+  ];
+  const { result } = renderHook(() => useDetailPanels("task"), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <ShellProvider
+        value={{
+          openCommandBar: () => {},
+          itemHref: () => undefined,
+          itemType: () => undefined,
+          itemsChanged: () => {},
+          openExternal: async () => {},
+          goChordPending: () => false,
+          homeWidgets: [],
+          detailPanels,
+        }}
+      >
+        {children}
+      </ShellProvider>
+    ),
+  });
+  expect(result.current.map((p) => p.id)).toEqual([
+    "first",
+    "second",
+    "late",
+    "later",
+  ]);
+  expect(renderHook(() => useDetailPanels("task")).result.current).toEqual([]);
+});
+
 test("useOpenExternal uses the shell's, and opens a new window without one", async () => {
   const openExternal = vi.fn(async () => {});
   const { result } = renderHook(() => useOpenExternal(), {
@@ -192,6 +236,7 @@ test("useOpenExternal uses the shell's, and opens a new window without one", asy
           openExternal,
           goChordPending: () => false,
           homeWidgets: [],
+          detailPanels: [],
         }}
       >
         {children}

@@ -1,4 +1,4 @@
-import type { HomeWidget } from "@dlh/core";
+import type { DetailPanel, HomeWidget } from "@dlh/core";
 import type { CoreRouter } from "@dlh/server";
 import type { TRPCClient } from "@trpc/client";
 import type { AnyRouter } from "@trpc/server";
@@ -9,6 +9,7 @@ import {
   type SetStateAction,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -118,6 +119,8 @@ export type ShellApi = {
   goChordPending: () => boolean;
   /** Every module's Home widgets, in order, for the Home module to lay out. */
   homeWidgets: readonly HomeWidget[];
+  /** Every module's item-page panels, in order (see `useDetailPanels`). */
+  detailPanels: readonly DetailPanel[];
 };
 
 /** Outside a desktop shell (tests, the browser): a new window. */
@@ -133,6 +136,7 @@ const ShellContext = createContext<ShellApi>({
   openExternal: openInNewWindow,
   goChordPending: () => false,
   homeWidgets: [],
+  detailPanels: [],
 });
 
 /** Given by the shell around every module screen. */
@@ -175,6 +179,25 @@ export function useOpenExternal(): ShellApi["openExternal"] {
 /** Whether the key being handled is part of a "go to" chord (see `ShellApi.goChordPending`). */
 export function useGoChordPending(): ShellApi["goChordPending"] {
   return useContext(ShellContext).goChordPending;
+}
+
+/**
+ * The panels modules add to `itemType`'s page, by `order`; ones without follow
+ * in registry order.
+ */
+export function useDetailPanels(itemType: string): DetailPanel[] {
+  const { detailPanels } = useContext(ShellContext);
+  return useMemo(
+    () =>
+      detailPanels
+        .filter((p) => p.itemType === itemType)
+        .sort(
+          (a, b) =>
+            (a.order ?? Number.MAX_SAFE_INTEGER) -
+            (b.order ?? Number.MAX_SAFE_INTEGER),
+        ),
+    [detailPanels, itemType],
+  );
 }
 
 /** Every module's Home widgets, in order (see `ShellApi.homeWidgets`). */

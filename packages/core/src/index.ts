@@ -68,6 +68,7 @@ export {
 } from "./items";
 export type {
   CommandContext,
+  DetailPanel,
   HomeWidget,
   ModuleDescription,
   ModuleManifest,

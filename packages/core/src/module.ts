@@ -31,6 +31,21 @@ export interface HomeWidget {
   order?: number;
 }
 
+/**
+ * A panel a module adds to another module's item page, so the owner needs no
+ * import of it (Agent's panel on a task). It runs inside the API and query providers.
+ */
+export interface DetailPanel {
+  /** The item type whose page shows it. */
+  itemType: string;
+  /** Unique within its module. */
+  id: string;
+  label: string;
+  component: ComponentType<{ itemId: string }>;
+  /** Lower comes first; panels without one follow, in registry order. */
+  order?: number;
+}
+
 export interface ModuleManifest {
   id: string;
   itemType?: {
@@ -57,6 +72,8 @@ export interface ModuleManifest {
   refreshOn?: string[];
   /** Panels for the Home screen, which the Home module lays out in `order`. */
   homeWidgets?: HomeWidget[];
+  /** Panels this module adds to item pages, whichever module owns them. */
+  detailPanels?: DetailPanel[];
   routes: (parent: AnyRoute) => AnyRoute[];
   paletteActions?: PaletteAction[];
   aiActions?: AiActionDescription[];

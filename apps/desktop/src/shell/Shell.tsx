@@ -126,6 +126,7 @@ export function Shell() {
       openExternal,
       goChordPending: () => hotkeys.current?.goPending() ?? false,
       homeWidgets: registry.homeWidgets,
+      detailPanels: registry.detailPanels,
     }),
     [openCommandBar, itemsChanged, registry],
   );

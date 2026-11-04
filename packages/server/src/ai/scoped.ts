@@ -75,6 +75,10 @@ export function scopedWriter(
       return w.removeLink(id);
     };
   }
+  if (has("touchItems")) {
+    // A state change on one item is shown on others (a run on its task), so any item.
+    out.touchItem = (id) => w.touchItem(id);
+  }
   if (has("deleteItems")) {
     out.setDeleted = async (i) => {
       if (!inScope(i.id)) forbidden();

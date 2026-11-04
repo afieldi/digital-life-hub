@@ -720,6 +720,19 @@ describe("Detail", () => {
   });
 });
 
+test("task detail renders a registered detail panel", async () => {
+  const { renderApp, client, router } = await setup("/tasks", {
+    fixture: true,
+  });
+  const { result: task } = await client.tasks.create.mutate({ title: "Hosts" });
+  renderApp();
+  await router.navigate({ to: `/tasks/${task.id}` });
+  const p = await panel("Hosts");
+  expect(
+    await within(p).findByText(`Fixture panel for ${task.id}`),
+  ).toBeInTheDocument();
+});
+
 test("a deleted task's page says so at once, with no Retry", async () => {
   const { renderApp, client, router } = await setup("/tasks");
   const { result: task } = await client.tasks.create.mutate({ title: "Gone" });
