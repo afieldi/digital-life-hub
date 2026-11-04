@@ -10,6 +10,8 @@ import {
   type CoreDeps,
   implementOperation,
   opaqueCursor,
+  type RawSummaryRow,
+  summaryFromRaw,
   type Tx,
 } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
@@ -18,7 +20,6 @@ import { z } from "zod";
 import { dueHeading } from "../dates";
 import { taskOps } from "../operations";
 import { priority, type TaskRow } from "../schema";
-import { type SummaryRow, toSummary } from "./links";
 
 type Db = CoreDeps["db"] | Tx;
 
@@ -42,7 +43,7 @@ type RawRow = {
   sub_total: number;
   sub_done: number;
   sub_next: string | null;
-  parents: SummaryRow[];
+  parents: RawSummaryRow[];
   linked_notes: number;
 };
 
@@ -122,7 +123,7 @@ function toTaskRow(r: RawRow, tz: string): TaskRow {
     notes: r.notes,
     day: dayOfDue(due, tz),
     subtasks: { total: r.sub_total, done: r.sub_done, next: r.sub_next },
-    parents: r.parents.map(toSummary),
+    parents: r.parents.map(summaryFromRaw),
     linkedNotes: r.linked_notes,
     sortKey: r.sort_key,
   };

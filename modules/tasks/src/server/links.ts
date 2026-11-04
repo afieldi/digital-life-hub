@@ -1,5 +1,10 @@
 import type { ItemSummary } from "@dlh/core";
-import type { CoreDeps, Tx } from "@dlh/server";
+import {
+  type CoreDeps,
+  type RawSummaryRow,
+  summaryFromRaw,
+  type Tx,
+} from "@dlh/server";
 import { sql } from "drizzle-orm";
 
 // Read-only queries on Core's `items` and `links`, by table name: modules can't
@@ -8,30 +13,6 @@ import { sql } from "drizzle-orm";
 //
 // A "task" here is a live item with a row in `tasks`; a subtask is a task that a
 // live task `contains`.
-
-export type SummaryRow = {
-  id: string;
-  type: string;
-  title: string;
-  archived_at: string | Date | null;
-};
-
-export function toSummary(r: SummaryRow): ItemSummary {
-  return {
-    id: r.id,
-    type: r.type,
-    title: r.title,
-    archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : null,
-  };
-}
-
-/** The live item's type, or null when it is missing or deleted. */
-export async function liveType(tx: Tx, id: string): Promise<string | null> {
-  const rows = await tx.execute<{ type: string }>(
-    sql`select type from items where id = ${id} and deleted_at is null`,
-  );
-  return rows[0]?.type ?? null;
-}
 
 /** Whether a live task contains `id`. */
 export async function hasTaskParent(
@@ -60,31 +41,12 @@ export async function hasTaskSubtasks(tx: Tx, id: string): Promise<boolean> {
   return rows[0]?.found ?? false;
 }
 
-/** The id of the `contains` link from `parentId` to `id`, if there is one. */
-export async function containsLinkId(
-  tx: Tx,
-  parentId: string,
-  id: string,
-): Promise<string | null> {
-  const rows = await tx.execute<{ id: string }>(sql`
-    select id from links
-    where from_id = ${parentId} and to_id = ${id} and kind = 'contains'`);
-  return rows[0]?.id ?? null;
-}
-
-export async function linkExists(tx: Tx, linkId: string): Promise<boolean> {
-  const rows = await tx.execute<{ id: string }>(
-    sql`select id from links where id = ${linkId}`,
-  );
-  return rows.length > 0;
-}
-
 /** Open task parents of `id` whose live subtasks are now all done, in link order. */
 export async function parentsNowDone(
   tx: Tx,
   id: string,
 ): Promise<ItemSummary[]> {
-  const rows = await tx.execute<SummaryRow>(sql`
+  const rows = await tx.execute<RawSummaryRow>(sql`
     select p.id, p.type, p.title, p.archived_at
     from links l
     join items p on p.id = l.from_id and p.deleted_at is null
@@ -97,7 +59,7 @@ export async function parentsNowDone(
         where l2.from_id = p.id and l2.kind = 'contains'
       )
     order by l.created_at, l.id`);
-  return rows.map(toSummary);
+  return rows.map(summaryFromRaw);
 }
 
 /**
