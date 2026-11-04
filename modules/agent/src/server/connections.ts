@@ -1,4 +1,4 @@
-import { implementOperation } from "@dlh/server";
+import { implementOperation, type Tx } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -33,28 +33,36 @@ export const connectionsQuery = implementOperation(agentOps.connections, {
   },
 });
 
+/** `ids` without repeats; `BAD_REQUEST` if any is unknown or disabled. */
+export async function liveConnections(
+  tx: Tx,
+  ids: string[],
+): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return unique;
+  const known = await tx
+    .select({ id: agentConnections.id })
+    .from(agentConnections)
+    .where(
+      and(
+        inArray(agentConnections.id, unique),
+        isNull(agentConnections.disabledAt),
+      ),
+    );
+  if (known.length !== unique.length) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Unknown or disabled connection",
+    });
+  }
+  return unique;
+}
+
 export const setDefaultConnections = implementOperation(
   agentOps.setDefaultConnections,
   {
     async run(w, input) {
-      const ids = [...new Set(input.ids)];
-      if (ids.length > 0) {
-        const known = await w.tx
-          .select({ id: agentConnections.id })
-          .from(agentConnections)
-          .where(
-            and(
-              inArray(agentConnections.id, ids),
-              isNull(agentConnections.disabledAt),
-            ),
-          );
-        if (known.length !== ids.length) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Unknown or disabled connection",
-          });
-        }
-      }
+      const ids = await liveConnections(w.tx, input.ids);
       const before = await readSettings(w.tx, { lock: true });
       const result = await writeSettings(w.tx, { defaultConnectionIds: ids });
       return {

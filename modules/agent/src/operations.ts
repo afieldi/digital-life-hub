@@ -71,9 +71,10 @@ const assign = describeOperation({
     connections: connections.optional(),
   }),
   subject: (input) => input.id,
-  // Sets the AI cap (suggest, you confirm). Touching is left to setAssignee's version bump: a touchItem after it would break its undo.
+  // Sets the AI cap (suggest, you confirm), and touches the task when setAssignee changed nothing.
   effects: ["touchItems"],
-  calls: [taskOps.setAssignee],
+  // `requests.*` resolve the failed run's open "Needs you".
+  calls: [taskOps.setAssignee, requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Make AI task",
   palette: (ctx) => {
@@ -145,7 +146,7 @@ const unassign = describeOperation({
   input: z.object({ id: taskId, expectedUpdatedAt }),
   subject: (input) => input.id,
   effects: ["touchItems"],
-  // `requests.*` resolve the approval or grant a waiting run asked for.
+  // `requests.*` resolve the approval or grant a waiting run asked for, or a failed run's "Needs you".
   calls: [taskOps.setAssignee, requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Back to me",

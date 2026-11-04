@@ -1,4 +1,5 @@
 import { mintRunToken } from "@dlh/server";
+import { expectTracked } from "@dlh/server/testing";
 import { eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import { requests } from "../../requests/src/db/schema";
@@ -264,4 +265,133 @@ test("unassign undo restores the assignee and the run", async () => {
     .where(eq(requests.itemId, grant.id));
   expect(req?.outcome).toBeNull();
   await close();
+});
+
+type S = Awaited<ReturnType<typeof setup>>;
+
+/** A task of the agent's whose one run failed, with its open "Needs you". */
+async function failedTask(s: S) {
+  const task = await s.mkTask();
+  await s.deps.db.execute(
+    sql`update tasks set assignee = 'agent' where item_id = ${task.id}`,
+  );
+  const failure = await s.file("Needs you: Fix the build", { source: "agent" });
+  const [run] = await s.deps.db
+    .insert(agentRuns)
+    .values({
+      taskId: task.id,
+      status: "failed",
+      finishedAt: new Date(),
+      failures: 1,
+      pending: { requestId: failure.id, seq: 1, kind: "failure" },
+    })
+    .returning();
+  if (!run) throw new Error("no run");
+  return { task, run, failure };
+}
+
+async function outcomeOf(s: S, requestId: string) {
+  const [req] = await s.deps.db
+    .select()
+    .from(requests)
+    .where(eq(requests.itemId, requestId));
+  return req?.outcome;
+}
+
+test("unassign undo on a failed run sets the assignee back", async () => {
+  const s = await setup();
+  const { task } = await failedTask(s);
+  const back = await s.caller.agent.unassign({
+    id: task.id,
+    expectedUpdatedAt: await version(s.deps, task.id),
+  });
+  expect(back.result.run).toBeNull();
+  expect(back.undo.record).toBeNull();
+  expect(await assigneeOf(s.deps, task.id)).toBe("me");
+  await s.caller.ops.undo({ id: "agent.unassign", token: back.undo });
+  expect(await assigneeOf(s.deps, task.id)).toBe("agent");
+  await s.close();
+});
+
+test("unassign resolves the failed run's open failure request; undo reopens it", async () => {
+  const s = await setup();
+  const { task, failure } = await failedTask(s);
+  const back = await s.caller.agent.unassign({
+    id: task.id,
+    expectedUpdatedAt: await version(s.deps, task.id),
+  });
+  expect(await outcomeOf(s, failure.id)).toBe("handled");
+  await s.caller.ops.undo({ id: "agent.unassign", token: back.undo });
+  expect(await outcomeOf(s, failure.id)).toBeNull();
+  await s.close();
+});
+
+test("assign resolves the failed run's open failure request; undo reopens it", async () => {
+  const s = await setup();
+  const { task, failure } = await failedTask(s);
+  const out = await s.caller.agent.assign({
+    id: task.id,
+    expectedUpdatedAt: await version(s.deps, task.id),
+  });
+  expect(await outcomeOf(s, failure.id)).toBe("handled");
+  await s.caller.ops.undo({ id: "agent.assign", token: out.undo });
+  expect(await outcomeOf(s, failure.id)).toBeNull();
+  expect(await runsOf(s.deps, task.id)).toHaveLength(1);
+  await s.close();
+});
+
+test("assigning a task the agent already has publishes the new run, and its undo too", async () => {
+  const s = await setup();
+  const { task } = await failedTask(s);
+  let undo: unknown;
+  await expectTracked(s.deps, { itemId: task.id }, async () => {
+    const out = await s.caller.agent.assign({
+      id: task.id,
+      expectedUpdatedAt: await version(s.deps, task.id),
+    });
+    undo = out.undo;
+  });
+  expect(await runsOf(s.deps, task.id)).toHaveLength(2);
+  await expectTracked(s.deps, { itemId: task.id }, () =>
+    s.caller.ops.undo({
+      id: "agent.assign",
+      token: undo as Parameters<typeof s.caller.ops.undo>[0]["token"],
+    }),
+  );
+  expect(await runsOf(s.deps, task.id)).toHaveLength(1);
+  expect(await assigneeOf(s.deps, task.id)).toBe("agent");
+  await s.close();
+});
+
+test("assign and assignRequest refuse an unknown or disabled connection", async () => {
+  const s = await setup();
+  const [off] = await s.deps.db
+    .insert(agentConnections)
+    .values({ name: "old", type: "github", disabledAt: new Date() })
+    .returning();
+  const unknown = "0190f2a0-0000-7000-8000-000000000000";
+  const task = await s.mkTask();
+  const r = await s.file("Update the deps");
+  for (const connections of [[unknown], [off.id]]) {
+    await expect(
+      s.caller.agent.assign({
+        id: task.id,
+        expectedUpdatedAt: task.updatedAt,
+        connections,
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Unknown or disabled connection",
+    });
+    await expect(
+      s.caller.agent.assignRequest({
+        id: r.id,
+        expectedUpdatedAt: r.updatedAt,
+        connections,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  }
+  expect(await s.deps.db.select().from(agentRuns)).toHaveLength(0);
+  expect(await assigneeOf(s.deps, task.id)).toBe("me");
+  await s.close();
 });

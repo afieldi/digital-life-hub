@@ -78,3 +78,22 @@ test("worker operations that change a run's state touch items; heartbeat and cla
     requestOps.resolve,
   ]);
 });
+
+test("assign, assignRequest and unassign declare the calls they make", () => {
+  expect(agentOps.assign.calls).toEqual([
+    taskOps.setAssignee,
+    requestOps.get,
+    requestOps.resolve,
+  ]);
+  expect(agentOps.assignRequest.calls).toEqual([
+    requestOps.get,
+    taskOps.create,
+    taskOps.setAssignee,
+    requestOps.resolve,
+  ]);
+  expect(agentOps.unassign.calls).toEqual([
+    taskOps.setAssignee,
+    requestOps.get,
+    requestOps.resolve,
+  ]);
+});

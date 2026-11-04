@@ -107,8 +107,11 @@ export async function liveRun(
   return row ?? null;
 }
 
-/** The task's most recent run, locked. */
-export async function latestRun(tx: Tx, taskId: string): Promise<RunTableRow> {
+/** The task's most recent run, locked, if it has any. */
+async function findLatestRun(
+  tx: Tx,
+  taskId: string,
+): Promise<RunTableRow | null> {
   const [row] = await tx
     .select()
     .from(agentRuns)
@@ -116,6 +119,12 @@ export async function latestRun(tx: Tx, taskId: string): Promise<RunTableRow> {
     .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
     .limit(1)
     .for("update");
+  return row ?? null;
+}
+
+/** The task's most recent run, locked. */
+export async function latestRun(tx: Tx, taskId: string): Promise<RunTableRow> {
+  const row = await findLatestRun(tx, taskId);
   if (!row) notFound("No run");
   return row;
 }
@@ -145,6 +154,18 @@ async function resolveRequest(w: ScopedWriter, requestId: string) {
     expectedUpdatedAt: view.request.updatedAt,
     outcome: "handled",
   });
+}
+
+/**
+ * Resolves the open "Needs you" of the task's latest run, if it failed, as
+ * handled: assigning the task again or taking it back makes its Retry moot.
+ * The run keeps `pending`, so Undo's reopened request still matches it.
+ */
+export async function resolveFailure(w: ScopedWriter, taskId: string) {
+  const latest = await findLatestRun(w.tx, taskId);
+  if (latest?.pending?.kind === "failure") {
+    await resolveRequest(w, latest.pending.requestId);
+  }
 }
 
 /**
@@ -208,7 +229,9 @@ function runStatusOf(status: string): CancelRecord["status"] {
  * the approval or grant request (and give the task back to the agent). Its
  * revoked run tokens stay revoked: the next claim mints a new one.
  */
-export async function uncancel(w: ScopedWriter, r: CancelRecord) {
+export async function uncancel(w: ScopedWriter, r: CancelRecord | null) {
+  // Back to me with no live run cancelled nothing; its callee records undo the rest.
+  if (!r) return;
   const [run] = await w.tx
     .select()
     .from(agentRuns)
