@@ -208,6 +208,11 @@ async function filedAs(
 
 export const file = implementOperation(requestOps.file, {
   async run(w, input, deps) {
+    // Actions run operations from a Queue button, so only an operation (the
+    // agent's suspend or fail) may attach them, never a person or a run token.
+    if (input.actions && !w.viaCall) {
+      badRequest("Only an operation call may file with actions");
+    }
     const src = input.source ?? "ai";
     if (input.externalId !== undefined) {
       const existing = await filedAs(w.tx, src, input.externalId);
