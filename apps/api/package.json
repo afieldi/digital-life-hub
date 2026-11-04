@@ -23,20 +23,20 @@
     "@dlh/server": "workspace:*",
     "@hono/node-server": "^2.1.5",
     "@hono/trpc-server": "^0.4.2",
-    "@trpc/client": "^11.22.1",
-    "@trpc/server": "^11.22.1",
-    "drizzle-orm": "^0.45.4",
+    "@trpc/client": "catalog:",
+    "@trpc/server": "catalog:",
+    "drizzle-orm": "catalog:",
     "hono": "^4.13.14",
     "jose": "^6.2.14",
-    "zod": "^4.6.7"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@dlh/core": "workspace:*",
-    "@types/node": "^26.6.6",
+    "@types/node": "catalog:",
     "cross-env": "^10.1.0",
     "tsup": "^9.0.0",
-    "tsx": "^4.23.15",
-    "vitest": "^5.0.5"
+    "tsx": "catalog:",
+    "vitest": "catalog:"
   },
   "exports": {
     "./router": "./src/router.ts",

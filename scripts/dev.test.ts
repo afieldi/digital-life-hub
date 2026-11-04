@@ -9,6 +9,8 @@ import {
   preflight,
   runSteps,
   steps,
+  WEB_ENV,
+  webSteps,
 } from "./dev";
 
 const ok = {
@@ -30,7 +32,7 @@ describe("preflight", () => {
     const r = preflight({ ...ok, hasCargo: () => false });
     expect(r).toEqual({ ok: false, message: CARGO_MISSING_MESSAGE });
     expect(CARGO_MISSING_MESSAGE).toContain("https://rustup.rs");
-    expect(CARGO_MISSING_MESSAGE).toContain("dev:web");
+    expect(CARGO_MISSING_MESSAGE).toContain("pnpm dev --web");
   });
 
   it("checks node_modules before cargo", () => {
@@ -65,9 +67,8 @@ describe("preflight", () => {
       ok: false,
       message: API_ENV_MESSAGE,
     });
-    expect(API_ENV_MESSAGE).toBe(
-      "Copy apps/api/.env.example to apps/api/.env and fill in the Google client and ALLOWED_EMAIL.",
-    );
+    expect(API_ENV_MESSAGE).toContain("apps/api/.env.example");
+    expect(API_ENV_MESSAGE).toContain("pnpm dev --web");
   });
 
   it("checks cargo, then docker, then docker running, then the API env", () => {
@@ -166,5 +167,27 @@ describe("runSteps", () => {
     expect(calls).toEqual(["db"]);
     expect(errors).toEqual(["boom"]);
     expect(code).toBe(1);
+  });
+});
+
+describe("pnpm dev --web", () => {
+  it("needs neither Rust nor apps/api/.env", () => {
+    const bare = { ...ok, hasCargo: () => false, hasApiEnv: () => false };
+    expect(preflight(bare, { web: true })).toEqual({ ok: true });
+    expect(preflight(bare)).toEqual({
+      ok: false,
+      message: CARGO_MISSING_MESSAGE,
+    });
+  });
+
+  it("still needs Docker running", () => {
+    expect(
+      preflight({ ...ok, dockerRunning: () => false }, { web: true }),
+    ).toEqual({ ok: false, message: DOCKER_DOWN_MESSAGE });
+  });
+
+  it("runs the database steps, then the API and the browser app", () => {
+    expect(webSteps.map((s) => s.name)).toEqual(steps.map((s) => s.name));
+    expect(WEB_ENV).toMatchObject({ AI_FAKE_PROVIDER: "1" });
   });
 });

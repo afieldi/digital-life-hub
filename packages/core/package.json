@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@internationalized/date": "^3.12.4",
+    "@internationalized/date": "catalog:",
     "chrono-node": "^2.10.3",
-    "zod": "^4.6.7"
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "@tanstack/react-router": "*",
@@ -24,8 +24,8 @@
   },
   "devDependencies": {
     "@tanstack/react-router": "^1",
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.3.0",
-    "vitest": "^5.0.5"
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "vitest": "catalog:"
   }
 }

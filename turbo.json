@@ -16,7 +16,19 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["DATABASE_URL", "VITE_API_URL"]
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "VITE_API_URL",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "ALLOWED_EMAIL",
+        "AI_FAKE_PROVIDER"
+      ]
+    },
+    "dev:web": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": ["VITE_API_URL"]
     }
   }
 }

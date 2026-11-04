@@ -15,13 +15,13 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "drizzle-kit": "^0.31.11",
-    "tsx": "^4.23.15",
-    "vitest": "^5.0.5"
+    "@types/node": "catalog:",
+    "drizzle-kit": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "catalog:"
   },
   "dependencies": {
-    "drizzle-orm": "^0.45.4",
+    "drizzle-orm": "catalog:",
     "postgres": "^4.0.0"
   }
 }
