@@ -1,5 +1,6 @@
-import { typeColors } from "../../tokens";
 import { registerStories } from "../registry";
+
+const TYPE_COLORS = ["task", "request", "note", "project", "event", "ai"];
 
 registerStories("tokens", [
   {
@@ -7,12 +8,12 @@ registerStories("tokens", [
     title: "Type colour swatches",
     render: () => (
       <div className="flex gap-3">
-        {Object.entries(typeColors).map(([name, color]) => (
+        {TYPE_COLORS.map((name) => (
           <div
             key={name}
             title={name}
             className="size-16 rounded-xl"
-            style={{ backgroundColor: color }}
+            style={{ backgroundColor: `var(--color-type-${name})` }}
           />
         ))}
       </div>

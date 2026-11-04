@@ -59,7 +59,7 @@ export function UnderstoodAs({
   const line = kindLine(action, kind);
   return (
     <div className="flex items-center gap-3">
-      <TypeTile type="ai" size={30} />
+      <TypeTile glyph="Sparkles" color="var(--color-type-ai)" size={30} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex items-center gap-2 text-sm">
           <span className="text-ink-tertiary">Understood as</span>

@@ -17,9 +17,18 @@ import { SortableList } from "../../patterns/SortableList";
 import { Button } from "../../primitives/Button";
 import { Caption } from "../../primitives/Caption";
 import { Checkbox } from "../../primitives/Checkbox";
-import { statusColors, typeColors } from "../../tokens";
+import { statusColors } from "../../tokens";
 import { registerStories } from "../registry";
 import { OverlayBox } from "./OverlayBox";
+
+/** Sample item-type looks, as modules' manifests give them. */
+const looks = {
+  task: { glyph: "Check", color: "var(--color-type-task)" },
+  note: { glyph: "Pilcrow", color: "var(--color-type-note)" },
+  project: { glyph: "LayoutGrid", color: "var(--color-type-project)" },
+  event: { glyph: "Clock", color: "var(--color-type-event)" },
+  ai: { glyph: "Sparkles", color: "var(--color-type-ai)" },
+};
 
 const noop = () => {};
 
@@ -36,7 +45,7 @@ const columns: BoardColumnDef[] = [
   { id: "todo", title: "To do", dot: "var(--color-ink-tertiary)" },
   { id: "in_progress", title: "In progress", dot: statusColors.in_progress },
   { id: "review", title: "Review", dot: statusColors.review },
-  { id: "done", title: "Done", dot: typeColors.task },
+  { id: "done", title: "Done", dot: looks.task.color },
 ];
 
 // Website relaunch, exactly as in the Project board frame.
@@ -146,14 +155,14 @@ const populated: CommandGroup[] = [
         id: "j1",
         label: "Website relaunch",
         hint: "Project",
-        icon: <TypeTile type="project" size={30} />,
+        icon: <TypeTile {...looks.project} size={30} />,
         onAction: noop,
       },
       {
         id: "j2",
         label: "Web fonts shortlist",
         hint: "Note",
-        icon: <TypeTile type="note" size={30} />,
+        icon: <TypeTile {...looks.note} size={30} />,
         onAction: noop,
       },
     ],
@@ -165,13 +174,13 @@ const populated: CommandGroup[] = [
       {
         id: "c1",
         label: "New task “web”",
-        icon: <TypeTile type="task" size={30} />,
+        icon: <TypeTile {...looks.task} size={30} />,
         onAction: noop,
       },
       {
         id: "c2",
         label: "New note “web”",
-        icon: <TypeTile type="note" size={30} />,
+        icon: <TypeTile {...looks.note} size={30} />,
         onAction: noop,
       },
     ],
@@ -183,7 +192,7 @@ const populated: CommandGroup[] = [
       {
         id: "a1",
         label: "Summarise what’s left on Website relaunch",
-        icon: <TypeTile type="ai" size={30} />,
+        icon: <TypeTile {...looks.ai} size={30} />,
         onAction: noop,
       },
     ],
@@ -199,14 +208,14 @@ const recents: CommandGroup[] = [
         id: "r1",
         label: "Website relaunch",
         hint: "Project",
-        icon: <TypeTile type="project" size={30} />,
+        icon: <TypeTile {...looks.project} size={30} />,
         onAction: noop,
       },
       {
         id: "r2",
         label: "Web fonts shortlist",
         hint: "Note",
-        icon: <TypeTile type="note" size={30} />,
+        icon: <TypeTile {...looks.note} size={30} />,
         onAction: noop,
       },
     ],
@@ -353,7 +362,7 @@ const queueDetail = (resolved: boolean) => (
         {resolved ? (
           <>
             <Caption>Resolved as Task</Caption>
-            <Chip kind="type" color={typeColors.task} href="#">
+            <Chip kind="type" color={looks.task.color} href="#">
               Review the Q3 doc
             </Chip>
             <Button variant="glass">Reopen</Button>
@@ -474,7 +483,7 @@ registerStories("patterns", [
         href: "#",
         chips: (
           <>
-            <Chip kind="project" color={typeColors.project}>
+            <Chip kind="project" color={looks.project.color}>
               Website relaunch
             </Chip>
             <Chip kind="status" status="in_progress" />
@@ -539,7 +548,7 @@ registerStories("patterns", [
             { start: 14, end: 24 },
             { start: 25, end: 26 },
           ]}
-          leading={<TypeTile type="task" size={30} />}
+          leading={<TypeTile {...looks.task} size={30} />}
           trailing={<Kbd keys={["↵"]} />}
         />
       </div>
@@ -556,7 +565,7 @@ registerStories("patterns", [
           onChange={noop}
           onSubmit={noop}
           placeholder="Add a task… try “Call the bank Friday 9am !”"
-          leading={<TypeTile type="task" size={30} />}
+          leading={<TypeTile {...looks.task} size={30} />}
           trailing={<Kbd keys={["↵"]} />}
         />
       </div>

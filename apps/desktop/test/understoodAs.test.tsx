@@ -15,7 +15,10 @@ test("shows the AI tile, the action's label and only the kinds it allows", () =>
       onKindChange={() => {}}
     />,
   );
-  expect(screen.getByTestId("type-tile")).toHaveAttribute("data-type", "ai");
+  expect(screen.getByTestId("type-tile")).toHaveAttribute(
+    "data-glyph",
+    "Sparkles",
+  );
   expect(screen.getByText("Rename")).toBeInTheDocument();
   const kinds = screen.getAllByRole("radio").map((r) => r.textContent);
   expect(kinds).toEqual(["Suggest", "Do"]);

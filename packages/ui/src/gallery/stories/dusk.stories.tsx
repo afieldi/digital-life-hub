@@ -11,10 +11,18 @@ import { ProgressBar } from "../../dusk/ProgressBar";
 import { TypeTile } from "../../dusk/TypeTile";
 import { ViewTabs } from "../../dusk/ViewTabs";
 import { Button } from "../../primitives/Button";
-import type { ItemType } from "../../tokens";
 import { registerStories } from "../registry";
 
-const types: ItemType[] = ["task", "note", "project", "event", "ai"];
+/** Sample item-type looks, as modules' manifests give them. */
+const looks = {
+  task: { glyph: "Check", color: "var(--color-type-task)" },
+  note: { glyph: "Pilcrow", color: "var(--color-type-note)" },
+  project: { glyph: "LayoutGrid", color: "var(--color-type-project)" },
+  event: { glyph: "Clock", color: "var(--color-type-event)" },
+  ai: { glyph: "Sparkles", color: "var(--color-type-ai)" },
+};
+
+const types = ["task", "note", "project", "event", "ai"] as const;
 
 const dockItems = [
   { id: "home", label: "Home", icon: Home, href: "/" },
@@ -57,10 +65,10 @@ registerStories("dusk", [
     render: () => (
       <div className="flex items-center gap-4 p-4">
         {types.map((t) => (
-          <TypeTile key={t} type={t} />
+          <TypeTile key={t} {...looks[t]} />
         ))}
-        <TypeTile type="task" size={30} />
-        <TypeTile type="task" size={36} />
+        <TypeTile {...looks.task} size={30} />
+        <TypeTile {...looks.task} size={36} />
       </div>
     ),
   },

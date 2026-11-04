@@ -1,4 +1,4 @@
-import { useCoreApi, useItemHref } from "@dlh/client";
+import { useCoreApi, useItemHref, useItemType } from "@dlh/client";
 import type { ItemSummary } from "@dlh/core";
 import {
   Button,
@@ -6,7 +6,6 @@ import {
   Chip,
   ItemRow,
   ItemSearchField,
-  type ItemType,
   ListGroup,
   ProgressBar,
   SortableList,
@@ -246,14 +245,11 @@ export function SubtasksSection({
   );
 }
 
-const TILE_TYPES: string[] = ["task", "note", "project", "event", "ai"];
-const typeLabel = (type: string) =>
-  type.charAt(0).toUpperCase() + type.slice(1);
-
 /** Linked: the task's other links, both ways; hidden when it has none. */
 export function LinkedSection({ id }: { id: string }) {
   const core = useCoreApi();
   const itemHref = useItemHref();
+  const itemType = useItemType();
   const links = useQuery({
     queryKey: taskKeys.links(id),
     queryFn: () => core.links.forItem.query({ id }),
@@ -262,24 +258,27 @@ export function LinkedSection({ id }: { id: string }) {
   if (rows.length === 0) return null;
   return (
     <ListGroup label="Linked" count={rows.length}>
-      {rows.map(({ link, item, direction }) => (
-        <ItemRow
-          key={link.id}
-          title={item.title}
-          href={itemHref(item)}
-          leading={
-            TILE_TYPES.includes(item.type) ? (
-              <TypeTile type={item.type as ItemType} size={30} />
-            ) : undefined
-          }
-          meta={
-            link.context ??
-            (direction === "backlink"
-              ? `${typeLabel(item.type)} · links here`
-              : typeLabel(item.type))
-          }
-        />
-      ))}
+      {rows.map(({ link, item, direction }) => {
+        const look = itemType(item.type);
+        // A type no module owns shows its raw name and no tile.
+        const label = look?.label ?? item.type;
+        return (
+          <ItemRow
+            key={link.id}
+            title={item.title}
+            href={itemHref(item)}
+            leading={
+              look ? (
+                <TypeTile glyph={look.glyph} color={look.color} size={30} />
+              ) : undefined
+            }
+            meta={
+              link.context ??
+              (direction === "backlink" ? `${label} · links here` : label)
+            }
+          />
+        );
+      })}
     </ListGroup>
   );
 }

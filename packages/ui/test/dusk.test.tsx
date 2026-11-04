@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Home, ListChecks } from "lucide-react";
+import { Home, ListChecks, Puzzle } from "lucide-react";
 import { RouterProvider } from "react-aria-components";
 import { Breadcrumb } from "../src/dusk/Breadcrumb";
 import { Chip } from "../src/dusk/Chip";
@@ -12,6 +12,7 @@ import { KeyHints } from "../src/dusk/KeyHints";
 import { ProgressBar } from "../src/dusk/ProgressBar";
 import { TypeTile } from "../src/dusk/TypeTile";
 import { ViewTabs } from "../src/dusk/ViewTabs";
+import { iconFor } from "../src/icons";
 import { modKeyLabel } from "../src/platform";
 
 test("Kbd shows Ctrl on Windows and ⌘ on macOS", () => {
@@ -116,11 +117,17 @@ test("Breadcrumb marks the last item current", () => {
   );
 });
 
-test("TypeTile uses the type colour", () => {
-  render(<TypeTile type="note" />);
-  expect(screen.getByTestId("type-tile")).toHaveStyle({
-    backgroundColor: "#F5CF7E",
-  });
+test("TypeTile shows the given colour and icon", () => {
+  render(<TypeTile glyph="Pilcrow" color="#F5CF7E" />);
+  const tile = screen.getByTestId("type-tile");
+  expect(tile).toHaveStyle({ backgroundColor: "#F5CF7E" });
+  expect(tile.querySelector("svg")).toHaveClass("lucide-pilcrow");
+});
+
+test("iconFor falls back to a puzzle piece for an unknown name", () => {
+  expect(iconFor("NoSuchIcon")).toBe(Puzzle);
+  expect(iconFor(undefined)).toBe(Puzzle);
+  expect(iconFor("Check")).not.toBe(Puzzle);
 });
 
 const dockItems = [

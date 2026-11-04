@@ -1,5 +1,5 @@
 import type { AiListedItem, ModuleRegistry } from "@dlh/core";
-import { iconFor } from "../shell/icons";
+import { iconFor } from "@dlh/ui";
 
 /**
  * A read's `{ heading, items }` in the command bar's result slot: one row per

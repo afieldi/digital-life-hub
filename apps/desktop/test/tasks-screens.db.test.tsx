@@ -7,7 +7,12 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach } from "vitest";
-import { dismissToasts, freshApiDb, signedInApp } from "./apiHarness";
+import {
+  createFixture,
+  dismissToasts,
+  freshApiDb,
+  signedInApp,
+} from "./apiHarness";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -651,8 +656,8 @@ describe("Detail", () => {
     expect(await screen.findByRole("combobox")).toBeInTheDocument();
   });
 
-  test("Linked lists links and backlinks", async () => {
-    const app = await setup("/tasks");
+  test("Linked lists links and backlinks, each with its module's tile and label", async () => {
+    const app = await setup("/tasks", { fixture: true });
     const make = async (title: string) =>
       (await app.client.tasks.create.mutate({ title })).result;
     const task = await make("Review vendor contracts");
@@ -668,6 +673,12 @@ describe("Detail", () => {
       toId: task.id,
       kind: "mentions",
     });
+    const sample = await createFixture(app.fixture, { title: "Sample item" });
+    await app.client.links.add.mutate({
+      fromId: task.id,
+      toId: sample.id,
+      kind: "relates",
+    });
     app.router.history.push(`/tasks/${task.id}`);
     app.renderApp();
     const p = await panel("Review vendor contracts");
@@ -677,6 +688,21 @@ describe("Detail", () => {
     ).toHaveAttribute("href", `/tasks/${waits.id}`);
     expect(within(linked).getByText("Vendor shortlist")).toBeInTheDocument();
     expect(within(linked).getByText("Task · links here")).toBeInTheDocument();
+    // The row: the title's nearest ancestor that also holds a tile.
+    const row = (title: string) => {
+      let el: HTMLElement | null = within(linked).getByText(title);
+      while (el && !el.querySelector('[data-testid="type-tile"]'))
+        el = el.parentElement;
+      return el as HTMLElement;
+    };
+    expect(within(row("Sample item")).getByText("Fixture")).toBeInTheDocument();
+    expect(within(row("Sample item")).getByTestId("type-tile")).toHaveAttribute(
+      "data-glyph",
+      "FlaskConical",
+    );
+    expect(
+      within(row("Q4 budget pass")).getByTestId("type-tile"),
+    ).toHaveAttribute("data-glyph", "Check");
   });
 });
 

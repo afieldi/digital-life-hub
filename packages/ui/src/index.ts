@@ -15,6 +15,7 @@ export * from "./dusk/ProgressBar";
 export * from "./dusk/TypeTile";
 export * from "./dusk/ViewTabs";
 export * from "./glass/GlassPanel";
+export * from "./icons";
 export * from "./patterns/Board";
 export * from "./patterns/CaptureField";
 export * from "./patterns/CommandBar";
