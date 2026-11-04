@@ -1,7 +1,9 @@
+-- request_id is SET NULL, not cascade: a deleted request leaves the assignment.
 CREATE TABLE "agent_assignments" (
 	"task_id" uuid PRIMARY KEY NOT NULL,
 	"connection_ids" uuid[] DEFAULT '{}' NOT NULL,
 	"request_id" uuid,
+	CONSTRAINT "agent_assignments_request_id_items_id_fk" FOREIGN KEY ("request_id") REFERENCES "public"."items"("id") ON DELETE set null,
 	CONSTRAINT "agent_assignments_task_id_items_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."items"("id") ON DELETE cascade
 );
 --> statement-breakpoint

@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import tasksServer from "../../tasks/src/server";
 import {
+  agentAssignments,
   agentRunEvents,
   agentRunMessages,
   agentRuns,
@@ -68,5 +69,17 @@ test("settings has one row with the defaults", async () => {
     timeZone: "UTC",
   });
   await expect(db.insert(agentSettings).values({ id: 2 })).rejects.toThrow();
+  await close();
+});
+
+test("deleting the request item nulls the assignment's request_id", async () => {
+  const { db, newItem, close } = await setup();
+  const taskId = await newItem();
+  const requestId = await newItem();
+  await db.insert(agentAssignments).values({ taskId, requestId });
+  await db.execute(sql`delete from items where id = ${requestId}`);
+  const [row] = await db.select().from(agentAssignments);
+  expect(row.taskId).toBe(taskId);
+  expect(row.requestId).toBeNull();
   await close();
 });
