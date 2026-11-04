@@ -58,7 +58,7 @@ const deps = {
     devErrors: config.devAuth,
     moduleConfig: config.moduleConfig,
     ai: config.aiFake
-      ? devFakeAi
+      ? devFakeAi(composed.aiRunners.values())
       : {
           providers: config.openrouter.apiKey
             ? {

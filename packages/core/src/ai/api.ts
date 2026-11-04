@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { itemSummary, itemTitle } from "../items";
 import { timeZoneValue } from "../time";
+import { interpreterId } from "./interpreters";
 import { aiKind, aiProviderId } from "./kinds";
 
 export { aiKind, aiProviderId };
@@ -89,7 +90,7 @@ export type AiResult = z.infer<typeof aiResult>;
 export const aiSettings = z.object({
   defaultProvider: aiProviderId,
   openrouterModel: z.string().nullable(),
-  interpreter: z.literal("keywords"),
+  interpreter: interpreterId,
 });
 export type AiSettings = z.infer<typeof aiSettings>;
 

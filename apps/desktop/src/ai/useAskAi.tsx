@@ -1,5 +1,5 @@
 import { useOpenItem } from "@dlh/client";
-import { type AiKind, applicableActions } from "@dlh/core";
+import { type AiKind, applicableActions, interpreterFor } from "@dlh/core";
 import { closeToast, isMac, Kbd, toast } from "@dlh/ui";
 import { skipToken, useQuery } from "@tanstack/react-query";
 import {
@@ -111,6 +111,7 @@ export function useAskAi({
     open ? query : "",
     itemType ?? null,
     actions,
+    interpreterFor(settings.data?.interpreter),
   );
 
   const [choice, setChoice] = useState<Choice | null>(null);

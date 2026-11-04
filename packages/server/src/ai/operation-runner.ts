@@ -260,11 +260,18 @@ function mutationRunner(
     return parsed.data;
   }
 
+  const fake = desc.devFake;
   return {
     action,
     context,
     system,
     output,
+    ...(fake
+      ? {
+          devFake: ({ suggest }: { suggest: boolean }) =>
+            suggest ? { options: [{ ...fake, label: "Fake option" }] } : fake,
+        }
+      : {}),
     async resolve(deps, out, opts): Promise<Resolved> {
       const resolved: Record<string, unknown> = { ...(out as object) };
       // Local due times are set in the request's zone (UTC when none was sent).

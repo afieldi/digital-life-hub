@@ -435,7 +435,7 @@ test("planToday checks the answer against what the model saw: a task ticked sinc
 
 test("the dev fake answers each hand-written Tasks action", async () => {
   const s = await setup();
-  s.deps.ai.providers = devFakeAi.providers;
+  s.deps.ai.providers = devFakeAi(s.deps.ai.runners.values()).providers;
   const trip = await s.mk({
     title: "Plan the trip",
     notes: "lisbon, may",

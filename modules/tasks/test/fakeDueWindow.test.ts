@@ -1,5 +1,8 @@
 import { parseDue } from "@dlh/core/capture";
-import { scriptedFakeProvider } from "@dlh/server";
+import { createScriptedFake } from "@dlh/server";
+
+const scriptedFakeProvider = createScriptedFake([]);
+
 import { expect, test } from "vitest";
 import { z } from "zod";
 import { taskOps } from "../src/operations";

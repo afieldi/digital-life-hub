@@ -3,6 +3,7 @@ import type {
   AiCompleteResult,
   AiProvider,
 } from "./providers";
+import type { AiRunner } from "./runners";
 
 /** Marks a request the scripted fake answers with text that is not JSON. */
 export const BAD_MARKER = "[bad]";
@@ -66,111 +67,81 @@ function fillOperation(
   return Object.keys(out).length > 0 ? out : null;
 }
 
-const sameKeys = (o: Record<string, unknown> | undefined, keys: string[]) =>
-  o !== undefined && Object.keys(o).sort().join() === [...keys].sort().join();
-
-const FAKE_STEPS = ["One", "Two", "Three"].map((n) => `Fake subtask ${n}`);
-const CONTEXT_ID = /\(id ([0-9a-f-]{36})\)/g;
-
 /**
- * Tasks' hand-written actions, by their output's property names: subtasks
- * (Break down), notes (Rewrite notes) and order/advice (Plan today, which picks
- * the first three task ids listed in the prompt).
+ * A scripted OpenRouter stand-in for dev and end-to-end runs: it answers with
+ * the runner's own `devFake` when it has one, else by the shape of the
+ * requested JSON schema, so it needs no queue. A prompt containing `[bad]`
+ * gets text that is not JSON.
  */
-function fakeTasksAnswer(
-  props: Record<string, unknown>,
-  options: OptionsShape | undefined,
-  prompt: string,
-): unknown {
-  const optionProps = options?.items?.properties;
-  if (sameKeys(props, ["subtasks"])) return { subtasks: FAKE_STEPS };
-  // A checklist of titles; an operation with no fields offers labels too, but at least one.
-  if (sameKeys(optionProps, ["label"]) && (options?.minItems ?? 0) >= 3) {
-    return { options: FAKE_STEPS.map((label) => ({ label })) };
+export function createScriptedFake(runners: Iterable<AiRunner>): AiProvider {
+  const own = [...runners].filter((r) => r.devFake);
+  return {
+    id: "openrouter",
+    async complete(req: AiCompleteRequest): Promise<AiCompleteResult> {
+      if (req.prompt.includes(BAD_MARKER)) return { raw: "not json" };
+      const props = (req.schema as Shape).properties ?? {};
+      // The gateway sends a runner's own system prompt, then a fixed line.
+      const runner = own.find((r) => req.system.startsWith(r.system));
+      const scripted = runner?.devFake?.({
+        prompt: req.prompt,
+        suggest: "options" in props,
+      });
+      if (scripted !== undefined) return { raw: JSON.stringify(scripted) };
+      return shapedAnswer(req);
+    },
+  };
+}
+
+/** An answer guessed from the requested schema: Core's actions and operations. */
+function shapedAnswer(req: AiCompleteRequest): AiCompleteResult {
+  const props = (req.schema as Shape).properties ?? {};
+  if ("answer" in props) {
+    return { raw: JSON.stringify({ answer: "A fake answer.", used: [] }) };
   }
-  if (sameKeys(props, ["notes"])) return { notes: "Fake rewritten notes." };
-  if (sameKeys(optionProps, ["label", "notes"])) {
+  const optionShape = (props.options as OptionsShape | undefined)?.items;
+  const optionProps = optionShape?.properties;
+  // An operation's suggestion: options are its input plus a label.
+  if (optionShape && optionProps && "label" in optionProps) {
+    const option = fillOperation(optionShape, promptToday(req.prompt)) ?? {};
     return {
-      options: ["Shorter", "Clearer"].map((label) => ({
-        label,
-        notes: `Fake ${label.toLowerCase()} notes.`,
-      })),
+      raw: JSON.stringify({ options: [{ ...option, label: "Fake option" }] }),
     };
   }
-  if (sameKeys(props, ["order", "advice"])) {
-    const ids = [...prompt.matchAll(CONTEXT_ID)].map((m) => m[1]);
+  const filled = fillOperation(req.schema as Shape, promptToday(req.prompt));
+  if (filled) return { raw: JSON.stringify(filled) };
+  // An operation whose input is only the item on screen (Complete).
+  if (Object.keys(props).length === 0) return { raw: "{}" };
+  if (optionProps && "title" in optionProps) {
     return {
-      order: ids
-        .slice(0, 3)
-        .map((taskId) => ({ taskId, reason: "Fake reason." })),
-      advice: "Fake advice.",
+      raw: JSON.stringify({
+        options: ["One", "Two", "Three"].map((n) => ({
+          title: `Fake title ${n}`,
+          reason: `Reason ${n}.`,
+        })),
+      }),
     };
   }
-  return null;
+  if (optionProps && "summary" in optionProps) {
+    return {
+      raw: JSON.stringify({
+        options: [{ summary: "Deletes this item." }],
+      }),
+    };
+  }
+  throw new Error("scripted fake: unknown output schema");
 }
 
 /**
- * A scripted OpenRouter stand-in for end-to-end tests: it answers by the shape
- * of the requested JSON schema, so it needs no queue. A prompt containing
- * `[bad]` gets text that is not JSON.
+ * The scripted fake for `runners` as `ai.providers`, plus a default model. The
+ * API uses it only when its config allows (`AI_FAKE_PROVIDER=1` in
+ * development), so it can never stand in for a real provider elsewhere.
  */
-export const scriptedFakeProvider: AiProvider = {
-  id: "openrouter",
-  async complete(req: AiCompleteRequest): Promise<AiCompleteResult> {
-    if (req.prompt.includes(BAD_MARKER)) return { raw: "not json" };
-    const props = (req.schema as Shape).properties ?? {};
-    if ("answer" in props) {
-      return { raw: JSON.stringify({ answer: "A fake answer.", used: [] }) };
-    }
-    const optionShape = (props.options as OptionsShape | undefined)?.items;
-    const optionProps = optionShape?.properties;
-    const tasks = fakeTasksAnswer(
-      props,
-      props.options as OptionsShape | undefined,
-      req.prompt,
-    );
-    if (tasks) return { raw: JSON.stringify(tasks) };
-    // An operation's suggestion: options are its input plus a label.
-    if (optionShape && optionProps && "label" in optionProps) {
-      const option = fillOperation(optionShape, promptToday(req.prompt)) ?? {};
-      return {
-        raw: JSON.stringify({ options: [{ ...option, label: "Fake option" }] }),
-      };
-    }
-    const filled = fillOperation(req.schema as Shape, promptToday(req.prompt));
-    if (filled) return { raw: JSON.stringify(filled) };
-    // An operation whose input is only the item on screen (Complete).
-    if (Object.keys(props).length === 0) return { raw: "{}" };
-    if (optionProps && "title" in optionProps) {
-      return {
-        raw: JSON.stringify({
-          options: ["One", "Two", "Three"].map((n) => ({
-            title: `Fake title ${n}`,
-            reason: `Reason ${n}.`,
-          })),
-        }),
-      };
-    }
-    if (optionProps && "summary" in optionProps) {
-      return {
-        raw: JSON.stringify({
-          options: [{ summary: "Deletes this item." }],
-        }),
-      };
-    }
-    throw new Error("scriptedFakeProvider: unknown output schema");
-  },
-};
-
-/**
- * The scripted fake as `ai.providers` plus a default model. The API uses it
- * only when its config allows (`AI_FAKE_PROVIDER=1` in development), so it
- * can never stand in for a real provider elsewhere.
- */
-export const devFakeAi: {
+export function devFakeAi(runners: Iterable<AiRunner>): {
   providers: { openrouter: AiProvider };
   defaultModel: string;
-} = {
-  providers: { openrouter: scriptedFakeProvider },
-  defaultModel: DEV_FAKE_MODEL,
-};
+} {
+  return {
+    providers: { openrouter: createScriptedFake(runners) },
+    defaultModel: DEV_FAKE_MODEL,
+  };
+}
