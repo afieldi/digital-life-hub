@@ -1,6 +1,14 @@
 import { registerStories } from "../registry";
 
-const TYPE_COLORS = ["task", "request", "note", "project", "event", "ai"];
+// Written out in full: Tailwind emits only the theme variables it finds by name.
+const TYPE_COLORS = [
+  "var(--color-type-task)",
+  "var(--color-type-request)",
+  "var(--color-type-note)",
+  "var(--color-type-project)",
+  "var(--color-type-event)",
+  "var(--color-type-ai)",
+];
 
 registerStories("tokens", [
   {
@@ -8,12 +16,12 @@ registerStories("tokens", [
     title: "Type colour swatches",
     render: () => (
       <div className="flex gap-3">
-        {TYPE_COLORS.map((name) => (
+        {TYPE_COLORS.map((color) => (
           <div
-            key={name}
-            title={name}
+            key={color}
+            title={color}
             className="size-16 rounded-xl"
-            style={{ backgroundColor: `var(--color-type-${name})` }}
+            style={{ backgroundColor: color }}
           />
         ))}
       </div>
