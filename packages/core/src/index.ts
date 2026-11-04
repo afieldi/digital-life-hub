@@ -12,6 +12,7 @@ export type {
   AiSettings,
 } from "./ai/api";
 export {
+  type AiRequestStatus,
   aiApplyInput,
   aiCancelInput,
   aiCompleteInput,
@@ -20,6 +21,7 @@ export {
   aiListedItem,
   aiLogEntry,
   aiPrepareInput,
+  aiRequestStatus,
   aiResult,
   aiRetitleOutput,
   aiSettings,

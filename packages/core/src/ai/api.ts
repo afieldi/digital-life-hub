@@ -86,6 +86,25 @@ export const aiResult = z.discriminatedUnion("status", [
 ]);
 export type AiResult = z.infer<typeof aiResult>;
 
+/**
+ * Where an AI request is: `pending` until the model answers (or a CLI run
+ * completes); then answered, listed, suggested or applied; and from those,
+ * undone, discarded, cancelled, failed or expired.
+ */
+export const aiRequestStatus = z.enum([
+  "pending",
+  "answered",
+  "listed",
+  "suggested",
+  "applied",
+  "undone",
+  "discarded",
+  "cancelled",
+  "failed",
+  "expired",
+]);
+export type AiRequestStatus = z.infer<typeof aiRequestStatus>;
+
 export const aiSettings = z.object({
   defaultProvider: aiProviderId,
   openrouterModel: z.string().nullable(),
@@ -130,7 +149,7 @@ export const aiLogEntry = z.object({
   interpretedBy: z.string().nullable(),
   provider: aiProviderId,
   model: z.string().nullable(),
-  status: z.string(),
+  status: aiRequestStatus,
   errorCode: aiErrorCode.nullable(),
   durationMs: z.number().int().nullable(),
   inputTokens: z.number().int().nullable(),
