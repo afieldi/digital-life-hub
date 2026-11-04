@@ -1,8 +1,7 @@
 import type { ItemSummary, ModuleRegistry } from "@dlh/core";
-import type { CommandGroup, CommandItem } from "@dlh/ui";
+import { type CommandGroup, type CommandItem, iconFor } from "@dlh/ui";
 import { type LucideIcon, Settings as SettingsIcon } from "lucide-react";
 import { createElement } from "react";
-import { iconFor } from "./icons";
 
 /** Case-insensitive substring match over the label and keywords; an empty query matches. */
 export function matchesQuery(

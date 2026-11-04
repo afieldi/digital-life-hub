@@ -6,6 +6,7 @@ import {
   type CommandGroup,
   Dock,
   type DockItem,
+  iconFor,
   Kbd,
   Scene,
   type SceneVariant,
@@ -24,7 +25,6 @@ import {
   useRefreshItems,
 } from "../operations/useOperationStep";
 import { createHotkeys, type Hotkeys } from "./hotkeys";
-import { iconFor } from "./icons";
 import { openExternal } from "./openExternal";
 import { goToRows, itemRows, jumpGroup, matchesQuery } from "./palette";
 import {
@@ -121,6 +121,7 @@ export function Shell() {
     () => ({
       openCommandBar,
       itemHref: (item) => registry.itemTypes.get(item.type)?.href(item.id),
+      itemType: (type) => registry.itemTypes.get(type),
       itemsChanged,
       openExternal,
       goChordPending: () => hotkeys.current?.goPending() ?? false,

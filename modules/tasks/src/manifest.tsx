@@ -4,15 +4,14 @@ import { tasksModule } from "./module";
 import { DetailRoute } from "./screens/DetailRoute";
 import { DonePage } from "./screens/DonePage";
 import { parseListSearch } from "./screens/lastList";
+import { taskLook } from "./screens/look";
 import { OpenPage } from "./screens/OpenPage";
 import { UpcomingPage } from "./screens/UpcomingPage";
 
 export default defineModule(tasksModule, {
   itemType: {
     type: "task",
-    label: "Task",
-    glyph: "Check",
-    color: "var(--color-type-task)",
+    ...taskLook,
     href: (id) => `/tasks/${id}`,
   },
   nav: {

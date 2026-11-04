@@ -1,34 +1,24 @@
-import {
-  Check,
-  Clock,
-  LayoutGrid,
-  type LucideIcon,
-  Pilcrow,
-  Sparkles,
-} from "lucide-react";
-import { type ItemType, typeColors } from "../tokens";
+import { iconFor } from "../icons";
 
-const icons: Record<ItemType, LucideIcon> = {
-  task: Check,
-  note: Pilcrow,
-  project: LayoutGrid,
-  event: Clock,
-  ai: Sparkles,
-};
-
+/**
+ * A coloured square with an item type's icon. `glyph` is a Lucide icon name and
+ * `color` a CSS colour, as a module's `itemType` gives them.
+ */
 export function TypeTile({
-  type,
+  glyph,
+  color,
   size = 34,
 }: {
-  type: ItemType;
+  glyph: string;
+  color: string;
   size?: 30 | 34 | 36;
 }) {
-  const Icon = icons[type];
+  const Icon = iconFor(glyph);
   return (
     <span
       data-testid="type-tile"
-      data-type={type}
-      style={{ backgroundColor: typeColors[type], width: size, height: size }}
+      data-glyph={glyph}
+      style={{ backgroundColor: color, width: size, height: size }}
       className="inline-flex shrink-0 items-center justify-center rounded-10 text-app"
     >
       <Icon

@@ -90,12 +90,17 @@ export function useRecordView(id: string | undefined): void {
   }, [setOpenItem, id]);
 }
 
+/** How an item type looks, from the module that owns it. */
+export type ItemTypeLook = { label: string; glyph: string; color: string };
+
 /** What the desktop shell offers module screens. */
 export type ShellApi = {
   /** Opens the command bar (⌘K), with `query` already typed when given. */
   openCommandBar: (query?: string) => void;
   /** An item's page, from its module's item type; undefined for unknown types. */
   itemHref: (item: { id: string; type: string }) => string | undefined;
+  /** An item type's label, icon and colour; undefined for unknown types. */
+  itemType: (type: string) => ItemTypeLook | undefined;
   /**
    * A screen wrote items: the shell's own reads of them (⌘K's open item and
    * its version) refetch now, rather than when the change stream says so.
@@ -123,6 +128,7 @@ async function openInNewWindow(url: string): Promise<void> {
 const ShellContext = createContext<ShellApi>({
   openCommandBar: () => {},
   itemHref: () => undefined,
+  itemType: () => undefined,
   itemsChanged: () => {},
   openExternal: openInNewWindow,
   goChordPending: () => false,
@@ -154,6 +160,11 @@ export function useItemsChanged(): () => void {
 /** Finds the page of an item of any module's type. */
 export function useItemHref(): ShellApi["itemHref"] {
   return useContext(ShellContext).itemHref;
+}
+
+/** Looks up an item type's label, icon and colour (see `ShellApi.itemType`). */
+export function useItemType(): ShellApi["itemType"] {
+  return useContext(ShellContext).itemType;
 }
 
 /** Opens a web link outside the app (see `ShellApi.openExternal`). */

@@ -9,6 +9,7 @@ import {
   useHomeWidgets,
   useItemHref,
   useItemsChanged,
+  useItemType,
   useModuleApi,
   useOpenExternal,
   useOpenItem,
@@ -118,16 +119,19 @@ test("useOpenItem is null without a provider", () => {
   expect(result.current).toBeNull();
 });
 
-test("useCommandBar, useItemHref, useItemsChanged, useGoChordPending and useHomeWidgets use the shell's, and do nothing without one", () => {
+test("useCommandBar, useItemHref, useItemType, useItemsChanged, useGoChordPending and useHomeWidgets use the shell's, and do nothing without one", () => {
   const openCommandBar = vi.fn();
   const widget = { id: "tasks.today", label: "Today", component: () => null };
   const itemsChanged = vi.fn();
   const itemHref = (item: { id: string; type: string }) =>
     item.type === "task" ? `/tasks/${item.id}` : undefined;
+  const task = { label: "Task", glyph: "Check", color: "green" };
+  const itemType = (type: string) => (type === "task" ? task : undefined);
   const { result } = renderHook(
     () => ({
       bar: useCommandBar(),
       href: useItemHref(),
+      type: useItemType(),
       changed: useItemsChanged(),
       goPending: useGoChordPending(),
       widgets: useHomeWidgets(),
@@ -138,6 +142,7 @@ test("useCommandBar, useItemHref, useItemsChanged, useGoChordPending and useHome
           value={{
             openCommandBar,
             itemHref,
+            itemType,
             itemsChanged,
             openExternal: async () => {},
             goChordPending: () => true,
@@ -152,6 +157,7 @@ test("useCommandBar, useItemHref, useItemsChanged, useGoChordPending and useHome
   result.current.bar.open("Reschedule ");
   expect(openCommandBar).toHaveBeenCalledWith("Reschedule ");
   expect(result.current.href({ id: "1", type: "task" })).toBe("/tasks/1");
+  expect(result.current.type("task")).toBe(task);
   result.current.changed();
   expect(itemsChanged).toHaveBeenCalledOnce();
   expect(result.current.goPending()).toBe(true);
@@ -160,6 +166,7 @@ test("useCommandBar, useItemHref, useItemsChanged, useGoChordPending and useHome
   const bare = renderHook(() => ({
     bar: useCommandBar(),
     href: useItemHref(),
+    type: useItemType(),
     changed: useItemsChanged(),
     goPending: useGoChordPending(),
     widgets: useHomeWidgets(),
@@ -168,6 +175,7 @@ test("useCommandBar, useItemHref, useItemsChanged, useGoChordPending and useHome
   expect(() => bare.result.current.changed()).not.toThrow();
   expect(bare.result.current.goPending()).toBe(false);
   expect(bare.result.current.href({ id: "1", type: "task" })).toBeUndefined();
+  expect(bare.result.current.type("task")).toBeUndefined();
   expect(bare.result.current.widgets).toEqual([]);
 });
 
@@ -179,6 +187,7 @@ test("useOpenExternal uses the shell's, and opens a new window without one", asy
         value={{
           openCommandBar: () => {},
           itemHref: () => undefined,
+          itemType: () => undefined,
           itemsChanged: () => {},
           openExternal,
           goChordPending: () => false,

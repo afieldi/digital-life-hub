@@ -1,27 +1,25 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { statusColors, typeColors } from "../src/tokens";
+import { statusColors } from "../src/tokens";
 
 const css = readFileSync(
   resolve(import.meta.dirname, "../src/theme.css"),
   "utf8",
 );
 
-test("type colours match the spec", () => {
-  expect(typeColors).toEqual({
-    task: "#9FD9A8",
-    note: "#F5CF7E",
-    project: "#9EC2FF",
-    event: "#F5A8A0",
-    ai: "#CDB6FF",
-  });
+test("status colours match the spec", () => {
   expect(statusColors).toEqual({ in_progress: "#F5CF7E", review: "#9EC2FF" });
 });
-test("theme.css declares every type colour with the same value", () => {
-  for (const [k, v] of Object.entries(typeColors))
-    expect(css.toLowerCase()).toContain(
-      `--color-type-${k}: ${v.toLowerCase()}`,
-    );
+test("theme.css declares the type colours from the spec", () => {
+  const spec = {
+    task: "#9fd9a8",
+    note: "#f5cf7e",
+    project: "#9ec2ff",
+    event: "#f5a8a0",
+    ai: "#cdb6ff",
+  };
+  for (const [k, v] of Object.entries(spec))
+    expect(css.toLowerCase()).toContain(`--color-type-${k}: ${v}`);
 });
 test("every glass recipe emits both backdrop-filter properties", () => {
   for (const cls of [

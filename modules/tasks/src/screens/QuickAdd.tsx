@@ -5,6 +5,7 @@ import { parseTaskInput } from "../capture";
 import { taskOps } from "../operations";
 import type { Due } from "../schema";
 import { useTasksApi, useTaskWrite } from "./api";
+import { taskLook } from "./look";
 
 export type QuickAddProps = {
   /** Used when the text names no date, e.g. the day an Add button sits on. */
@@ -53,7 +54,7 @@ export function QuickAdd({ defaultDue, onCreated, inputRef }: QuickAddProps) {
       onSubmit={() => void submit()}
       highlights={parsed.spans}
       placeholder="Add a task… try “Call the bank Friday 9am !”"
-      leading={<TypeTile type="task" size={30} />}
+      leading={<TypeTile {...taskLook} size={30} />}
       trailing={<Kbd keys={["↵"]} />}
       inputRef={inputRef}
     />
