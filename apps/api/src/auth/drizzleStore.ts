@@ -1,4 +1,4 @@
-import type { Platform } from "@dlh/api-contract";
+import { platform } from "@dlh/api-contract";
 import { type Db, loginAttempts, sessions } from "@dlh/db";
 import { and, desc, eq, gt, isNull, lte } from "drizzle-orm";
 import type { AuthStore, SessionRow } from "./store";
@@ -7,7 +7,7 @@ type DbSession = typeof sessions.$inferSelect;
 
 const toRow = (r: DbSession): SessionRow => ({
   ...r,
-  platform: r.platform as Platform,
+  platform: platform.parse(r.platform),
 });
 
 export function drizzleAuthStore(db: Db): AuthStore {

@@ -6,7 +6,12 @@ import {
   todayIn,
   weekStartOf,
 } from "@dlh/core";
-import { type CoreDeps, implementOperation, type Tx } from "@dlh/server";
+import {
+  type CoreDeps,
+  implementOperation,
+  opaqueCursor,
+  type Tx,
+} from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -230,23 +235,10 @@ async function upcomingRows(
 
 const DONE_PAGE = 50;
 
-const doneCursor = z.object({ completedAt: z.iso.datetime(), id: z.uuid() });
-
-function encodeCursor(row: TaskRow): string {
-  return Buffer.from(
-    JSON.stringify({ completedAt: row.completedAt, id: row.id }),
-  ).toString("base64url");
-}
-
-function decodeCursor(cursor: string): z.infer<typeof doneCursor> {
-  try {
-    return doneCursor.parse(
-      JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")),
-    );
-  } catch {
-    badRequest("invalid cursor");
-  }
-}
+/** Where a Done page ended: the last row's completion time and id. */
+const doneCursor = opaqueCursor(
+  z.object({ completedAt: z.iso.datetime(), id: z.uuid() }),
+);
 
 /**
  * Done tasks, last completed first, a page at a time. Done is a history of
@@ -258,7 +250,7 @@ async function doneRows(
   tz: string,
   cursor: string | undefined,
 ): Promise<{ rows: TaskRow[]; nextCursor?: string }> {
-  const after = cursor ? decodeCursor(cursor) : null;
+  const after = cursor ? doneCursor.decode(cursor) : null;
   const before = after
     ? sql`and (t.completed_at, t.item_id) < (${after.completedAt}::timestamptz, ${after.id}::uuid)`
     : sql``;
@@ -273,7 +265,13 @@ async function doneRows(
   const page = rows.slice(0, DONE_PAGE).map((r) => r.row);
   const last = page[page.length - 1];
   return rows.length > DONE_PAGE && last
-    ? { rows: page, nextCursor: encodeCursor(last) }
+    ? {
+        rows: page,
+        nextCursor: doneCursor.encode({
+          completedAt: last.completedAt ?? "",
+          id: last.id,
+        }),
+      }
     : { rows: page };
 }
 

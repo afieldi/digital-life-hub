@@ -4,7 +4,7 @@ export {
   MAX_CONTEXT_CHARS,
 } from "./ai/context";
 export { coreAi, coreAiRunners, PREAMBLE } from "./ai/core-runners";
-export { devFakeAi, scriptedFakeProvider } from "./ai/devFake";
+export { createScriptedFake, devFakeAi } from "./ai/devFake";
 export { AiError, aiErrorMessage, PROVIDER_NAMES } from "./ai/errors";
 export {
   type AiDeps,
@@ -41,6 +41,7 @@ export {
   type ModuleRouters,
   mountModules,
 } from "./compose";
+export { opaqueCursor } from "./cursor";
 export { purgeExpired } from "./items/purge";
 export { getItem } from "./items/read";
 export { type ItemWriter, writeItems } from "./items/writer";

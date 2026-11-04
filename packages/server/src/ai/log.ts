@@ -1,28 +1,20 @@
-import type { AiLogEntry } from "@dlh/core";
+import {
+  type AiLogEntry,
+  aiErrorCode,
+  aiKind,
+  aiProviderId,
+  aiRequestStatus,
+} from "@dlh/core";
 import { aiRequests, type Db } from "@dlh/db";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, lt, or, type SQL } from "drizzle-orm";
 import { z } from "zod";
+import { opaqueCursor } from "../cursor";
 
 export const LOG_PAGE_SIZE = 50;
 
-const cursorShape = z.object({ t: z.iso.datetime(), id: z.uuid() });
-
-function encodeCursor(row: { createdAt: Date; id: string }): string {
-  const c = { t: row.createdAt.toISOString(), id: row.id };
-  return Buffer.from(JSON.stringify(c)).toString("base64url");
-}
-
-function decodeCursor(cursor: string): z.infer<typeof cursorShape> {
-  try {
-    const raw: unknown = JSON.parse(
-      Buffer.from(cursor, "base64url").toString("utf8"),
-    );
-    return cursorShape.parse(raw);
-  } catch {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "invalid cursor" });
-  }
-}
+/** Where a page ended: the last row's creation time and id. */
+const cursor = opaqueCursor(z.object({ t: z.iso.datetime(), id: z.uuid() }));
 
 /** Requests newest first, 50 per page; `nextCursor` is opaque. */
 export async function listLog(
@@ -31,7 +23,7 @@ export async function listLog(
 ): Promise<{ entries: AiLogEntry[]; nextCursor: string | null }> {
   let where: SQL | undefined;
   if (input.cursor) {
-    const c = decodeCursor(input.cursor);
+    const c = cursor.decode(input.cursor);
     const at = new Date(c.t);
     where = or(
       lt(aiRequests.createdAt, at),
@@ -51,18 +43,21 @@ export async function listLog(
       id: r.id,
       createdAt: r.createdAt.toISOString(),
       actionId: r.actionId,
-      kind: r.kind as AiLogEntry["kind"],
+      kind: aiKind.parse(r.kind),
       interpretedBy: r.interpretedBy,
-      provider: r.provider as AiLogEntry["provider"],
+      provider: aiProviderId.parse(r.provider),
       model: r.model,
-      status: r.status,
-      errorCode: r.errorCode as AiLogEntry["errorCode"],
+      status: aiRequestStatus.parse(r.status),
+      errorCode: aiErrorCode.nullable().parse(r.errorCode),
       durationMs: r.durationMs,
       inputTokens: r.inputTokens,
       outputTokens: r.outputTokens,
       costUsd: r.costUsd === null ? null : Number(r.costUsd),
       canUndo: r.status === "applied" && r.undo !== null,
     })),
-    nextCursor: rows.length > LOG_PAGE_SIZE && last ? encodeCursor(last) : null,
+    nextCursor:
+      rows.length > LOG_PAGE_SIZE && last
+        ? cursor.encode({ t: last.createdAt.toISOString(), id: last.id })
+        : null,
   };
 }

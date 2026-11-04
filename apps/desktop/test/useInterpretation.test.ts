@@ -1,4 +1,8 @@
-import { applicableActions, coreAiActions } from "@dlh/core";
+import {
+  applicableActions,
+  coreAiActions,
+  keywordInterpreter,
+} from "@dlh/core";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useInterpretation } from "../src/ai/useInterpretation";
 
@@ -6,7 +10,7 @@ const actions = applicableActions(Object.values(coreAiActions), "test");
 
 test("a guess for older text is kept on screen but not current", async () => {
   const { result, rerender } = renderHook(
-    ({ text }) => useInterpretation(text, "test", actions),
+    ({ text }) => useInterpretation(text, "test", actions, keywordInterpreter),
     { initialProps: { text: "give this a better title" } },
   );
   await waitFor(() => expect(result.current.current).toBe(true));
@@ -21,6 +25,8 @@ test("a guess for older text is kept on screen but not current", async () => {
 });
 
 test("empty text has no interpretation", () => {
-  const { result } = renderHook(() => useInterpretation("  ", "test", actions));
+  const { result } = renderHook(() =>
+    useInterpretation("  ", "test", actions, keywordInterpreter),
+  );
   expect(result.current).toEqual({ interpretation: null, current: true });
 });

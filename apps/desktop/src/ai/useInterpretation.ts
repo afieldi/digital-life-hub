@@ -1,7 +1,7 @@
-import {
-  type AiActionDescription,
-  type Interpretation,
-  keywordInterpreter,
+import type {
+  AiActionDescription,
+  Interpretation,
+  RequestInterpreter,
 } from "@dlh/core";
 import { useEffect, useState } from "react";
 
@@ -19,6 +19,8 @@ export function useInterpretation(
   text: string,
   itemType: string | null,
   actions: AiActionDescription[] | null,
+  /** The one Settings names (`interpreterFor`). */
+  interpreter: RequestInterpreter,
 ): { interpretation: Interpretation | null; current: boolean } {
   // Tagged with its text, so a guess for older text is never used for newer.
   const [result, setResult] = useState<{
@@ -34,7 +36,7 @@ export function useInterpretation(
     }
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      keywordInterpreter
+      interpreter
         .interpret({ text, itemType, actions, signal: ctrl.signal })
         .then((i) => {
           if (!ctrl.signal.aborted) setResult({ text, interpretation: i });
@@ -45,7 +47,7 @@ export function useInterpretation(
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [empty, text, itemType, actions]);
+  }, [empty, text, itemType, actions, interpreter]);
 
   if (empty) return { interpretation: null, current: true };
   if (!result) return { interpretation: null, current: false };

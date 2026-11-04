@@ -6,7 +6,11 @@ import {
   type Phrasing,
   runInterpreterSuite,
 } from "../packages/core/src/ai/suite";
-import { coreAiActions, keywordInterpreter } from "../packages/core/src/index";
+import {
+  coreAiActions,
+  interpreterId,
+  interpreters,
+} from "../packages/core/src/index";
 import { corePhrasings } from "../packages/core/test/ai-phrasings";
 import { moduleAiActions } from "../packages/server/src/modules";
 
@@ -51,11 +55,16 @@ async function loadPhrasings(files: string[]): Promise<Phrasing[]> {
 
 async function main(): Promise<void> {
   const arg = process.argv.find((a) => a.startsWith("--interpreter="));
-  const which = arg?.slice("--interpreter=".length) ?? "keywords";
-  if (which !== "keywords") {
-    console.error(`Unknown interpreter "${which}". Supported: keywords`);
+  const which = interpreterId.safeParse(
+    arg?.slice("--interpreter=".length) ?? "keywords",
+  );
+  if (!which.success) {
+    console.error(
+      `Unknown interpreter. Supported: ${Object.keys(interpreters).join(", ")}`,
+    );
     process.exit(2);
   }
+  const { interpreter } = interpreters[which.data];
   // Actions: Core's plus every server module's, operations included.
   const actions = [
     ...Object.values(coreAiActions),
@@ -70,7 +79,7 @@ async function main(): Promise<void> {
 
   const started = performance.now();
   const { accuracy, misses } = await runInterpreterSuite(
-    keywordInterpreter,
+    interpreter,
     actions,
     phrasings,
   );
@@ -80,13 +89,13 @@ async function main(): Promise<void> {
   const times: number[] = [];
   for (const p of phrasings) {
     const t = performance.now();
-    await runInterpreterSuite(keywordInterpreter, actions, [p]);
+    await runInterpreterSuite(interpreter, actions, [p]);
     times.push(performance.now() - t);
   }
   times.sort((a, b) => a - b);
   const median = times[Math.floor(times.length / 2)] ?? 0;
 
-  console.log(`Interpreter: ${which}; ${phrasings.length} phrasings`);
+  console.log(`Interpreter: ${which.data}; ${phrasings.length} phrasings`);
   for (const m of misses) console.log(`  ${formatMiss(m)}`);
   console.log(`Accuracy: ${(accuracy * 100).toFixed(1)}%`);
   console.log(
