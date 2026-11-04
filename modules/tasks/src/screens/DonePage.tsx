@@ -8,13 +8,14 @@ import {
   GlassPanel,
   ItemRow,
   ListGroup,
+  ModulePage,
   ProgressBar,
+  QueryState,
   SectionCard,
   Skeleton,
 } from "@dlh/ui";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { CircleAlert, ListChecks, Sun } from "lucide-react";
-import type { ReactNode } from "react";
+import { ListChecks, Sun } from "lucide-react";
 import type { TaskRow } from "../schema";
 import { taskHref, useTasksApi } from "./api";
 import { dayBars, doneMeta, groupDone } from "./doneView";
@@ -60,77 +61,65 @@ export function DonePage(_: { search?: ListSearch }) {
     open.data !== undefined &&
     !open.data.rows.some((r) => r.completedAt === null && r.day === today);
 
-  let list: ReactNode;
-  if (done.isPending) {
-    list = <Skeleton lines={5} />;
-  } else if (done.isError) {
-    list = (
-      <EmptyState
-        icon={CircleAlert}
-        title="Couldn't load tasks"
-        action={
-          <Button variant="glass" onPress={() => void done.refetch()}>
-            Retry
-          </Button>
-        }
-      />
-    );
-  } else if (rows.length === 0) {
-    list = <EmptyState icon={ListChecks} title="Nothing done yet" />;
-  } else {
-    list = (
-      <>
-        {groupDone(rows, today, timeZone).map((g) => (
-          <ListGroup key={g.day} label={g.label} count={g.rows.length}>
-            {g.rows.map((row) => (
-              <ItemRow
-                key={row.id}
-                done
-                title={row.title}
-                href={taskHref(row.id)}
-                meta={doneMeta(row, timeZone)}
-                leading={
-                  <Checkbox
-                    aria-label={`Mark not done: ${row.title}`}
-                    isSelected
-                    onChange={() => undo(row)}
-                  />
-                }
-                trailing={
-                  <Button
-                    variant="ghost"
-                    aria-label={`Undo: ${row.title}`}
-                    onPress={() => undo(row)}
-                  >
-                    Undo
-                  </Button>
-                }
-              />
-            ))}
-          </ListGroup>
-        ))}
-        {done.hasNextPage ? (
-          <Button
-            variant="ghost"
-            isDisabled={done.isFetchingNextPage}
-            onPress={() => void done.fetchNextPage()}
-          >
-            Show more
-          </Button>
-        ) : null}
-      </>
-    );
-  }
+  const list = (
+    <QueryState
+      query={done}
+      errorTitle="Couldn't load tasks"
+      isEmpty={rows.length === 0}
+      empty={<EmptyState icon={ListChecks} title="Nothing done yet" />}
+    >
+      {() => (
+        <>
+          {groupDone(rows, today, timeZone).map((g) => (
+            <ListGroup key={g.day} label={g.label} count={g.rows.length}>
+              {g.rows.map((row) => (
+                <ItemRow
+                  key={row.id}
+                  done
+                  title={row.title}
+                  href={taskHref(row.id)}
+                  meta={doneMeta(row, timeZone)}
+                  leading={
+                    <Checkbox
+                      aria-label={`Mark not done: ${row.title}`}
+                      isSelected
+                      onChange={() => undo(row)}
+                    />
+                  }
+                  trailing={
+                    <Button
+                      variant="ghost"
+                      aria-label={`Undo: ${row.title}`}
+                      onPress={() => undo(row)}
+                    >
+                      Undo
+                    </Button>
+                  }
+                />
+              ))}
+            </ListGroup>
+          ))}
+          {done.hasNextPage ? (
+            <Button
+              variant="ghost"
+              isDisabled={done.isFetchingNextPage}
+              onPress={() => void done.fetchNextPage()}
+            >
+              Show more
+            </Button>
+          ) : null}
+        </>
+      )}
+    </QueryState>
+  );
 
   const week = stats.data;
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-6 pt-8 pb-[150px]">
-      <TasksHeader current="/tasks/done" />
-      <div className="flex flex-wrap items-start gap-6">
-        <section
-          aria-label="Done tasks"
-          className="flex min-w-0 flex-[999_1_560px] flex-col gap-4"
-        >
+    <ModulePage
+      header={<TasksHeader current="/tasks/done" />}
+      mainLabel="Done tasks"
+      main={
+        <>
           {todayClear ? (
             <GlassPanel level="panel">
               <EmptyState icon={Sun} title="Today is clear" />
@@ -139,32 +128,32 @@ export function DonePage(_: { search?: ListSearch }) {
           <GlassPanel level="panel" className="flex flex-col gap-0.5 p-2.5">
             {list}
           </GlassPanel>
-        </section>
-        <div className="flex flex-[1_1_280px] flex-col">
-          <SectionCard title="This week">
-            {week ? (
-              <div className="flex flex-col gap-4">
-                <DayBars
-                  label="Tasks done per day"
-                  bars={dayBars(week.perDay)}
-                  highlight={week.perDay.findIndex((d) => d.day === today)}
+        </>
+      }
+      aside={
+        <SectionCard title="This week">
+          {week ? (
+            <div className="flex flex-col gap-4">
+              <DayBars
+                label="Tasks done per day"
+                bars={dayBars(week.perDay)}
+                highlight={week.perDay.findIndex((d) => d.day === today)}
+              />
+              {week.done > 0 ? (
+                <ProgressBar
+                  value={week.onTime}
+                  max={week.done}
+                  label="On time"
                 />
-                {week.done > 0 ? (
-                  <ProgressBar
-                    value={week.onTime}
-                    max={week.done}
-                    label="On time"
-                  />
-                ) : null}
-                <Caption>Cleared overdue: {week.overdueCleared}</Caption>
-                <Caption>Last week: {week.lastWeek}</Caption>
-              </div>
-            ) : (
-              <Skeleton lines={3} />
-            )}
-          </SectionCard>
-        </div>
-      </div>
-    </div>
+              ) : null}
+              <Caption>Cleared overdue: {week.overdueCleared}</Caption>
+              <Caption>Last week: {week.lastWeek}</Caption>
+            </div>
+          ) : (
+            <Skeleton lines={3} />
+          )}
+        </SectionCard>
+      }
+    />
   );
 }

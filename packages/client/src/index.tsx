@@ -49,7 +49,7 @@ export function useModuleApi<R extends AnyRouter>(
 }
 
 /** The id of the item whose page is on screen, or null (e.g. on Home). */
-export const OpenItemContext = createContext<string | null>(null);
+const OpenItemContext = createContext<string | null>(null);
 
 const SetOpenItemContext = createContext<
   Dispatch<SetStateAction<string | null>>

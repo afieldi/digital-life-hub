@@ -1,9 +1,8 @@
-import type { AiErrorData } from "@dlh/core";
+import { AI_PROVIDERS, type AiErrorData, type CliProviderId } from "@dlh/core";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { PROVIDER_NAMES } from "./providers";
 
-/** Server ids of the providers the app runs itself. */
-export type CliProviderId = "claude-cli" | "codex-cli";
+export type { CliProviderId };
 
 export type CliRunInput = {
   /** Lets `cancelCli` find the run. */
@@ -52,18 +51,12 @@ export interface CliRunner {
   cancel(runId: string): Promise<void>;
 }
 
-/** The Rust commands take the program's own name. */
-const PROGRAM: Record<CliProviderId, "claude" | "codex"> = {
-  "claude-cli": "claude",
-  "codex-cli": "codex",
-};
-
 /** Tauri camelCases argument names but returns the Rust structs' snake_case fields. */
 const tauriRunner: CliRunner = {
   async run(input) {
     const out = await invoke<{ stdout: string; exit_code: number }>(
       "ai_cli_run",
-      { ...input, provider: PROGRAM[input.provider] },
+      { ...input, provider: AI_PROVIDERS[input.provider].program },
     );
     return { stdout: out.stdout, exitCode: out.exit_code };
   },
@@ -72,7 +65,10 @@ const tauriRunner: CliRunner = {
       installed: boolean;
       signed_in: boolean;
       version: string | null;
-    }>("ai_cli_status", { provider: PROGRAM[provider], pathOverride });
+    }>("ai_cli_status", {
+      provider: AI_PROVIDERS[provider].program,
+      pathOverride,
+    });
     return {
       installed: s.installed,
       signedIn: s.signed_in,

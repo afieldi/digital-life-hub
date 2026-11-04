@@ -67,3 +67,10 @@ describe("migrateAll", () => {
     expect(await count("__drizzle_migrations_demo")).toBe(1);
   });
 });
+
+it("names the module whose migrations failed", async () => {
+  const ghost = { ...demo, id: "ghost" };
+  await expect(migrateAll(url, [ghost], { modulesRoot: root })).rejects.toThrow(
+    /Module "ghost" migrations failed/,
+  );
+});

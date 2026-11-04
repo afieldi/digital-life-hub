@@ -7,7 +7,11 @@ const port = 1430;
 
 export default defineConfig({
   testDir: "e2e",
-  use: { baseURL: `http://localhost:${port}` },
+  // A failure in CI keeps its trace and an HTML report, uploaded as artifacts.
+  reporter: process.env.CI
+    ? [["github"], ["html", { open: "never" }]]
+    : [["list"]],
+  use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure" },
   webServer: [
     {
       // devSignIn exists only under NODE_ENV=development. Google values are dummies.

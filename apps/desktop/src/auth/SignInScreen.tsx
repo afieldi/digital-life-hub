@@ -9,6 +9,7 @@ const MESSAGES: Record<SignInFailure, string> = {
   forbidden: "That Google account isn't allowed to use this hub.",
   expired: "Sign-in expired — try again.",
   network: "Can't reach the server. Check your connection and try again.",
+  unavailable: "Sign-in isn't working right now. Try again in a moment.",
 };
 
 export function SignIn({ method }: { method: SignInMethod }) {

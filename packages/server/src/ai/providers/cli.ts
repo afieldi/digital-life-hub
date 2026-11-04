@@ -1,8 +1,9 @@
+import type { CliProviderId } from "@dlh/core";
 import { AiError, aiErrorMessage, firstLine } from "../errors";
 
 const AUTH_HINT = /authenticate|oauth|login|log in/i;
 
-function badOutput(provider: "claude-cli" | "codex-cli"): AiError {
+function badOutput(provider: CliProviderId): AiError {
   return new AiError("bad_output", aiErrorMessage("bad_output", provider));
 }
 
@@ -11,7 +12,7 @@ function badOutput(provider: "claude-cli" | "codex-cli"): AiError {
  * (`-p --output-format json`); for Codex the caller passes the last-message file.
  */
 export function unwrapCliOutput(
-  provider: "claude-cli" | "codex-cli",
+  provider: CliProviderId,
   stdout: string,
 ): string {
   if (provider === "codex-cli") {

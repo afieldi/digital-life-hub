@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import { groupFor } from "../src/dates";
 import type { TaskRow } from "../src/schema";
 import tasksServer from "../src/server";
-import { dueBetween, dueBetweenQuery } from "../src/server/reads";
+import { dueBetweenQuery, dueBetweenRows } from "../src/server/reads";
 
 const LA = "America/Los_Angeles";
 /** Mon, Nov 2, 2026, 09:00 in Los Angeles (PST, -08:00). */
@@ -456,7 +456,7 @@ test("get returns the task, its subtasks in order, and its parents", async () =>
   await close();
 });
 
-test("dueBetween uses its indexes", async () => {
+test("tasks due in a range use their indexes", async () => {
   const { deps, close } = await setup();
   await deps.db.execute(sql`
     with made as (
@@ -486,6 +486,6 @@ test("dueBetween uses its indexes", async () => {
   const text = plan.map((r) => r["QUERY PLAN"]).join("\n");
   expect(text).toContain("tasks_due_date_open_idx");
   expect(text).toContain("tasks_due_at_open_idx");
-  expect((await dueBetween(deps.db, args)).length).toBeGreaterThan(0);
+  expect((await dueBetweenRows(deps.db, args)).length).toBeGreaterThan(0);
   await close();
 });

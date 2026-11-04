@@ -22,6 +22,9 @@ test("p95 search latency is under 50 ms over 10,000 items", async () => {
       '2026-10-30T12:00:00Z'::timestamptz - (g || ' seconds')::interval
     from generate_series(1, 10000) g`);
   await db.execute(sql`analyze items`);
+  // The parallel DB suites just before leave the server flushing the WAL of
+  // every database they copied and dropped: let that finish before timing.
+  await db.execute(sql`checkpoint`);
   const words = (
     await db.execute<{ w: string }>(sql`select w from words order by i`)
   ).map((r) => r.w);

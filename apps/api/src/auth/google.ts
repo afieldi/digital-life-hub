@@ -16,6 +16,9 @@ export interface GoogleOAuth {
 
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+
+/** How long Google gets to answer the token exchange. */
+const EXCHANGE_TIMEOUT_MS = 15_000;
 const ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
 
 export function createGoogleOAuth(
@@ -50,6 +53,8 @@ export function createGoogleOAuth(
           client_secret: cfg.clientSecret,
           grant_type: "authorization_code",
         }),
+        // A stalled Google would hold sign-in open with no end.
+        signal: AbortSignal.timeout(EXCHANGE_TIMEOUT_MS),
       });
       const body = (await res.json().catch(() => ({}))) as {
         id_token?: unknown;

@@ -14,7 +14,9 @@ export type SignInFailure =
   | "timeout"
   | "forbidden"
   | "expired"
-  | "network";
+  | "network"
+  /** Google or the server failed; trying again later may work. */
+  | "unavailable";
 
 export class SignInError extends Error {
   readonly reason: SignInFailure;
@@ -41,6 +43,10 @@ export function toSignInError(err: unknown): SignInError {
     if (!err.data) return new SignInError("network", { cause: err });
     if (err.data.code === "FORBIDDEN") {
       return new SignInError("forbidden", { cause: err });
+    }
+    // Google failed or timed out (the server's BAD_GATEWAY), or the server did.
+    if (err.data.code === "BAD_GATEWAY" || err.data.httpStatus >= 500) {
+      return new SignInError("unavailable", { cause: err });
     }
     return new SignInError("expired", { cause: err });
   }

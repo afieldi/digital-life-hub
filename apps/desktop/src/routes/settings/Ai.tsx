@@ -1,6 +1,8 @@
 import {
   type AiLogEntry,
   type AiProviderId,
+  aiProviderId,
+  CLI_PROVIDER_IDS,
   interpreterId,
   interpreters,
 } from "@dlh/core";
@@ -35,8 +37,7 @@ import { undoAiRequest } from "../../ai/useAiRequest";
 import { useTRPC, useTRPCClient } from "../../api/client";
 import { formatLastActive } from "./lastActive";
 
-const PROVIDERS: AiProviderId[] = ["openrouter", "claude-cli", "codex-cli"];
-const CLI_PROVIDERS: CliProviderId[] = ["claude-cli", "codex-cli"];
+const PROVIDERS = aiProviderId.options;
 const KINDS = { ask: "Ask", suggest: "Suggest", do: "Do" } as const;
 
 function cliLabel(
@@ -300,7 +301,7 @@ export function Ai() {
                   openrouter?.available ? "Ready" : "Not set up on the server"
                 }
               />
-              {CLI_PROVIDERS.map((p) => (
+              {CLI_PROVIDER_IDS.map((p) => (
                 <CliProviderRow key={p} provider={p} />
               ))}
             </div>
@@ -338,7 +339,7 @@ export function Ai() {
                 >
                   {(i) => <ComboBoxItem id={i.id}>{i.name}</ComboBoxItem>}
                 </ComboBox>
-                {CLI_PROVIDERS.map((p) => (
+                {CLI_PROVIDER_IDS.map((p) => (
                   <CliPathField key={p} provider={p} />
                 ))}
               </div>
