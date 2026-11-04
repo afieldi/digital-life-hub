@@ -227,6 +227,7 @@ test("mutation returns an undo token and ops.undo restores", async () => {
   expect(out.undo).toEqual({
     record: { id: a.id, title: "A", updatedAt: out.result.updatedAt },
     created: [],
+    calls: [],
   });
   const undone = await caller.ops.undo({ id: "test.rename", token: out.undo });
   expect(undone).toEqual({ summary: "Undid rename" });

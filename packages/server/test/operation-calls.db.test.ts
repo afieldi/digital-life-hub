@@ -1,5 +1,6 @@
 import { describeOperation } from "@dlh/core";
 import { items } from "@dlh/db";
+import { TRPCError } from "@trpc/server";
 import { count, eq } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -11,6 +12,8 @@ import {
   implementOperation,
   operationsRouter,
   router,
+  type ScopedWriter,
+  writeItems,
 } from "../src";
 import { freshTestDb, testDeps } from "../src/testing";
 
@@ -79,6 +82,71 @@ const wrapDesc = describeOperation({
   calls: [createDesc, meddleDesc, readDesc],
 });
 
+const renameInput = z.object({
+  id: z.uuid(),
+  expectedUpdatedAt: z.iso.datetime(),
+  title: z.string().min(1),
+});
+
+const renameDesc = describeOperation({
+  id: "alpha.rename",
+  kind: "mutation",
+  label: "Rename",
+  description: "Rename an item.",
+  appliesTo: ["test"],
+  input: renameInput,
+  subject: (i) => i.id,
+  effects: ["updateItem"],
+  summary: (i) => `Rename to ${i.title}`,
+});
+
+const renameBothDesc = describeOperation({
+  id: "beta.renameBoth",
+  kind: "mutation",
+  label: "Rename both",
+  description: "Rename its subject, then another item through alpha.rename.",
+  appliesTo: "none",
+  input: z.object({
+    id: z.uuid(),
+    expectedUpdatedAt: z.iso.datetime(),
+    title: z.string().min(1),
+    other: z.uuid(),
+    otherUpdatedAt: z.iso.datetime(),
+    otherTitle: z.string().min(1),
+    // A second call on the same item, so undo must run the last one first.
+    otherThen: z.string().min(1).optional(),
+  }),
+  subject: (i) => i.id,
+  effects: ["updateItem"],
+  summary: () => "Rename both",
+  calls: [renameDesc],
+});
+
+/** The title before, and the title the call set: undo reverts only if it still holds. */
+const renameRecord = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  renamedTo: z.string(),
+});
+
+async function undoRename(
+  w: ScopedWriter,
+  record: z.infer<typeof renameRecord>,
+) {
+  const [now] = await w.tx
+    .select({ title: items.title, updatedAt: items.updatedAt })
+    .from(items)
+    .where(eq(items.id, record.id));
+  if (now?.title !== record.renamedTo) {
+    throw new TRPCError({ code: "CONFLICT", message: "item changed" });
+  }
+  await w.updateItem?.({
+    id: record.id,
+    expectedUpdatedAt: now.updatedAt.toISOString(),
+    title: record.title,
+  });
+}
+
 type Created = { id: string; updatedAt: string };
 
 const alpha = defineServerModule({
@@ -111,6 +179,22 @@ const alpha = defineServerModule({
         return row?.title ?? null;
       },
     }),
+    rename: implementOperation(renameDesc, {
+      async run(w, input) {
+        const [was] = await w.tx
+          .select({ title: items.title })
+          .from(items)
+          .where(eq(items.id, input.id));
+        const item = await w.updateItem?.(input);
+        if (!item || !was) throw new Error("no writer");
+        return {
+          result: item,
+          undo: { id: item.id, title: was.title, renamedTo: item.title },
+        };
+      },
+      undo: undoRename,
+      undoRecord: renameRecord,
+    }),
     elsewhere: implementOperation(elsewhereDesc, {
       async run() {
         return { result: null, undo: null };
@@ -125,6 +209,38 @@ const beta = defineServerModule({
   id: "beta",
   itemTypes: [],
   operations: {
+    renameBoth: implementOperation(renameBothDesc, {
+      async run(w, input) {
+        if (!w.call) throw new Error("no call");
+        const [was] = await w.tx
+          .select({ title: items.title })
+          .from(items)
+          .where(eq(items.id, input.id));
+        const item = await w.updateItem?.({
+          id: input.id,
+          expectedUpdatedAt: input.expectedUpdatedAt,
+          title: input.title,
+        });
+        if (!item || !was) throw new Error("no writer");
+        let version = input.otherUpdatedAt;
+        for (const title of [input.otherTitle, input.otherThen ?? ""].filter(
+          Boolean,
+        )) {
+          const out = (await w.call(renameDesc, {
+            id: input.other,
+            expectedUpdatedAt: version,
+            title,
+          })) as Created;
+          version = out.updatedAt;
+        }
+        return {
+          result: item,
+          undo: { id: item.id, title: was.title, renamedTo: item.title },
+        };
+      },
+      undo: undoRename,
+      undoRecord: renameRecord,
+    }),
     wrap: implementOperation(wrapDesc, {
       async run(w, input) {
         if (!w.call) throw new Error("no call");
@@ -180,6 +296,10 @@ async function setup() {
     principal: { kind: "user", session },
   });
   return { db, deps, caller, close };
+}
+
+async function seed(deps: CoreDeps, title: string) {
+  return writeItems(deps, (w) => w.createItem({ type: "test", title }));
 }
 
 const row = async (deps: CoreDeps, id: string) =>
@@ -251,5 +371,83 @@ test("a called query sees the caller's uncommitted write", async () => {
   const out = await caller.beta.wrap({ title: "A", mode: "read" });
   expect(out.result).toBe("A");
   expect((await row(deps, out.undo.record as string))?.title).toBe("A");
+  await close();
+});
+
+async function renameBoth(
+  deps: CoreDeps,
+  caller: Awaited<ReturnType<typeof setup>>["caller"],
+  otherTitle: string,
+  otherThen?: string,
+) {
+  const mine = await seed(deps, "mine");
+  const other = await seed(deps, "A");
+  const out = await caller.beta.renameBoth({
+    id: mine.id,
+    expectedUpdatedAt: mine.updatedAt,
+    title: "mine, renamed",
+    other: other.id,
+    otherUpdatedAt: other.updatedAt,
+    otherTitle,
+    otherThen,
+  });
+  return { mine, other, out };
+}
+
+test("the callee's undo record is in the caller's token", async () => {
+  const { deps, caller, close } = await setup();
+  const { other, out } = await renameBoth(deps, caller, "B");
+  expect(out.undo.calls).toEqual([
+    {
+      operation: "alpha.rename",
+      record: { id: other.id, title: "A", renamedTo: "B" },
+    },
+  ]);
+  await close();
+});
+
+test("ops.undo reverts the callee's update as well as the caller's", async () => {
+  const { deps, caller, close } = await setup();
+  const { mine, other, out } = await renameBoth(deps, caller, "B");
+  expect((await row(deps, other.id))?.title).toBe("B");
+  await caller.ops.undo({ id: "beta.renameBoth", token: out.undo });
+  expect((await row(deps, mine.id))?.title).toBe("mine");
+  expect((await row(deps, other.id))?.title).toBe("A");
+  await close();
+});
+
+test("callee undos run after the caller's, last call first", async () => {
+  const { deps, caller, close } = await setup();
+  const { other, out } = await renameBoth(deps, caller, "B", "C");
+  expect((await row(deps, other.id))?.title).toBe("C");
+  await caller.ops.undo({ id: "beta.renameBoth", token: out.undo });
+  // Reverting B's record first would conflict on C's version; ending at A needs C's first.
+  expect((await row(deps, other.id))?.title).toBe("A");
+  await close();
+});
+
+test("undo conflicts as a whole when the callee's item changed since", async () => {
+  const { deps, caller, close } = await setup();
+  const { mine, other, out } = await renameBoth(deps, caller, "B");
+  const current = await row(deps, other.id);
+  await caller.alpha.rename({
+    id: other.id,
+    expectedUpdatedAt: current?.updatedAt.toISOString() ?? "",
+    title: "edited since",
+  });
+  await expect(
+    caller.ops.undo({ id: "beta.renameBoth", token: out.undo }),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Changed since" });
+  expect((await row(deps, mine.id))?.title).toBe("mine, renamed");
+  expect((await row(deps, other.id))?.title).toBe("edited since");
+  await close();
+});
+
+test("a token without calls still undoes", async () => {
+  const { deps, caller, close } = await setup();
+  const { mine, out } = await renameBoth(deps, caller, "B");
+  const { calls: _calls, ...old } = out.undo;
+  await caller.ops.undo({ id: "beta.renameBoth", token: old });
+  expect((await row(deps, mine.id))?.title).toBe("mine");
   await close();
 });

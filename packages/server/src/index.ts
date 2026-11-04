@@ -97,6 +97,7 @@ export {
 export {
   deleteCreated,
   revertMutation,
+  revertUndoToken,
   undoToken,
 } from "./operations/undo";
 export { type CoreRouter, coreRouters } from "./routers";

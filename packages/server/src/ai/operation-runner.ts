@@ -314,7 +314,7 @@ function mutationRunner(
     },
     async undo(_w, record, tools) {
       const { revert } = tools;
-      await revert(op, operationUndo.parse(record).token.record);
+      await revert(op, operationUndo.parse(record).token);
     },
     summary(out, ctx) {
       try {

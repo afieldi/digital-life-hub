@@ -122,7 +122,11 @@ test("existing AppRouter procedures keep their types", () => {
   expectTypeOf<AppOut["items"]["rename"]>().toEqualTypeOf<Item>();
   expectTypeOf<AppIn["ops"]["undo"]>().toEqualTypeOf<{
     id: string;
-    token: { record?: unknown; created: string[] };
+    token: {
+      record?: unknown;
+      created: string[];
+      calls?: { operation: string; record?: unknown }[];
+    };
   }>();
   expectTypeOf<AppOut["ops"]["undo"]>().toEqualTypeOf<{ summary: string }>();
   expect(Object.keys(appRouter._def.procedures)).toContain("ops.undo");

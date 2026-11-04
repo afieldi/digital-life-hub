@@ -683,7 +683,7 @@ test("undo soft-deletes created items", async () => {
   expect(row.undo).toEqual({
     kind: "operation",
     operation: "test.create",
-    token: { record: null, created: [made.id] },
+    token: { record: null, created: [made.id], calls: [] },
   });
   s.tick();
   await undo(s.deps, { requestId: res.requestId });

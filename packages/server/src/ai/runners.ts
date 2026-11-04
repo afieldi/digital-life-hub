@@ -2,6 +2,7 @@ import type { AiActionDescription, AiKind, AiListedItem } from "@dlh/core";
 import { z } from "zod";
 import { ServerModuleError } from "../modules";
 import type { ImplementedMutation, UndoToken } from "../operations/implement";
+import type { undoToken } from "../operations/undo";
 import type { CoreDeps } from "../trpc";
 import type { AiContext } from "./context";
 import type { ScopedWriter } from "./scoped";
@@ -16,8 +17,15 @@ export type RunnerTools = {
     op: ImplementedMutation,
     input: Record<string, unknown>,
   ): Promise<{ result: unknown; undo: UndoToken }>;
-  /** Reverts with the operation's own `undo`, as `ops.undo` does. */
-  revert(op: ImplementedMutation, record: unknown): Promise<void>;
+  /**
+   * Reverts as `ops.undo` does: the operation's own `undo`, then those of the
+   * operations it called, then the items in `created`. A bare `{ record }`
+   * reverts only the operation.
+   */
+  revert(
+    op: ImplementedMutation,
+    token: Partial<z.input<typeof undoToken>>,
+  ): Promise<void>;
 };
 
 /** A title the model gave, replaced by an item id or offered as options. */

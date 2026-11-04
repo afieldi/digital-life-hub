@@ -226,7 +226,7 @@ test("addParent on a task already under that parent offers nothing to undo", asy
   const b = await mk("B", { parentId: a.id });
   const out = await caller.tasks.addParent({ id: b.id, parentId: a.id });
   // The client offers Undo only for a record or created items (undoOf).
-  expect(out.undo).toEqual({ record: null, created: [] });
+  expect(out.undo).toEqual({ record: null, created: [], calls: [] });
   await close();
 });
 
