@@ -16,6 +16,7 @@ import {
 import { events, run, runs } from "./server/reads";
 import { cancel, message, retry } from "./server/runs";
 import { setSettings, settingsQuery } from "./server/settings";
+import { claim } from "./server/worker";
 
 const notYet = () => {
   throw new TRPCError({
@@ -58,7 +59,7 @@ export default defineServerModule(agentModule, {
     disableConnection,
     settings: settingsQuery,
     setSettings,
-    claim: stub(agentOps.claim),
+    claim,
     heartbeat: stub(agentOps.heartbeat),
     appendEvents: stub(agentOps.appendEvents),
     takeMessages: stub(agentOps.takeMessages),

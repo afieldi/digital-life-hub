@@ -387,8 +387,9 @@ const claim = describeOperation({
   appliesTo: ["none"],
   input: z.object({}),
   subject: () => null,
+  // Cancelling a run of a task that is done or taken back resolves its open approval.
   effects: ["touchItems"],
-  calls: [taskOps.get, requestOps.get],
+  calls: [taskOps.get, requestOps.get, requestOps.resolve],
   summary: () => "Claim a run",
   ...worker,
 });

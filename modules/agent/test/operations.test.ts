@@ -56,7 +56,7 @@ test("run actions and assignments declare touchItems", () => {
   }
 });
 
-test("worker operations that change a run's state touch items, and heartbeat reads the task", () => {
+test("worker operations that change a run's state touch items; heartbeat and claim declare their calls", () => {
   for (const key of [
     "claim",
     "heartbeat",
@@ -67,4 +67,9 @@ test("worker operations that change a run's state touch items, and heartbeat rea
     expect(agentOps[key].effects).toEqual(["touchItems"]);
   }
   expect(agentOps.heartbeat.calls).toEqual([taskOps.get, requestOps.file]);
+  expect(agentOps.claim.calls).toEqual([
+    taskOps.get,
+    requestOps.get,
+    requestOps.resolve,
+  ]);
 });
