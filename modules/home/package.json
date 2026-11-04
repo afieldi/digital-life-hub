@@ -14,7 +14,7 @@
     "@dlh/client": "workspace:*",
     "@dlh/core": "workspace:*",
     "@dlh/ui": "workspace:*",
-    "@tanstack/react-router": "^1.170.46",
+    "@tanstack/react-router": "catalog:",
     "lucide-react": "catalog:",
     "react": "catalog:"
   },

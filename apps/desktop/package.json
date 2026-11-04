@@ -20,7 +20,7 @@
     "@dlh/core": "workspace:*",
     "@dlh/ui": "workspace:*",
     "@tanstack/react-query": "catalog:",
-    "@tanstack/react-router": "^1.170.46",
+    "@tanstack/react-router": "catalog:",
     "@tauri-apps/api": "~2.12",
     "@tauri-apps/plugin-opener": "~2.7",
     "@tauri-apps/plugin-os": "~2.4",
