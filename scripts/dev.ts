@@ -8,14 +8,25 @@ export type DevStep = { name: string; run: () => Promise<StepResult> };
 
 export const NODE_MODULES_MESSAGE = 'Run "pnpm install" first.';
 export const CARGO_MISSING_MESSAGE =
-  'Rust is not installed — install it with rustup (https://rustup.rs) or run "pnpm --filter @dlh/desktop dev:web" for the browser-only shell.';
+  'Rust is not installed — install it with rustup (https://rustup.rs), or run "pnpm dev --web" for the app in a browser.';
 
 export const DOCKER_MISSING_MESSAGE =
   "Docker is not installed — install Docker Desktop (https://www.docker.com/products/docker-desktop/).";
 export const DOCKER_DOWN_MESSAGE =
   "Docker isn't running — start Docker Desktop, then run pnpm dev again.";
 export const API_ENV_MESSAGE =
-  "Copy apps/api/.env.example to apps/api/.env and fill in the Google client and ALLOWED_EMAIL.";
+  'Copy apps/api/.env.example to apps/api/.env and fill in the Google client and ALLOWED_EMAIL, or run "pnpm dev --web" to sign in without Google.';
+
+/**
+ * `pnpm dev --web`: the API with dev sign-in (no Google client needed), the
+ * scripted AI fake, and the app in a browser (no Rust). As e2e runs it.
+ */
+export const WEB_ENV = {
+  GOOGLE_CLIENT_ID: "dev-web",
+  GOOGLE_CLIENT_SECRET: "dev-web",
+  ALLOWED_EMAIL: "dev@example.test",
+  AI_FAKE_PROVIDER: "1",
+};
 
 export type PreflightChecks = {
   hasNodeModules: () => boolean;
@@ -26,15 +37,22 @@ export type PreflightChecks = {
 };
 export type PreflightResult = { ok: true } | { ok: false; message: string };
 
-export function preflight(checks: PreflightChecks): PreflightResult {
+export function preflight(
+  checks: PreflightChecks,
+  { web = false }: { web?: boolean } = {},
+): PreflightResult {
   if (!checks.hasNodeModules())
     return { ok: false, message: NODE_MODULES_MESSAGE };
-  if (!checks.hasCargo()) return { ok: false, message: CARGO_MISSING_MESSAGE };
+  if (!web && !checks.hasCargo()) {
+    return { ok: false, message: CARGO_MISSING_MESSAGE };
+  }
   if (!checks.hasDocker())
     return { ok: false, message: DOCKER_MISSING_MESSAGE };
   if (!checks.dockerRunning())
     return { ok: false, message: DOCKER_DOWN_MESSAGE };
-  if (!checks.hasApiEnv()) return { ok: false, message: API_ENV_MESSAGE };
+  if (!web && !checks.hasApiEnv()) {
+    return { ok: false, message: API_ENV_MESSAGE };
+  }
   return { ok: true };
 }
 
@@ -47,11 +65,16 @@ function onPath(binary: string): boolean {
     .some((dir) => exts.some((e) => existsSync(join(dir, binary + e))));
 }
 
-function runCommand(command: string, args: string[]): Promise<StepResult> {
+function runCommand(
+  command: string,
+  args: string[],
+  env?: Record<string, string>,
+): Promise<StepResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
       shell: process.platform === "win32",
+      env: env ? { ...process.env, ...env } : process.env,
     });
     const forward = () => child.kill("SIGINT");
     process.on("SIGINT", forward);
@@ -98,6 +121,27 @@ export const steps: DevStep[] = [
   },
 ];
 
+/** `pnpm dev --web`: the same database steps, then the API and the browser app. */
+export const webSteps: DevStep[] = [
+  ...steps.slice(0, -1),
+  {
+    name: "apps",
+    run: () =>
+      runCommand(
+        "pnpm",
+        [
+          "exec",
+          "turbo",
+          "run",
+          "@dlh/api#dev",
+          "@dlh/desktop#dev:web",
+          "--ui=stream",
+        ],
+        WEB_ENV,
+      ),
+  },
+];
+
 /** Runs steps in order. Returns the exit code: 130 when Ctrl+C stopped a step
  * before the last one, 0 when it ended the last step, 1 when a step failed. */
 export async function runSteps(
@@ -119,22 +163,28 @@ export async function runSteps(
 }
 
 async function main(): Promise<void> {
-  const result = preflight({
-    hasNodeModules: () => existsSync("node_modules"),
-    hasCargo: () => onPath("cargo"),
-    hasDocker: () => onPath("docker"),
-    dockerRunning: () =>
-      spawnSync("docker", ["info"], {
-        stdio: "ignore",
-        shell: process.platform === "win32",
-      }).status === 0,
-    hasApiEnv: () => existsSync(join("apps", "api", ".env")),
-  });
+  const web = process.argv.includes("--web");
+  const result = preflight(
+    {
+      hasNodeModules: () => existsSync("node_modules"),
+      hasCargo: () => onPath("cargo"),
+      hasDocker: () => onPath("docker"),
+      dockerRunning: () =>
+        spawnSync("docker", ["info"], {
+          stdio: "ignore",
+          shell: process.platform === "win32",
+        }).status === 0,
+      hasApiEnv: () => existsSync(join("apps", "api", ".env")),
+    },
+    { web },
+  );
   if (!result.ok) {
     console.error(result.message);
     process.exit(1);
   }
-  process.exit(await runSteps(steps, console.log, console.error));
+  process.exit(
+    await runSteps(web ? webSteps : steps, console.log, console.error),
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)

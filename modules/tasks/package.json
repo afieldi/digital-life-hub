@@ -18,21 +18,21 @@
     "@dlh/core": "workspace:*",
     "@dlh/server": "workspace:*",
     "@dlh/ui": "workspace:*",
-    "@internationalized/date": "^3.12.4",
-    "@tanstack/react-query": "^5.105.0",
-    "@tanstack/react-router": "^1.170.46",
-    "@trpc/server": "^11.22.1",
-    "drizzle-orm": "^0.45.4",
+    "@internationalized/date": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@trpc/server": "catalog:",
+    "drizzle-orm": "catalog:",
     "fractional-indexing": "^4.0.0",
-    "lucide-react": "^1.64.0",
-    "react": "^19",
-    "zod": "^4.6.7"
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.3.0",
-    "drizzle-kit": "^0.31.11",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "drizzle-kit": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -24,9 +24,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
-    "tsx": "^4.23.15",
+    "tsx": "catalog:",
     "turbo": "^2.11.10",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.5"
+    "vitest": "catalog:"
   }
 }
