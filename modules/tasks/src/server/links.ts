@@ -14,14 +14,6 @@ import { sql } from "drizzle-orm";
 // A "task" here is a live item with a row in `tasks`; a subtask is a task that a
 // live task `contains`.
 
-/** The live item's type, or null when it is missing or deleted. */
-export async function liveType(tx: Tx, id: string): Promise<string | null> {
-  const rows = await tx.execute<{ type: string }>(
-    sql`select type from items where id = ${id} and deleted_at is null`,
-  );
-  return rows[0]?.type ?? null;
-}
-
 /** Whether a live task contains `id`. */
 export async function hasTaskParent(
   tx: Tx | CoreDeps["db"],
@@ -47,25 +39,6 @@ export async function hasTaskSubtasks(tx: Tx, id: string): Promise<boolean> {
       where l.from_id = ${id} and l.kind = 'contains'
     ) as found`);
   return rows[0]?.found ?? false;
-}
-
-/** The id of the `contains` link from `parentId` to `id`, if there is one. */
-export async function containsLinkId(
-  tx: Tx,
-  parentId: string,
-  id: string,
-): Promise<string | null> {
-  const rows = await tx.execute<{ id: string }>(sql`
-    select id from links
-    where from_id = ${parentId} and to_id = ${id} and kind = 'contains'`);
-  return rows[0]?.id ?? null;
-}
-
-export async function linkExists(tx: Tx, linkId: string): Promise<boolean> {
-  const rows = await tx.execute<{ id: string }>(
-    sql`select id from links where id = ${linkId}`,
-  );
-  return rows.length > 0;
 }
 
 /** Open task parents of `id` whose live subtasks are now all done, in link order. */

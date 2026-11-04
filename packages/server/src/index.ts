@@ -44,7 +44,10 @@ export {
 export { opaqueCursor } from "./cursor";
 export { purgeExpired } from "./items/purge";
 export {
+  findLinkId,
   getItem,
+  linkExists,
+  liveItemType,
   type RawSummaryRow,
   summaryFromRaw,
 } from "./items/read";

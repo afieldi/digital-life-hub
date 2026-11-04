@@ -1,10 +1,13 @@
 import { items, links } from "@dlh/db";
 import { eq } from "drizzle-orm";
 import {
+  findLinkId,
   getItem,
+  linkExists,
   linksForItem,
   listContained,
   listItems,
+  liveItemType,
 } from "../src/items/read";
 import { writeItems } from "../src/items/writer";
 import { freshTestDb, testDeps } from "../src/testing";
@@ -240,5 +243,33 @@ test("listItems pages, hides archived unless asked, rejects limit 500", async ()
   await expect(listItems(db, { limit: 500 })).rejects.toMatchObject({
     code: "BAD_REQUEST",
   });
+  await close();
+});
+
+test("liveItemType, findLinkId and linkExists see only what is there", async () => {
+  const { db, deps, mk, link, del, close } = await setup();
+  const a = await mk("A");
+  const b = await mk("B");
+  expect(await liveItemType(db, a.id)).toBe("test");
+  await del(b.id);
+  expect(await liveItemType(db, b.id)).toBeNull();
+  expect(await liveItemType(db, crypto.randomUUID())).toBeNull();
+
+  await del(b.id, false);
+  const l = await link(a.id, b.id, "contains");
+  expect(
+    await findLinkId(db, { fromId: a.id, toId: b.id, kind: "contains" }),
+  ).toBe(l.id);
+  // Another kind, or the other way round, is a different link.
+  expect(
+    await findLinkId(db, { fromId: a.id, toId: b.id, kind: "relates" }),
+  ).toBeNull();
+  expect(
+    await findLinkId(db, { fromId: b.id, toId: a.id, kind: "contains" }),
+  ).toBeNull();
+
+  expect(await linkExists(db, l.id)).toBe(true);
+  await writeItems(deps, (w) => w.removeLink(l.id));
+  expect(await linkExists(db, l.id)).toBe(false);
   await close();
 });

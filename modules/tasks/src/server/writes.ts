@@ -1,8 +1,11 @@
 import type { Due, Item } from "@dlh/core";
 import {
+  findLinkId,
   getItem,
   type ItemWriter,
   implementOperation,
+  linkExists,
+  liveItemType,
   type ScopedWriter,
   type Tx,
 } from "@dlh/server";
@@ -13,14 +16,7 @@ import { z } from "zod";
 import { tasks } from "../db/schema";
 import { taskOps } from "../operations";
 import { priority } from "../schema";
-import {
-  containsLinkId,
-  hasTaskParent,
-  hasTaskSubtasks,
-  linkExists,
-  liveType,
-  parentsNowDone,
-} from "./links";
+import { hasTaskParent, hasTaskSubtasks, parentsNowDone } from "./links";
 
 type TaskTableRow = typeof tasks.$inferSelect;
 type TaskChanges = Partial<Omit<TaskTableRow, "itemId">>;
@@ -221,21 +217,25 @@ async function linkParent(
   { newChild }: { newChild: boolean },
 ) {
   const tx = w.tx;
-  const parentType = await liveType(tx, parentId);
+  const parentType = await liveItemType(tx, parentId);
   if (parentType === null) notFound("parent not found");
   if (parentType !== "task") badRequest("A task's parent must be a task");
   if (await hasTaskParent(tx, parentId)) {
     badRequest("A subtask can't have subtasks");
   }
   if (!newChild) {
-    const childType = await liveType(tx, id);
+    const childType = await liveItemType(tx, id);
     if (childType === null) notFound();
     if (childType !== "task") badRequest("Only a task can be a subtask");
     if (await hasTaskSubtasks(tx, id)) {
       badRequest("A task with subtasks can't be a subtask");
     }
   }
-  const existing = await containsLinkId(tx, parentId, id);
+  const existing = await findLinkId(tx, {
+    fromId: parentId,
+    toId: id,
+    kind: "contains",
+  });
   const link = await allowed(w.addLink)({
     fromId: parentId,
     toId: id,
@@ -249,7 +249,7 @@ async function sortKeyOf(tx: Tx, id: string): Promise<string> {
     .select({ sortKey: tasks.sortKey })
     .from(tasks)
     .where(eq(tasks.itemId, id));
-  if (!row || (await liveType(tx, id)) === null) notFound();
+  if (!row || (await liveItemType(tx, id)) === null) notFound();
   return row.sortKey;
 }
 
@@ -420,8 +420,12 @@ export const addParent = implementOperation(taskOps.addParent, {
 export const removeParent = implementOperation(taskOps.removeParent, {
   async run(w, input) {
     const linkId =
-      (await liveType(w.tx, input.parentId)) === "task"
-        ? await containsLinkId(w.tx, input.parentId, input.id)
+      (await liveItemType(w.tx, input.parentId)) === "task"
+        ? await findLinkId(w.tx, {
+            fromId: input.parentId,
+            toId: input.id,
+            kind: "contains",
+          })
         : null;
     if (!linkId) badRequest("That task isn't a parent of this one");
     await allowed(w.removeLink)(linkId);

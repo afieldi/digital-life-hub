@@ -2,6 +2,7 @@ import {
   type Item,
   type ItemSummary,
   type Link,
+  type LinkKind,
   type ListCursor,
   linkKind,
 } from "@dlh/core";
@@ -69,6 +70,45 @@ export async function getItem(db: Db | Tx, id: string): Promise<Item> {
   if (!row)
     throw new TRPCError({ code: "NOT_FOUND", message: "item not found" });
   return toItem(row);
+}
+
+/** The live item's type, or null when it is missing or deleted. */
+export async function liveItemType(
+  db: Db | Tx,
+  id: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ type: items.type })
+    .from(items)
+    .where(and(eq(items.id, id), isNull(items.deletedAt)));
+  return row?.type ?? null;
+}
+
+/** The id of the `kind` link from `fromId` to `toId`, or null when there is none. */
+export async function findLinkId(
+  db: Db | Tx,
+  link: { fromId: string; toId: string; kind: LinkKind },
+): Promise<string | null> {
+  const [row] = await db
+    .select({ id: links.id })
+    .from(links)
+    .where(
+      and(
+        eq(links.fromId, link.fromId),
+        eq(links.toId, link.toId),
+        eq(links.kind, link.kind),
+      ),
+    );
+  return row?.id ?? null;
+}
+
+/** Whether the link `id` still exists. */
+export async function linkExists(db: Db | Tx, id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: links.id })
+    .from(links)
+    .where(eq(links.id, id));
+  return row !== undefined;
 }
 
 /** The item's searchable body text; null when the item is missing or deleted. */
