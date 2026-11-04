@@ -485,46 +485,60 @@ describe("Detail", () => {
 
   test("a time set in another zone shows here, labelled, and a date change keeps it", async () => {
     // The device is in New York; the task was set for 9:00 in Los Angeles.
-    // Node applies a new TZ to Date and Intl at once.
-    const hostZone = process.env.TZ;
-    process.env.TZ = "America/New_York";
-    try {
-      const app = await setup("/tasks");
-      const { result: task } = await app.client.tasks.create.mutate({
-        title: "West coast call",
-        due: {
-          dateTime: "2026-11-06T09:00:00-08:00",
-          timeZone: "America/Los_Angeles",
-        },
-      });
-      app.router.history.push(`/tasks/${task.id}`);
-      app.renderApp();
-      const p = await panel("West coast call");
-      const time = within(p).getByRole("group", { name: "Due time" });
-      expect(time.querySelector('[data-type="hour"]')).toHaveTextContent("12");
-      expect(within(p).getByText("· 9:00 PT")).toBeInTheDocument();
+    const app = await setup("/tasks", { timeZone: "America/New_York" });
+    const { result: task } = await app.client.tasks.create.mutate({
+      title: "West coast call",
+      due: {
+        dateTime: "2026-11-06T09:00:00-08:00",
+        timeZone: "America/Los_Angeles",
+      },
+    });
+    app.router.history.push(`/tasks/${task.id}`);
+    app.renderApp();
+    const p = await panel("West coast call");
+    const time = within(p).getByRole("group", { name: "Due time" });
+    expect(time.querySelector('[data-type="hour"]')).toHaveTextContent("12");
+    expect(within(p).getByText("· 9:00 PT")).toBeInTheDocument();
 
-      const date = within(p).getByRole("group", { name: "Due" });
-      await userEvent.click(
-        date.querySelector('[data-type="day"]') as HTMLElement,
-      );
-      await userEvent.keyboard("07");
-      await waitFor(
-        async () => {
-          const { task: after } = await app.client.tasks.get.query({
-            id: task.id,
-          });
-          expect(after.due).toEqual({
-            dateTime: "2026-11-07T17:00:00.000Z",
-            timeZone: "America/Los_Angeles",
-          });
-        },
-        { timeout: 3000 },
-      );
-    } finally {
-      if (hostZone === undefined) delete process.env.TZ;
-      else process.env.TZ = hostZone;
-    }
+    const date = within(p).getByRole("group", { name: "Due" });
+    await userEvent.click(
+      date.querySelector('[data-type="day"]') as HTMLElement,
+    );
+    await userEvent.keyboard("07");
+    await waitFor(
+      async () => {
+        const { task: after } = await app.client.tasks.get.query({
+          id: task.id,
+        });
+        expect(after.due).toEqual({
+          dateTime: "2026-11-07T17:00:00.000Z",
+          timeZone: "America/Los_Angeles",
+        });
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  test("just past midnight in Warsaw, Upcoming shows the new week though UTC is still Sunday", async () => {
+    // 23:30 UTC on Sunday 8 Nov 2026 is 00:30 on Monday 9 Nov in Warsaw.
+    const app = await setup("/tasks/upcoming", {
+      now: new Date("2026-11-08T23:30:00.000Z"),
+      timeZone: "Europe/Warsaw",
+    });
+    await app.client.tasks.create.mutate({
+      title: "Monday standup",
+      due: { date: "2026-11-09" },
+    });
+    app.renderApp();
+    const monday = await column("2026-11-09");
+    expect(
+      await within(monday).findByText("Monday standup"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", {
+        name: new RegExp(`^${columnTitle("2026-11-08")}\\b`),
+      }),
+    ).toBeNull();
   });
 
   test("Subtask of chips remove and add parents", async () => {
