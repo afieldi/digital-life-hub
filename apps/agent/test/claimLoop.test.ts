@@ -191,6 +191,31 @@ describe("claim loop", () => {
     await s.loop.stop();
   });
 
+  it("a run claimed again starts once its last container has ended", async () => {
+    // Suspended, then answered at once: the claim comes while the first
+    // supervisor is still stopping its container, whose name the next takes.
+    const s = setup({
+      claims: [
+        async () => claim("r1"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+      ],
+    });
+    await s.loop.start();
+    await s.idle();
+    expect(s.started).toEqual(["r1"]);
+    s.change();
+    await s.idle();
+    expect(s.started).toEqual(["r1"]);
+    s.handles[0]?.end();
+    await s.idle();
+    await s.idle();
+    expect(s.started).toEqual(["r1", "r1"]);
+    // The first one's end didn't drop the second from the live runs.
+    await s.loop.stop();
+    expect(s.handles[1]?.stop).toHaveBeenCalledWith("shutdown");
+  });
+
   it("old volumes are removed and forgotten", async () => {
     const s = setup({
       ended: [

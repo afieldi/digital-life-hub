@@ -55,16 +55,25 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
         return;
       }
       if (!claimed.run) return;
+      // A run answered right after it suspended comes back while its last
+      // supervisor still stops the container, whose name and socket the new
+      // one takes: start once that one has ended.
+      const previous = live.get(claimed.run.id);
+      if (previous) {
+        await previous.done.catch(() => {});
+        // Stopped meanwhile: the stale sweep requeues the run.
+        if (stopped) return;
+      }
       try {
         const handle = start(claimed, { ...supervisorDeps, log });
         live.set(handle.runId, handle);
-        void handle.done.then(
-          () => {
-            live.delete(handle.runId);
-            trigger();
-          },
-          () => live.delete(handle.runId),
-        );
+        const forget = () => {
+          if (live.get(handle.runId) === handle) live.delete(handle.runId);
+        };
+        void handle.done.then(() => {
+          forget();
+          trigger();
+        }, forget);
       } catch (e) {
         log(`start run ${claimed.run.id}: ${firstLine(e)}`);
         return;
