@@ -20,7 +20,7 @@ import {
 } from "@dlh/agent-protocol";
 import type { z } from "zod";
 
-/** A route's answer; `after` runs once the answer has been written out. */
+/** A route's answer; `after` runs once the answer is out or the runner has gone. */
 export type Reply = { status: number; body: unknown; after?: () => void };
 
 /** What one run's socket serves. Each JSON route gets its body already checked. */
@@ -76,7 +76,8 @@ async function readJson<S extends z.ZodType>(
 }
 
 function send(res: ServerResponse, reply: Reply) {
-  if (reply.after) res.once("finish", reply.after);
+  // `close` also fires when the runner hangs up before the answer is out.
+  if (reply.after) res.once("close", reply.after);
   res.writeHead(reply.status, { "content-type": "application/json" });
   res.end(JSON.stringify(reply.body));
 }

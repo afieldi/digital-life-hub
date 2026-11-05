@@ -124,6 +124,8 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   let ending = false;
   /** A finish, fail or suspend is under way; a second one is refused. */
   let reporting = false;
+  /** A finish, fail or suspend reached the API. */
+  let reported = false;
   const cancels: Array<() => void> = [];
   let server: Server | undefined;
 
@@ -154,17 +156,41 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     resolveDone({ runId, reason });
   }
 
-  /** Fails the run through the API, then ends it (D14 if the call fails too). */
-  async function failRun(code: string, message: string) {
-    if (ending) return;
+  /**
+   * Sends the held events, then the report. Events can't be added once the
+   * run has ended, so a report goes only after they land; if either call
+   * fails (after its one retry) the report isn't sent, and the stale sweep
+   * requeues the run, whose resumed session sends again after `lastSeq`.
+   * Returns whether the report reached the API.
+   */
+  async function sendReport(
+    what: string,
+    call: () => Promise<unknown>,
+  ): Promise<boolean> {
     try {
-      await flush();
-      await workerCall(() => agent.fail.mutate({ runId, code, message }));
-      await end("failed");
+      await events.flush();
     } catch (e) {
-      log(`fail: ${firstLine(e)}`);
-      await end("worker_error");
+      log(`appendEvents before ${what}: ${firstLine(e)}`);
+      return false;
     }
+    try {
+      await workerCall(call);
+      reported = true;
+      return true;
+    } catch (e) {
+      log(`${what}: ${firstLine(e)}`);
+      return false;
+    }
+  }
+
+  /** Fails the run through the API, then ends it (D14 if that can't be done). */
+  async function failRun(code: string, message: string) {
+    if (ending || reporting) return;
+    reporting = true;
+    const sent = await sendReport("fail", () =>
+      agent.fail.mutate({ runId, code, message }),
+    );
+    await end(sent ? "failed" : "worker_error");
   }
 
   let beating = false;
@@ -221,18 +247,14 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       return { status: 409, body: { error: "Run is ending" } };
     }
     reporting = true;
-    try {
-      await flush();
-      await workerCall(call);
+    if (await sendReport(what, call)) {
       return { status: 200, body: ok.body, after: () => void end(ok.reason) };
-    } catch (e) {
-      log(`${what}: ${firstLine(e)}`);
-      return {
-        status: 502,
-        body: { error: `The hub refused ${what}` },
-        after: () => void end("worker_error"),
-      };
     }
+    return {
+      status: 502,
+      body: { error: `The hub refused ${what}` },
+      after: () => void end("worker_error"),
+    };
   }
 
   const start: RunStart = {
@@ -380,10 +402,16 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       (e) => log(`image digest: ${firstLine(e)}`),
     );
     deps.docker.wait(name).then(
-      () => end("exited"),
+      ({ exitCode }) => {
+        // Every stop the worker causes sets `ending` first, so this exit is
+        // the container's own; without a report it crashed (or hung up early).
+        if (ending || reported) return end("exited");
+        log(`container exited (${exitCode}) without a report`);
+        return failRun("no_report", "Ended without a report");
+      },
       (e) => {
         log(`wait: ${firstLine(e)}`);
-        return end("exited");
+        return end("worker_error");
       },
     );
   }

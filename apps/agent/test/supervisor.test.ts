@@ -184,6 +184,7 @@ function setup(
     claim?: Partial<Claimed>;
     runError?: Error;
     gateway?: () => Response;
+    log?: (line: string) => void;
   } = {},
 ) {
   // Unix socket paths are short (104 bytes on macOS); /tmp keeps them under it.
@@ -228,6 +229,7 @@ function setup(
     },
     timers,
     now: () => new Date("2026-11-05T10:05:00.000Z"),
+    log: opts.log ?? (() => {}),
   });
   handles.push(handle);
   const socketPath = join(dataDir, "runs", RUN, "dlh.sock");
@@ -603,15 +605,69 @@ describe("startRun", () => {
     });
   });
 
-  it("a container that exits ends the run without failing it", async () => {
-    const t = setup();
+  it("a container that exits without a report fails the run", async () => {
+    const lines: string[] = [];
+    const t = setup({ log: (l) => lines.push(l) });
     await t.started();
-    t.exit(0);
+    t.exit(137);
     const end = await t.handle.done;
-    expect(end.reason).toBe("exited");
-    expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+    expect(t.agent.fail.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      code: "no_report",
+      message: "Ended without a report",
+    });
+    expect(end.reason).toBe("failed");
+    expect(lines.join("\n")).toContain("137");
     expect(t.docker.remove).toHaveBeenCalled();
     expect(t.store.markEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stop the worker causes does not fail the run", async () => {
+    const t = setup();
+    await t.started();
+    t.handle.stop("shutdown");
+    const end = await t.handle.done;
+    expect(end.reason).toBe("shutdown");
+    expect(t.docker.stop).toHaveBeenCalled();
+    expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+
+    const beat = setup();
+    await beat.started();
+    beat.agent.heartbeat.mutate.mockResolvedValue(answer({ stop: true }));
+    beat.fire(30_000);
+    expect((await beat.handle.done).reason).toBe("stopped");
+    expect(beat.agent.fail.mutate).not.toHaveBeenCalled();
+  });
+
+  it("a failed event flush before finish doesn't finish the run", async () => {
+    const t = setup();
+    await t.started();
+    t.agent.appendEvents.mutate.mockRejectedValue(networkError());
+    await t.call("POST", "/events", { events: [event("lost?")] });
+    const res = await t.call("POST", "/finish", {
+      report: { summary: "Fixed", links: [], filesChanged: [] },
+    });
+    expect(res.status).toBe(502);
+    const end = await t.handle.done;
+    expect(end.reason).toBe("worker_error");
+    // Tried and retried before finish, then again by the last flush at the end.
+    expect(t.agent.appendEvents.mutate).toHaveBeenCalledTimes(4);
+    expect(t.agent.finish.mutate).not.toHaveBeenCalled();
+    expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+    expect(t.docker.stop).toHaveBeenCalled();
+  });
+
+  it("a failed event flush before a relay failure doesn't fail the run", async () => {
+    const t = setup({
+      gateway: () => new Response("{}", { status: 402 }),
+    });
+    await t.started();
+    t.agent.appendEvents.mutate.mockRejectedValue(apiError("CONFLICT"));
+    await t.call("POST", "/events", { events: [event("x")] });
+    await t.call("POST", "/model/v1/messages", { model: "m", messages: [] });
+    expect((await t.handle.done).reason).toBe("worker_error");
+    expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+    expect(t.docker.stop).toHaveBeenCalled();
   });
 
   it("refuses a body that doesn't match the route", async () => {
