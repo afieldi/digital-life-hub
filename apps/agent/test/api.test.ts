@@ -46,6 +46,7 @@ const config = (apiUrl: string): Config => ({
   workerToken: "worker-secret",
   gatewayKey: "gw",
   gatewayUrl: "https://example.test",
+  image: "dlh-agent-runner",
   secretsKey: Buffer.alloc(32),
   dataDir: "/tmp/x",
 });

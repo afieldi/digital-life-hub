@@ -16,6 +16,8 @@ const cliConfig = z.object({
 const config = cliConfig.extend({
   gatewayKey: z.string().min(1),
   gatewayUrl: z.url(),
+  /** The run container's image; Task 9 builds `dlh-agent-runner`. */
+  image: z.string().min(1),
 });
 export type Config = z.output<typeof config>;
 /** What the connection CLI needs: no Gateway key. */
@@ -51,6 +53,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
       env.AGENT_GATEWAY_URL || "https://ai-gateway.vercel.sh/claude-code",
     secretsKey: env.AGENT_SECRETS_KEY,
     dataDir: env.AGENT_DATA_DIR || "/var/lib/dlh-agent",
+    image: env.AGENT_RUNNER_IMAGE || "dlh-agent-runner",
   });
   if (!parsed.success) fail(parsed.error);
   return parsed.data;

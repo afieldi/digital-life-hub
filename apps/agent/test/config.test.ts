@@ -23,6 +23,11 @@ describe("loadConfig", () => {
     );
   });
 
+  it("the runner image defaults and can be set", () => {
+    expect(loadConfig(env).image).toBe("dlh-agent-runner");
+    expect(loadConfig({ ...env, AGENT_RUNNER_IMAGE: "x:1" }).image).toBe("x:1");
+  });
+
   it("a short secrets key is refused", () => {
     const short = Buffer.alloc(16, 7).toString("base64");
     expect(() => loadConfig({ ...env, AGENT_SECRETS_KEY: short })).toThrow();
