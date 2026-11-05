@@ -317,8 +317,25 @@ Several PRs, in this order:
 6. Screens: the Agent panel, row chips, Queue action buttons, Settings.
 7. End to end, docs, and the manual Done check.
 
+## Gateway check results
+
+Nov 5, 2026. `@anthropic-ai/claude-agent-sdk` 0.3.318 in a `node:22-slim` container, non-root, `CLAUDE_CONFIG_DIR=/workspace/.claude` on a Docker volume at `/workspace`.
+
+| Question | Result |
+| --- | --- |
+| Does the Agent SDK run through the Gateway? | Yes. `ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh/claude-code`, `ANTHROPIC_API_KEY` empty, the Gateway key in `ANTHROPIC_AUTH_TOKEN`. The harness stays the Agent SDK; the CLI fallback isn't needed |
+| Does a session resume in a fresh container? | Yes, with no explicit save and restore. A new container on the same volume, with `resume: <session id>`, answered from the session with no tool calls. The prompt cache was still warm across containers |
+| What does a run cost? | The small task (clone a repo, edit one file, report) took 3 turns, 2 tool calls, 10.7 s and $0.094 on `claude-opus-5-5`, the default model. The resumed question added about $0.006 |
+
+What it means for the build:
+
+- **Model calls.** `apps/agent`'s relay sets those three variables in the container, with `ANTHROPIC_BASE_URL` pointing at the relay; the relay forwards to `https://ai-gateway.vercel.sh/claude-code` and adds the key.
+- **Resume.** The runner keeps `CLAUDE_CONFIG_DIR` on the run's workspace volume and passes `resume` with the run's `session_id`. Nothing else is saved.
+- **Cost.** The SDK's `total_cost_usd` on a resumed session includes the earlier containers' cost ($0.0994 after resume). The relay counts cost itself, from the Gateway's responses, and the heartbeat sends the run's cumulative total, so `cost_usd − cost_base_usd` stays right across containers.
+- **Caps.** $10 is about a hundred small tasks, so it stays the default. The time cap stays 240 minutes.
+
 ## Resolved questions
 
 - **The agent host:** the same always-on VPS as the API and Postgres, 8 vCPUs and 16 GB, through docker-compose (Containers → Host).
-- **Caps:** a cost cap ($10) and a time cap (240 minutes) per run, no turn or token caps; defaults revisited after the Gateway check.
-- **Session resume from a volume:** checked in step 1, with an explicit save and restore as the fallback.
+- **Caps:** a cost cap ($10) and a time cap (240 minutes) per run, no turn or token caps; kept after the Gateway check.
+- **Session resume from a volume:** works as is (Gateway check results).
