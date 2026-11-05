@@ -9,7 +9,10 @@ const config = z.object({
   secretsKey: z
     .string()
     .transform((s) => Buffer.from(s, "base64"))
-    .refine((b) => b.length === 32, "AGENT_SECRETS_KEY must be 32 bytes, base64"),
+    .refine(
+      (b) => b.length === 32,
+      "AGENT_SECRETS_KEY must be 32 bytes, base64",
+    ),
   dataDir: z.string().min(1),
 });
 export type Config = z.output<typeof config>;
@@ -20,7 +23,8 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     apiUrl: env.API_URL,
     workerToken: env.AGENT_WORKER_TOKEN,
     gatewayKey: env.AI_GATEWAY_API_KEY,
-    gatewayUrl: env.AGENT_GATEWAY_URL || "https://ai-gateway.vercel.sh/claude-code",
+    gatewayUrl:
+      env.AGENT_GATEWAY_URL || "https://ai-gateway.vercel.sh/claude-code",
     secretsKey: env.AGENT_SECRETS_KEY,
     dataDir: env.AGENT_DATA_DIR || "/var/lib/dlh-agent",
   });
