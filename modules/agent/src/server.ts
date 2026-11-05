@@ -1,4 +1,4 @@
-import { defineServerModule } from "@dlh/server";
+import { defineServerModule, type OperationsRouter } from "@dlh/server";
 import { agentModule } from "./module";
 import { assign, assignRequest, unassign } from "./server/assign";
 import {
@@ -20,7 +20,7 @@ import {
   takeMessages,
 } from "./server/worker";
 
-export default defineServerModule(agentModule, {
+const agentServer = defineServerModule(agentModule, {
   migrations: true,
   operations: {
     assign,
@@ -48,3 +48,8 @@ export default defineServerModule(agentModule, {
     registerConnection,
   },
 });
+
+/** The `agent` router as the host worker calls it (type only: no server code in the bundle). */
+export type AgentRouter = OperationsRouter<typeof agentServer.operations>;
+
+export default agentServer;
