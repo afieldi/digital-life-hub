@@ -13,6 +13,7 @@
   "dependencies": {
     "@dlh/agent-protocol": "workspace:*",
     "@dlh/api-contract": "workspace:*",
+    "@dlh/core": "workspace:*",
     "@dlh/module-agent": "workspace:*",
     "@dlh/server": "workspace:*",
     "@trpc/client": "catalog:",

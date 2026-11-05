@@ -51,5 +51,7 @@ const agentServer = defineServerModule(agentModule, {
 
 /** The `agent` router as the host worker calls it (type only: no server code in the bundle). */
 export type AgentRouter = OperationsRouter<typeof agentServer.operations>;
+/** What `agent.claim` hands the worker (type only). */
+export type { ClaimResult } from "./server/worker";
 
 export default agentServer;

@@ -113,6 +113,9 @@ importers:
       '@dlh/api-contract':
         specifier: workspace:*
         version: link:../../packages/api-contract
+      '@dlh/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@dlh/module-agent':
         specifier: workspace:*
         version: link:../../modules/agent
@@ -501,6 +504,9 @@ importers:
 
   packages/agent-protocol:
     dependencies:
+      '@dlh/core':
+        specifier: workspace:*
+        version: link:../core
       zod:
         specifier: 'catalog:'
         version: 4.6.7
