@@ -286,13 +286,9 @@ export async function runSession(
     disallowedTools: ["AskUserQuestion"],
     // Connections' servers come only from the runner, never a repo's `.mcp.json`.
     strictMcpConfig: true,
-    // `project` loads the repos' CLAUDE.md. The workspace is the agent's to
-    // write, so permission rules and hooks from settings files don't count.
-    settingSources: ["project"],
-    managedSettings: {
-      allowManagedPermissionRulesOnly: true,
-      allowManagedHooksOnly: true,
-    },
+    // No settings files: the workspace is the agent's to write, and an allow
+    // rule there would skip `canUseTool`. Only the hook decides.
+    settingSources: [],
     env: { ...process.env, ...deps.env, ...MODEL_ENV },
   };
 

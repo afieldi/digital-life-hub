@@ -192,6 +192,16 @@ describe("runSession", () => {
     expect(seen.inputs[0]).toBe(buildPrompt(start));
   });
 
+  it("no settings file can allow a tool: only canUseTool decides", async () => {
+    const { host } = fakeHost();
+    const { query, seen } = fakeQuery(() => [result()]);
+    await runSession(runStart(), deps(host, query));
+    expect(seen.options?.settingSources).toEqual([]);
+    expect(seen.options?.permissionMode).toBe("default");
+    expect(seen.options?.managedSettings).toBeUndefined();
+    expect(typeof seen.options?.canUseTool).toBe("function");
+  });
+
   it("messages from the socket reach the session", async () => {
     const { host, calls } = fakeHost({
       inbox: [{ id: "m1", body: "Use the staging branch" }],
