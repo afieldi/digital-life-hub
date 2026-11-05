@@ -58,6 +58,30 @@ describe("classify", () => {
       "gh api -X PUT repos/o/r/pulls/3/merge",
       "gh api --method=POST repos/o/r/pulls",
       "gh api repos/o/r/pulls/3/merge -f merge_method=squash",
+      // Shell expansion in the refspec.
+      'cd repo && git push origin "$(git branch --show-current)"',
+      "B=main; git push origin $B",
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: a shell expansion, not a template
+      "git push origin ${BR:-main}",
+      "git push origin `git branch --show-current`",
+      "git push origin 'ma*'",
+      // Compound commands.
+      "if true; then git push origin main; fi",
+      "for b in main; do git push origin main; done",
+      "{ git push origin main; }",
+      "! git push origin main",
+      // Wrappers and shell option clusters.
+      "timeout 60 git push origin main",
+      "nice git push origin main",
+      "nice -n 5 git push origin main",
+      "echo main | xargs git push origin",
+      "env -i git push origin main",
+      "bash -lc 'git push origin main'",
+      "bash -ec 'git push origin main'",
+      // Mentions a push or merge the parser can't clear.
+      "git commit -m wip && GIT_DIR=.git command -p git push origin main",
+      "xargs -I{} git push origin {} < branches.txt",
+      "gh pr list | grep merge && gh pr merge",
     ];
     for (const c of asks) expect(bash(c), c).toBe("ask");
 
@@ -67,6 +91,9 @@ describe("classify", () => {
     expect(bash("git push origin HEAD", onMain)).toBe("ask");
 
     expect(bash("git push -u origin feature")).toBe("alone");
+    expect(bash("git status && git push -u origin feature")).toBe("alone");
+    expect(bash("bash -lc 'git push -u origin feature'")).toBe("alone");
+    expect(bash("timeout 60 git push -u origin feature")).toBe("alone");
     expect(bash("git push origin HEAD:feature")).toBe("alone");
     expect(bash("git push -f origin feature")).toBe("alone");
     expect(bash("git push")).toBe("alone");

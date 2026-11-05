@@ -125,6 +125,8 @@ function classifyMcp(
 
 // ---------------------------------------------------------------- shell
 
+/** The tokenizer's word for `$(` or a backtick. */
+const SUBST = "\u0000subst";
 const SEPARATORS = new Set(["&&", "||", ";", "|", "&", "\n", "(", ")"]);
 
 /**
@@ -161,11 +163,11 @@ function tokenize(command: string): string[] {
       inWord = true;
     } else if (two === "&&" || two === "||" || two === "$(") {
       flush();
-      out.push(two === "$(" ? "(" : two);
+      out.push(two === "$(" ? SUBST : two);
       i++;
     } else if (";|&()\n`".includes(c)) {
       flush();
-      out.push(c === "`" ? "(" : c);
+      out.push(c === "`" ? SUBST : c);
     } else if (/\s/.test(c)) {
       flush();
     } else {
@@ -181,7 +183,10 @@ function tokenize(command: string): string[] {
 function commands(command: string): string[][] {
   const out: string[][] = [[]];
   for (const t of tokenize(command)) {
-    if (SEPARATORS.has(t)) out.push([]);
+    // A substitution's output becomes the outer command's arguments: mark it,
+    // so they read as unknown, then scan the substitution as its own command.
+    if (t === SUBST) out.at(-1)?.push("$(");
+    if (t === SUBST || SEPARATORS.has(t)) out.push([]);
     else out.at(-1)?.push(t);
   }
   return out.filter((c) => c.length > 0);
@@ -189,37 +194,128 @@ function commands(command: string): string[][] {
 
 const base = (word: string) => word.split("/").at(-1) ?? word;
 
-function bashAsks(command: string, ctx: ClassifyContext, depth = 0): boolean {
+/** Shell words that start a compound command; the command proper follows. */
+const RESERVED = new Set([
+  "if",
+  "then",
+  "elif",
+  "else",
+  "do",
+  "while",
+  "until",
+  "!",
+  "{",
+  "}",
+]);
+
+/**
+ * Commands that run the next word as a command, with their options that take
+ * a value. `timeout` also takes a duration before the command.
+ */
+const WRAPPERS: Record<string, string[]> = {
+  env: ["-u", "--unset", "-C", "--chdir", "-S", "--split-string"],
+  sudo: ["-u", "-g", "-C", "-D", "-h", "-p", "-U"],
+  time: ["-f", "-o"],
+  command: [],
+  exec: ["-a"],
+  nohup: [],
+  timeout: ["-s", "--signal", "-k", "--kill-after"],
+  nice: ["-n", "--adjustment"],
+  ionice: ["-c", "--class", "-n", "--classdata", "-p", "--pid"],
+  stdbuf: ["-i", "-o", "-e", "--input", "--output", "--error"],
+  xargs: [
+    "-I",
+    "-n",
+    "-P",
+    "-d",
+    "-L",
+    "-s",
+    "-E",
+    "-a",
+    "--max-args",
+    "--max-procs",
+    "--delimiter",
+  ],
+};
+
+/**
+ * The index of the command word, past assignments, reserved words and
+ * wrappers, and whether `xargs` adds arguments the command line doesn't show.
+ */
+function commandStart(words: string[]): { i: number; appends: boolean } {
+  let i = 0;
+  let appends = false;
+  while (i < words.length) {
+    const w = words[i] ?? "";
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || RESERVED.has(w)) {
+      i++;
+      continue;
+    }
+    const valued = WRAPPERS[base(w)];
+    if (!valued) break;
+    if (base(w) === "xargs") appends = true;
+    i++;
+    while (i < words.length && (words[i] ?? "").startsWith("-")) {
+      i += valued.includes(words[i] ?? "") ? 2 : 1;
+    }
+    if (base(w) === "timeout") i++;
+  }
+  return { i, appends };
+}
+
+/** `-c`, `-lc`, `-ec`…: a shell's option cluster that runs the next word. */
+const isDashC = (a: string) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a);
+
+/** What the parser made of a command's pushes: asks, or how many it cleared. */
+type ShellScan = { ask: boolean; clearedPushes: number };
+
+function scan(command: string, ctx: ClassifyContext, depth: number): ShellScan {
+  const out: ShellScan = { ask: false, clearedPushes: 0 };
   let cwd = ctx.cwd;
   for (const words of commands(command)) {
-    // Leading `VAR=value`, `env`, `sudo`, `time`, `command`, `exec`, `nohup`.
-    let i = 0;
-    while (
-      i < words.length &&
-      (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i] ?? "") ||
-        ["env", "sudo", "time", "command", "exec", "nohup"].includes(
-          words[i] ?? "",
-        ))
-    ) {
-      i++;
-    }
-    const [cmd = "", ...args] = words.slice(i);
+    const start = commandStart(words);
+    const [cmd = "", ...args] = words.slice(start.i);
     const name = base(cmd);
+    let inner: string | undefined;
     if (name === "cd" && args[0]) {
       cwd = args[0].startsWith("/") ? args[0] : `${cwd}/${args[0]}`;
     } else if (["sh", "bash", "zsh", "dash"].includes(name)) {
-      const c = args.indexOf("-c");
-      const script = c >= 0 ? args[c + 1] : undefined;
-      if (script && depth < 3 && bashAsks(script, { ...ctx, cwd }, depth + 1)) {
-        return true;
-      }
-    } else if (name === "eval" && depth < 3) {
-      if (bashAsks(args.join(" "), { ...ctx, cwd }, depth + 1)) return true;
-    } else if (name === "git" && gitPushAsks(args, cwd, ctx)) {
-      return true;
+      const c = args.findIndex(isDashC);
+      inner = c >= 0 ? args[c + 1] : undefined;
+    } else if (name === "eval") {
+      inner = args.join(" ");
+    } else if (name === "git") {
+      const push = gitPush(args, cwd, ctx);
+      if (push === "ask" || (push === "clear" && start.appends)) out.ask = true;
+      else if (push === "clear") out.clearedPushes++;
     } else if (name === "gh" && ghAsks(args)) {
-      return true;
+      out.ask = true;
     }
+    if (inner !== undefined) {
+      if (depth >= 3) {
+        out.ask = true;
+      } else {
+        const s = scan(inner, { ...ctx, cwd }, depth + 1);
+        out.ask ||= s.ask;
+        out.clearedPushes += s.clearedPushes;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * A shell command asks when it merges or pushes to `main`. What the parser
+ * can't read fails safe: a command that mentions more pushes than the parser
+ * cleared as non-main asks, and so does any `gh … merge`.
+ */
+function bashAsks(command: string, ctx: ClassifyContext): boolean {
+  const s = scan(command, ctx, 0);
+  if (s.ask) return true;
+  if (/\bgh\b[\s\S]*\bmerge\b/.test(command)) return true;
+  if (/\bgit\b[\s\S]*\bpush\b/.test(command)) {
+    const mentioned = command.match(/\bpush\b/g)?.length ?? 0;
+    return s.clearedPushes < mentioned;
   }
   return false;
 }
@@ -243,11 +339,15 @@ const PUSH_VALUE_OPTIONS = new Set([
 
 const branchOf = (ref: string) => ref.replace(/^refs\/heads\//, "");
 
-function gitPushAsks(
+/** Shell expansion or a glob: the word isn't what git will see. */
+const UNREADABLE = /[$`*?[]/;
+
+/** A `git` command: not a push, a push that asks, or a push cleared as non-main. */
+function gitPush(
   args: string[],
   cwd: string,
   ctx: ClassifyContext,
-): boolean {
+): "none" | "ask" | "clear" {
   let i = 0;
   let dir = cwd;
   while (i < args.length && args[i]?.startsWith("-")) {
@@ -258,7 +358,7 @@ function gitPushAsks(
     }
     i += GIT_VALUE_OPTIONS.has(opt) ? 2 : 1;
   }
-  if (args[i] !== "push") return false;
+  if (args[i] !== "push") return "none";
 
   const positional: string[] = [];
   let everything = false;
@@ -268,26 +368,23 @@ function gitPushAsks(
     else if (PUSH_VALUE_OPTIONS.has(a)) j++;
     else if (!a.startsWith("-") || a === "-") positional.push(a);
   }
-  if (everything) return true;
+  if (everything || positional.some((p) => UNREADABLE.test(p))) return "ask";
 
   const current = () => ctx.currentBranch(dir);
   const refspecs = positional.slice(1);
-  if (refspecs.length === 0) {
-    // `git push [remote]` pushes the current branch to its namesake.
-    const branch = current();
-    return branch === null || MAIN.has(branch);
-  }
-  return refspecs.some((spec) => {
+  const toMain = (spec: string) => {
     const s = spec.replace(/^\+/, "");
     const colon = s.indexOf(":");
-    let dst = colon >= 0 ? s.slice(colon + 1) : s;
-    if (dst === "HEAD" || dst === "@") {
+    const dst = colon >= 0 ? s.slice(colon + 1) : s;
+    // `git push [remote]` and `HEAD` push the current branch to its namesake.
+    if (dst === "HEAD" || dst === "@" || dst === "") {
       const branch = current();
-      if (branch === null) return true;
-      dst = branch;
+      return branch === null || MAIN.has(branch);
     }
     return MAIN.has(branchOf(dst));
-  });
+  };
+  const asks = refspecs.length === 0 ? toMain("HEAD") : refspecs.some(toMain);
+  return asks ? "ask" : "clear";
 }
 
 function ghAsks(args: string[]): boolean {
