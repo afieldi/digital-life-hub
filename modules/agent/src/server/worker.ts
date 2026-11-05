@@ -26,6 +26,7 @@ import {
   agentRunEvents,
   agentRunMessages,
   agentRuns,
+  agentSettings,
 } from "../db/schema";
 import { agentOps } from "../operations";
 import type { Decision, Pending, RunRow } from "../schema";
@@ -98,7 +99,9 @@ const requestView = z.object({
   request: z.object({
     body: z.string().nullable(),
     fromName: z.string().nullable(),
+    source: z.string(),
     sourceHandle: z.string().nullable(),
+    sourceUrl: z.string().nullable(),
   }),
 });
 
@@ -116,6 +119,8 @@ async function readRequest(w: ScopedWriter, taskId: string) {
     return {
       sender: request.fromName ?? request.sourceHandle,
       body: request.body,
+      source: request.source,
+      sourceUrl: request.sourceUrl,
     };
   } catch (e) {
     if (isNotFound(e)) return null;
@@ -219,7 +224,20 @@ export type ClaimResult =
       run: RunRow;
       token: string;
       task: { id: string; title: string; notes: string | null };
-      request: { sender: string | null; body: string | null } | null;
+      request: {
+        sender: string | null;
+        body: string | null;
+        source: string;
+        sourceUrl: string | null;
+      } | null;
+      instructions: string;
+      /** Every connection that isn't disabled, not only the run's granted ones. */
+      connections: {
+        id: string;
+        name: string;
+        type: string;
+        scopeSummary: string;
+      }[];
       connectionIds: string[];
       sessionId: string | null;
       decision: Decision | null;
@@ -235,6 +253,8 @@ export const claim = implementOperation(agentOps.claim, {
       sql`select pg_advisory_xact_lock(hashtext('agent.claim'))`,
     );
     const settings = await readSettings(w.tx);
+    // Every claim shows the worker is up, whether or not it gets a run.
+    await w.tx.update(agentSettings).set({ workerSeenAt: now });
     await sweepStale(w, new Date(now.getTime() - STALE_MS));
     await sweepEvents(w, new Date(now.getTime() - EVENTS_KEPT_MS));
     const queued = await sweepQueue(w, now, settings.timeZone);
@@ -281,6 +301,17 @@ export const claim = implementOperation(agentOps.claim, {
         token,
         task: { id: task.id, title: task.title, notes: task.notes },
         request: await readRequest(w, run.taskId),
+        instructions: settings.instructions,
+        connections: await w.tx
+          .select({
+            id: agentConnections.id,
+            name: agentConnections.name,
+            type: agentConnections.type,
+            scopeSummary: agentConnections.scopeSummary,
+          })
+          .from(agentConnections)
+          .where(isNull(agentConnections.disabledAt))
+          .orderBy(asc(agentConnections.name)),
         connectionIds: row.connectionIds,
         sessionId: row.sessionId,
         decision,
@@ -448,6 +479,9 @@ export const heartbeat = implementOperation(agentOps.heartbeat, {
         inputTokens: input.inputTokens,
         outputTokens: input.outputTokens,
         costUsd: String(input.costUsd),
+        // The image is kept from the first heartbeat that sends one.
+        ...(input.image && !run.image ? { image: input.image } : {}),
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       })
       .where(eq(agentRuns.id, run.id))
       .returning();

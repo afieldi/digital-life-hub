@@ -230,6 +230,7 @@ test("settings returns the defaults; setSettings changes only what it is given",
     maxCostUsd: 10,
     instructions: "",
     timeZone: "UTC",
+    workerSeenAt: null,
   });
   const out = await s.caller.agent.setSettings({
     maxCostUsd: 2.5,

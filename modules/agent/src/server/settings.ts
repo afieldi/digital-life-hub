@@ -2,7 +2,7 @@ import { implementOperation, type Tx } from "@dlh/server";
 import { eq } from "drizzle-orm";
 import { agentSettings } from "../db/schema";
 import { agentOps } from "../operations";
-import { type Settings, settings } from "../schema";
+import { type Settings, type SettingsView, settings } from "../schema";
 
 type SettingsTableRow = typeof agentSettings.$inferSelect;
 
@@ -48,8 +48,15 @@ export async function writeSettings(
 }
 
 export const settingsQuery = implementOperation(agentOps.settings, {
-  async run(deps) {
-    return readSettings(deps.db);
+  async run(deps): Promise<SettingsView> {
+    const [row] = await deps.db
+      .select({ seen: agentSettings.workerSeenAt })
+      .from(agentSettings)
+      .where(eq(agentSettings.id, 1));
+    return {
+      ...(await readSettings(deps.db)),
+      workerSeenAt: row?.seen?.toISOString() ?? null,
+    };
   },
 });
 

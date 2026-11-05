@@ -1,0 +1,1 @@
+ALTER TABLE "agent_settings" ADD COLUMN "worker_seen_at" timestamp (3) with time zone;
