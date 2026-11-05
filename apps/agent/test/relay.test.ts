@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { createPrices, gatewayModelId, type Price } from "../src/relay/prices";
@@ -42,8 +42,8 @@ async function setup(script: ScriptedTurn[]) {
       }),
   );
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  const call = (headers: Record<string, string> = {}) =>
-    fetch(`${base}/model/v1/messages`, {
+  const call = (headers: Record<string, string> = {}, path = "/v1/messages") =>
+    fetch(`${base}/model${path}`, {
       method: "POST",
       headers: {
         authorization: "Bearer dlh-run",
@@ -53,7 +53,20 @@ async function setup(script: ScriptedTurn[]) {
       },
       body: JSON.stringify({ model: "claude-opus-5-5", messages: [] }),
     });
-  return { upstream, relay, call, failure: () => failure };
+  // fetch normalises dot segments itself, so raw spellings go through node:http.
+  const raw = (path: string) =>
+    new Promise<number>((resolve, reject) => {
+      const r = request(
+        { host: "127.0.0.1", port: new URL(base).port, method: "POST", path },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode ?? 0));
+        },
+      );
+      r.on("error", reject);
+      r.end("{}");
+    });
+  return { upstream, relay, call, raw, failure: () => failure };
 }
 
 const turn: ScriptedTurn = {
@@ -207,6 +220,38 @@ describe("relay", () => {
       inputTokens: 10,
       outputTokens: 5,
     });
+  });
+
+  it("a null usage in message_delta keeps the counts from message_start", async () => {
+    const { relay, call } = await setup([{ ...turn, nullDelta: true }]);
+    await (await call()).text();
+    expect(relay.usage().inputTokens).toBe(6 + 14886 + 29169);
+    expect(relay.usage().costUsd).toBeCloseTo(0.0883, 4);
+  });
+
+  it("only the Messages paths are allowed, spelled exactly", async () => {
+    const { upstream, raw, relay } = await setup([turn]);
+    for (const p of [
+      "/v1/../v1/messages",
+      "/v1/%2e%2e/v1/messages",
+      "/v1/%2E%2E/v1/messages",
+      "/../v1/chat/completions",
+      "//v1/messages",
+      "/v1/messages/",
+      "/v1/chat/completions",
+      "/v1//messages",
+    ]) {
+      expect(await raw(`/model${p}`), p).toBe(404);
+    }
+    expect(upstream.requests).toHaveLength(0);
+    expect(relay.usage().turns).toBe(0);
+  });
+
+  it("a query on /v1/messages still counts", async () => {
+    const { upstream, call, relay } = await setup([turn]);
+    await (await call({}, "/v1/messages?beta=true")).text();
+    expect(upstream.requests[0]?.url).toBe("/v1/messages?beta=true");
+    expect(relay.usage().turns).toBe(1);
   });
 
   it('402 is "AI budget reached"', async () => {

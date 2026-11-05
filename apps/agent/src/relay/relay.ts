@@ -46,18 +46,20 @@ const DROP_RESPONSE = new Set([
   "keep-alive",
 ]);
 
-const int = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
+const ALLOWED_PATHS = new Set(["/v1/messages", "/v1/messages/count_tokens"]);
 
-/** Folds a usage object into `c`; `output_tokens` is cumulative so it replaces. */
+/** Takes the larger of what was seen; null or missing fields in a delta change nothing. */
+const keepMax = (now: number, v: unknown) =>
+  typeof v === "number" && v > now ? v : now;
+
+/** Folds a usage object into `c`, field by field. */
 function readUsage(c: Counts, u: unknown) {
   if (typeof u !== "object" || u === null) return;
   const x = u as Record<string, unknown>;
-  if ("input_tokens" in x) c.input = int(x.input_tokens);
-  if ("cache_creation_input_tokens" in x)
-    c.cacheWrite = int(x.cache_creation_input_tokens);
-  if ("cache_read_input_tokens" in x)
-    c.cacheRead = int(x.cache_read_input_tokens);
-  if ("output_tokens" in x) c.output = int(x.output_tokens);
+  c.input = keepMax(c.input, x.input_tokens);
+  c.cacheWrite = keepMax(c.cacheWrite, x.cache_creation_input_tokens);
+  c.cacheRead = keepMax(c.cacheRead, x.cache_read_input_tokens);
+  c.output = keepMax(c.output, x.output_tokens);
 }
 
 /** Reads usage from SSE bytes as they go by. */
@@ -125,13 +127,15 @@ export function createRelay(opts: {
 
   async function handle(req: IncomingMessage, res: ServerResponse) {
     const url = req.url ?? "";
-    if (!url.startsWith("/model/")) {
+    // The container is untrusted: only the Messages paths, spelled exactly, so
+    // nothing normalises its way to another Gateway endpoint or past the pricing.
+    const [pathname = "", query] = url.slice("/model".length).split("?", 2);
+    if (!url.startsWith("/model/") || !ALLOWED_PATHS.has(pathname)) {
       res.writeHead(404).end();
       return;
     }
-    const path = url.slice("/model".length);
-    const isTurn =
-      req.method === "POST" && path.split("?")[0] === "/v1/messages";
+    const path = query === undefined ? pathname : `${pathname}?${query}`;
+    const isTurn = req.method === "POST" && pathname === "/v1/messages";
     const payload = await body(req);
 
     const headers: Record<string, string> = {};

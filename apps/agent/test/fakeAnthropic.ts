@@ -12,6 +12,8 @@ export type ScriptedTurn = {
   };
   /** Answer with this status and an error body instead of a stream. */
   status?: number;
+  /** Send the real API's null input and cache fields in `message_delta`. */
+  nullDelta?: boolean;
 };
 
 export type SeenRequest = {
@@ -110,7 +112,14 @@ export async function fakeAnthropic(script: ScriptedTurn[]) {
         sse("message_delta", {
           type: "message_delta",
           delta: { stop_reason: turn.toolUse ? "tool_use" : "end_turn" },
-          usage: { output_tokens: usage.output_tokens },
+          usage: turn.nullDelta
+            ? {
+                input_tokens: null,
+                cache_creation_input_tokens: null,
+                cache_read_input_tokens: null,
+                output_tokens: usage.output_tokens,
+              }
+            : { output_tokens: usage.output_tokens },
         }),
       );
       res.end(sse("message_stop", { type: "message_stop" }));
