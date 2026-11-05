@@ -42,7 +42,10 @@ const MAX_BACKOFF_MS = 30_000;
 const defaultBackoff = (attempt: number) =>
   Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt);
 
-export function createApi(config: Config, opts: ApiOptions = {}): WorkerApi {
+export function createApi(
+  config: Pick<Config, "apiUrl" | "workerToken">,
+  opts: ApiOptions = {},
+): WorkerApi {
   const doFetch = opts.fetch ?? fetch;
   const backoffMs = opts.backoffMs ?? defaultBackoff;
   const base = config.apiUrl.replace(/\/$/, "");

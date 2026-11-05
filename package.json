@@ -14,6 +14,7 @@
     "lint": "biome check . && tsx scripts/check-module-classes.ts && tsx scripts/gen-modules.ts --check",
     "test:scripts": "vitest run scripts",
     "test:db": "turbo run test:db && turbo run test:perf",
+    "agent": "pnpm --filter @dlh/agent cli",
     "dev:down": "docker compose down",
     "db:migrate": "pnpm --filter @dlh/api migrate",
     "db:reset": "pnpm --filter @dlh/db reset && pnpm --filter @dlh/api migrate && pnpm --filter @dlh/api seed",

@@ -1,10 +1,8 @@
 import { z } from "zod";
 
-const config = z.object({
+const cliConfig = z.object({
   apiUrl: z.url(),
   workerToken: z.string().min(1),
-  gatewayKey: z.string().min(1),
-  gatewayUrl: z.url(),
   /** Decrypts the connection secrets the hub stores. */
   secretsKey: z
     .string()
@@ -15,7 +13,33 @@ const config = z.object({
     ),
   dataDir: z.string().min(1),
 });
+const config = cliConfig.extend({
+  gatewayKey: z.string().min(1),
+  gatewayUrl: z.url(),
+});
 export type Config = z.output<typeof config>;
+/** What the connection CLI needs: no Gateway key. */
+export type CliConfig = z.output<typeof cliConfig>;
+
+function fail(error: z.ZodError): never {
+  const bad = error.issues
+    .map((i) => `${i.path.join(".")}: ${i.message}`)
+    .join("; ");
+  throw new Error(`Invalid agent worker config: ${bad}`);
+}
+
+/** Reads the CLI's settings from `env`: the API, the secrets key and the data dir. */
+export function loadCliConfig(
+  env: Record<string, string | undefined>,
+): CliConfig {
+  const parsed = cliConfig.safeParse({
+    apiUrl: env.API_URL,
+    workerToken: env.AGENT_WORKER_TOKEN,
+    secretsKey: env.AGENT_SECRETS_KEY,
+    dataDir: env.AGENT_DATA_DIR || "/var/lib/dlh-agent",
+  });
+  return parsed.success ? parsed.data : fail(parsed.error);
+}
 
 /** Reads the worker's settings from `env`; throws a message naming each bad one. */
 export function loadConfig(env: Record<string, string | undefined>): Config {
@@ -28,11 +52,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     secretsKey: env.AGENT_SECRETS_KEY,
     dataDir: env.AGENT_DATA_DIR || "/var/lib/dlh-agent",
   });
-  if (!parsed.success) {
-    const bad = parsed.error.issues
-      .map((i) => `${i.path.join(".")}: ${i.message}`)
-      .join("; ");
-    throw new Error(`Invalid agent worker config: ${bad}`);
-  }
+  if (!parsed.success) fail(parsed.error);
   return parsed.data;
 }
