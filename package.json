@@ -15,6 +15,7 @@
     "test:scripts": "vitest run scripts",
     "test:db": "turbo run test:db && turbo run test:perf",
     "agent": "pnpm --filter @dlh/agent cli",
+    "agent:image": "docker build -f packages/agent-runner/Dockerfile -t dlh-agent-runner .",
     "dev:down": "docker compose down",
     "db:migrate": "pnpm --filter @dlh/api migrate",
     "db:reset": "pnpm --filter @dlh/db reset && pnpm --filter @dlh/api migrate && pnpm --filter @dlh/api seed",

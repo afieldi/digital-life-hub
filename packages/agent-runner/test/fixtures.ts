@@ -92,6 +92,9 @@ export function fakeHost(
     async session(sessionId) {
       calls.session.push(sessionId);
     },
+    async credentials() {
+      throw new Error("not used");
+    },
   };
   return { host, calls };
 }

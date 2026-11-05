@@ -1,5 +1,6 @@
 import { request } from "node:http";
 import {
+  credentialsResponse,
   type EventsRequest,
   type FailRequest,
   type FinishRequest,
@@ -34,6 +35,8 @@ export interface Host {
   finish(req: FinishRequest): Promise<void>;
   fail(req: FailRequest): Promise<void>;
   session(sessionId: string): Promise<void>;
+  /** A granted connection's secret; refused (403) for one not granted. */
+  credentials(type: string, name: string): Promise<Record<string, string>>;
 }
 
 /** A route that didn't answer 2xx. The body's `error` is the worker's own text. */
@@ -136,6 +139,10 @@ export function createHost(socketPath = SOCKET_PATH): Host {
     },
     async session(sessionId) {
       await post("/session", { sessionId });
+    },
+    async credentials(type, name) {
+      const path = `/credentials/${encodeURIComponent(type)}/${encodeURIComponent(name)}`;
+      return (await get(path, credentialsResponse)).secret;
     },
   };
 }

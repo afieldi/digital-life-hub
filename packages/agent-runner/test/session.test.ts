@@ -202,6 +202,21 @@ describe("runSession", () => {
     expect(typeof seen.options?.canUseTool).toBe("function");
   });
 
+  it("connections' MCP servers and env reach the SDK, the runner's server kept", async () => {
+    const { host } = fakeHost();
+    const { query, seen } = fakeQuery(() => [result()]);
+    const slack = { type: "stdio" as const, command: "node", args: ["x"] };
+    await runSession(runStart(), {
+      ...deps(host, query),
+      env: { DEPLOY_KEY: "v", ANTHROPIC_API_KEY: "not-empty" },
+      mcpServers: { Slack: slack, dlh: slack },
+    });
+    expect(seen.options?.mcpServers?.Slack).toEqual(slack);
+    expect(seen.options?.mcpServers?.dlh).not.toEqual(slack);
+    expect(seen.options?.env?.DEPLOY_KEY).toBe("v");
+    expect(seen.options?.env?.ANTHROPIC_API_KEY).toBe("");
+  });
+
   it("messages from the socket reach the session", async () => {
     const { host, calls } = fakeHost({
       inbox: [{ id: "m1", body: "Use the staging branch" }],

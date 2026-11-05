@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   createSdkMcpServer,
+  type McpStdioServerConfig,
   type Options,
   type SDKMessage,
   type SDKUserMessage,
@@ -43,6 +44,8 @@ export type SessionDeps = {
   currentBranch?: (cwd: string) => string | null;
   /** Extra variables for the SDK child, on top of the container's own. */
   env?: Record<string, string>;
+  /** The granted connections' MCP servers, keyed by `mcpServerKey(name)`. */
+  mcpServers?: Record<string, McpStdioServerConfig>;
   log?: (line: string) => void;
 };
 
@@ -275,6 +278,7 @@ export async function runSession(
     permissionMode: "default",
     canUseTool,
     mcpServers: {
+      ...deps.mcpServers,
       [RUNNER_SERVER]: createSdkMcpServer({
         name: RUNNER_SERVER,
         version: "1.0.0",

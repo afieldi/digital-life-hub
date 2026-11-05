@@ -1,4 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { prepareWorkspace, runGit, wireConnections } from "./connections";
 import { startForwarder } from "./forwarder";
 import { createHost } from "./host";
 import { runSession } from "./session";
@@ -15,11 +16,20 @@ async function main(): Promise<number> {
   const forwarder = await startForwarder();
   try {
     const start = await host.run();
+    const workspace = "/workspace";
+    const wiring = await wireConnections(
+      start,
+      (type, name) => host.credentials(type, name),
+      { workspace },
+    );
+    await prepareWorkspace(wiring, workspace, { git: runGit, log });
     const outcome = await runSession(start, {
       query,
       host,
       configDir: process.env.CLAUDE_CONFIG_DIR ?? "/workspace/.claude",
-      workspace: "/workspace",
+      workspace,
+      env: wiring.env,
+      mcpServers: wiring.mcpServers,
       log,
     });
     log(`session ended: ${outcome}`);
