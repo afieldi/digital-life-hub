@@ -67,6 +67,10 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
     if (action === "add") {
       const [type, name] = rest;
       if (!name || !(type === "env" || type in FIELDS)) throw new Error(USAGE);
+      if (store.listConnections().some((c) => c.name === name))
+        throw new Error(
+          `A connection named "${name}" already exists locally; remove it first.`,
+        );
       const secret = await collectSecret(type, deps.prompt);
       const scopeSummary = await deps.prompt(
         "Scope summary (shown to the agent)",
@@ -76,7 +80,13 @@ export async function runCli(argv: string[], deps: CliDeps): Promise<void> {
         type,
         scopeSummary,
       });
-      store.addConnection({ id, name, type, scopeSummary, secret });
+      try {
+        store.addConnection({ id, name, type, scopeSummary, secret });
+      } catch {
+        throw new Error(
+          `Registered on the hub as ${id} but the local store failed; disable it in Settings.`,
+        );
+      }
       deps.out(`Added ${type} connection "${name}".`);
     } else if (action === "list") {
       for (const c of store.listConnections())

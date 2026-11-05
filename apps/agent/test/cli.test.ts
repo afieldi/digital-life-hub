@@ -79,6 +79,16 @@ describe("connection CLI", () => {
     expect(store.secretOf("conn-1")).toEqual({ A: "1", B: "two=2" });
   });
 
+  it("connection add with an existing name refuses before registering", async () => {
+    const s = setup(["tok", "scope"]);
+    await runCli(["connection", "add", "slack", "team"], s.deps);
+    s.registered.length = 0;
+    await expect(
+      runCli(["connection", "add", "slack", "team"], s.deps),
+    ).rejects.toThrow("already exists");
+    expect(s.registered).toEqual([]);
+  });
+
   it("list prints metadata and remove deletes the local secret", async () => {
     const s = setup(["tok", "channels"]);
     await runCli(["connection", "add", "slack", "team"], s.deps);
