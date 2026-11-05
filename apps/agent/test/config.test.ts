@@ -4,9 +4,9 @@ import { loadConfig } from "../src/config";
 const key = Buffer.alloc(32, 7).toString("base64");
 const env = {
   API_URL: "http://127.0.0.1:8787",
-  WORKER_TOKEN: "w-token",
-  GATEWAY_KEY: "gw-key",
-  SECRETS_KEY: key,
+  AGENT_WORKER_TOKEN: "w-token",
+  AI_GATEWAY_API_KEY: "gw-key",
+  AGENT_SECRETS_KEY: key,
 };
 
 describe("loadConfig", () => {
@@ -25,11 +25,11 @@ describe("loadConfig", () => {
 
   it("a short secrets key is refused", () => {
     const short = Buffer.alloc(16, 7).toString("base64");
-    expect(() => loadConfig({ ...env, SECRETS_KEY: short })).toThrow();
+    expect(() => loadConfig({ ...env, AGENT_SECRETS_KEY: short })).toThrow();
   });
 
   it("a missing worker token is refused", () => {
-    const { WORKER_TOKEN: _, ...rest } = env;
+    const { AGENT_WORKER_TOKEN: _, ...rest } = env;
     expect(() => loadConfig(rest)).toThrow();
   });
 });
