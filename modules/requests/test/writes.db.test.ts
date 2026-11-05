@@ -17,6 +17,7 @@ import { z } from "zod";
 import tasksServer from "../../tasks/src/server";
 import { requests } from "../src/db/schema";
 import { requestOps } from "../src/operations";
+import { requestAction } from "../src/schema";
 import requestsServer from "../src/server";
 import { seed } from "../src/server/seed";
 
@@ -55,6 +56,24 @@ const peekDesc = describeOperation({
   effects: [],
   summary: () => "Peek",
 });
+/** Files a request with actions through an operation call, as agent suspend and fail do. */
+const fileWithDesc = describeOperation({
+  id: "fake.fileWith",
+  kind: "mutation",
+  label: "File with actions",
+  description: "Files a request with actions through requests.file.",
+  appliesTo: "none",
+  input: z.object({
+    title: z.string(),
+    actions: z.array(requestAction),
+  }),
+  subject: () => null,
+  effects: ["createItems"],
+  summary: () => "File with actions",
+  calls: [requestOps.file],
+  palette: false,
+  ai: false,
+});
 const noop = {
   async run() {
     return { result: null, undo: null };
@@ -68,6 +87,20 @@ const fakeServer = defineServerModule({
   operations: {
     approve: implementOperation(approveDesc, noop),
     plain: implementOperation(plainDesc, noop),
+    fileWith: implementOperation(fileWithDesc, {
+      async run(w, input) {
+        if (!w.call) throw new Error("no call");
+        return {
+          result: await w.call(requestOps.file, {
+            ...input,
+            source: "agent",
+          }),
+          undo: null,
+        };
+      },
+      async undo() {},
+      undoRecord: z.null(),
+    }),
     peek: implementOperation(peekDesc, {
       async run() {
         return null;
@@ -215,7 +248,7 @@ test("file writes item and row in one transaction", async () => {
   // A failure after the item is written leaves neither item nor row.
   const before = [await count(deps, "items"), await count(deps, "requests")];
   await expect(
-    caller.requests.file({
+    caller.fake.fileWith({
       title: "Bad action",
       actions: [{ label: "Go", operation: "fake.plain", input: {} }],
     }),
@@ -278,20 +311,58 @@ test("file refuses an action whose operation doesn't call requests.resolve", asy
   const { caller, close } = await setup();
   for (const operation of ["fake.plain", "fake.peek", "fake.missing"]) {
     await expect(
-      caller.requests.file({
+      caller.fake.fileWith({
         title: "Approve?",
         actions: [{ label: "Go", operation, input: {} }],
       }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   }
-  const ok = await caller.requests.file({
+  await close();
+});
+
+test("filing with actions through an operation call works", async () => {
+  const { caller, close } = await setup();
+  const ok = await caller.fake.fileWith({
     title: "Approve?",
-    source: "agent",
     actions: [{ label: "Approve", operation: "fake.approve", input: {} }],
   });
-  expect(ok.result.request.actions).toEqual([
+  const { request } = ok.result as { request: { actions: unknown } };
+  expect(request.actions).toEqual([
     { label: "Approve", operation: "fake.approve", input: {} },
   ]);
+  await close();
+});
+
+test("only an operation call may file with actions", async () => {
+  const { db, deps, caller, close } = await setup();
+  const run = testServer(db, [requestsServer, tasksServer, fakeServer], {
+    principal: {
+      kind: "run",
+      tokenId: "t",
+      runId: "0190a000-0000-7000-8000-000000000001",
+    },
+  }).caller;
+  const before = await count(deps, "requests");
+  for (const as of [caller, run]) {
+    await expect(
+      as.requests.file({
+        title: "Approve?",
+        source: "agent",
+        actions: [{ label: "Approve", operation: "fake.approve", input: {} }],
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Only an operation call may file with actions",
+    });
+  }
+  // A plain request, with any source, is still filed directly.
+  const plain = await run.requests.file({
+    title: "Ping",
+    source: "slack",
+    externalId: "S1",
+  });
+  expect(plain.result.existing).toBe(false);
+  expect(await count(deps, "requests")).toBe(before + 1);
   await close();
 });
 

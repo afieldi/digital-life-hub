@@ -124,7 +124,19 @@ describe("collectServerModules operations", () => {
     ).toThrow('Operation "a.peek" is mounted as "a.look"');
   });
 
-  it("rejects an appliesTo type the module does not own", () => {
+  it("rejects an appliesTo type no module owns", () => {
+    expect(() =>
+      collectServerModules(
+        [withOps("a", { peek: peek("a.peek", ["task"]) })],
+        reserved,
+        core,
+      ),
+    ).toThrow(
+      'Operation "a.peek" applies to item type "task" that no module owns',
+    );
+  });
+
+  it("accepts an appliesTo type another module owns", () => {
     const other = defineServerModule({ id: "b", itemTypes: ["task"], router });
     expect(() =>
       collectServerModules(
@@ -132,9 +144,7 @@ describe("collectServerModules operations", () => {
         reserved,
         core,
       ),
-    ).toThrow(
-      'Operation "a.peek" applies to item type "task" that its module does not own',
-    );
+    ).not.toThrow();
   });
 
   describe("calls", () => {

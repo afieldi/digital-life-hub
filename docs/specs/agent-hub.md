@@ -115,11 +115,17 @@ A token is a random 32-byte base64url string, stored only as its SHA-256 hash. A
 
 **Touching an item.** `w.touchItem(id)` bumps an item's version and publishes it to `/changes`, with no `expectedUpdatedAt`. Run state changes use it; it changes no field, so it never conflicts with your edits. It needs the `touchItems` effect on the operation, which AI may not run without asking first.
 
+**Called or not.** A called operation's writer has `viaCall: true`; a top-level run's has none. A module uses it to allow a write only through another operation: `requests.file` refuses `actions` unless it is called (`BAD_REQUEST` "Only an operation call may file with actions"), so you and a run token file only plain requests, while the agent's `suspend` and `fail` attach Approve, Decline and Retry. Any `source` may still file directly; pre-filing the agent's own `externalId` makes `suspend` and `fail` `CONFLICT`. Undo skips a caller whose own record is null and still reverts its callees.
+
 ## Run lifecycle
 
-**Making an AI task.** `agent.assign({ taskId, connections? })` calls `tasks.setAssignee` with `agent`, stores the connections (the default set when left out) and queues a run, in one transaction. It does not touch the task itself, because `setAssignee` already bumped it. Its Undo cancels the queued run, then reverts `setAssignee` through the callee undo record. `agent.unassign` sets the assignee back to `me` and cancels any active run.
+**Making an AI task.** `agent.assign({ id, expectedUpdatedAt, connections? })`, on the task on screen, calls `tasks.setAssignee` with `agent`, stores the connections (the default set when left out) and queues a run, in one transaction. Given connections must exist and not be disabled, else `BAD_REQUEST` "Unknown or disabled connection". A task with a live run is `CONFLICT` "The agent already has this task". If the task's latest run failed, its open "Needs you" is resolved as `handled`, so its Retry doesn't outlive the new run.
 
-**Give to agent.** From a request, `agent.assignRequest({ requestId, expectedUpdatedAt, title?, notes?, connections? })` makes the task through `tasks.create` (the request's title and body by default), calls `tasks.setAssignee`, resolves the request as `task` through `requests.resolve`, stores the request's id on the assignment (`request_id`), and queues a run, in one transaction. Each is a direct call, so calls stay one level deep. Its Undo reverts `requests.resolve` and `tasks.setAssignee` through their callee undo records and soft-deletes the task, which cancels the queued run. Once the run has been claimed, the task has changed and the Undo is `CONFLICT` "Changed since", reverting nothing.
+- **Touch.** `assign` does not touch the task when `setAssignee` bumped it: a touch after a callee's update would make the callee's undo conflict. When the task was already the agent's, `setAssignee` changes nothing, so `assign` touches the task to show the new run, and its Undo touches it too. `assignRequest` never touches: its task is new.
+- **Undo.** Deletes the queued run and restores the assignment's connections, then the callee records reopen the "Needs you" and set the assignee back. Once the run has been claimed it is `CONFLICT` "Changed since".
+- **Back to me.** `agent.unassign({ id, expectedUpdatedAt })` locks the live run, sets the assignee back to `me` and cancels the run, resolving the approval or grant it waited on as `handled`. With no live run, it resolves the latest run's open "Needs you" instead. Its Undo puts a cancelled run back as it was (see Cancel), reopens the request and gives the task back to the agent. With no live run, Undo only reverts the callees.
+
+**Give to agent.** From a request, `agent.assignRequest({ id, expectedUpdatedAt, title?, notes?, connections? })`, on the request on screen, makes the task through `tasks.create` (the request's title and body by default), calls `tasks.setAssignee`, resolves the request as `task` through `requests.resolve`, stores the request's id on the assignment (`request_id`), and queues a run, in one transaction. Each is a direct call, so calls stay one level deep. Connections are checked as for `assign`. Its Undo deletes the queued run, reverts `requests.resolve` and `tasks.setAssignee` through their callee undo records and soft-deletes the task. Once the run has been claimed the Undo is `CONFLICT` "Changed since", reverting nothing.
 
 ```
 queued → running → done
@@ -133,11 +139,15 @@ cancelled from queued, running or waiting
   - Claims are serialised by `pg_advisory_xact_lock(hashtext('agent.claim'))`, so the parallel limit can't be overshot.
   - Before choosing a run, `claim` sweeps: running runs with no heartbeat for 2 minutes go back to `queued` and their tokens are revoked; events of runs that ended more than 30 days ago are deleted; a queued or waiting run whose task was completed, deleted or unassigned is cancelled.
   - If the run has a `decision` not yet delivered, `claim` returns it for the next message and sets `decision.delivered = true`. It does not clear `decision`.
+  - `claim` returns `lastSeq`: the highest of the run's event `seq`, `pending.seq` and `decision.seq`, or 0. A resumed session numbers its events after it.
 - **Done.** The runner's last step is `finish`: the report is written and the task completed through `tasks.complete`, in one transaction.
-- **Failed.** A crash, a timeout, a cap, a Gateway refusal, or the agent saying it is stuck. `fail` files a request "Needs you: \<task\>" with the reason and a Retry action, with `externalId` `<runId>:fail:<failures + 1>`, and increments `failures`, so a retried `fail` files once. The workspace is kept, so Retry resumes the session. Retry resolves the run's open failure request as `handled` through `requests.resolve`, which is what `requests.file` requires of an action's operation.
-- **Waiting.** `suspend` records the session id, files the approval or grant request and moves the run to `waiting`; the worker stops the container. Your answer through `decide` stores `decision` and queues the run again; the next claim starts a container on the same workspace, resumes the session and sends your decision as the next message.
+- **Sent again.** A lost answer or a host restart can repeat a worker call, so these are no-ops that return the run: `suspend` when the run already waits with `pending.seq` equal to its `seq`; `finish` when the run is `done`; `fail` when it is `failed` with a failure pending. `suspend` and `fail` refuse a request already filed under the run's next `externalId` (`requests.file` returned `existing: true`) with `CONFLICT`: this run didn't file it.
+- **Failed.** A crash, a timeout, a cap, a Gateway refusal, or the agent saying it is stuck. `fail` files a request "Needs you: \<task\>" with the reason and a Retry action (`agent.retry` with input `{ id: <taskId> }`), with `externalId` `<runId>:fail:<failures + 1>`, and increments `failures`, so a retried `fail` files once. The workspace is kept, so Retry resumes the session. Retry resolves the run's open failure request as `handled` through `requests.resolve`, which is what `requests.file` requires of an action's operation. Retry after Back to me is `CONFLICT` "This task is back with you"; Make AI task again instead.
+- **Waiting.** `suspend` records the session id, files the approval or grant request and moves the run to `waiting`; the worker stops the container. A grant names its `connectionId`, else `BAD_REQUEST`. Your answer through `decide` stores `decision` and queues the run again; the next claim starts a container on the same workspace, resumes the session and sends your decision as the next message.
 - **Heartbeat.** A running run's worker calls `heartbeat` every 30 seconds. A run with no heartbeat for 2 minutes goes back to `queued` and resumes from its session; the sweep in `claim` does this. `heartbeat` returns `{ stop: boolean }`: when the task is completed, deleted or no longer assigned to the agent, it sets the run to `cancelled`, revokes its token and returns `stop: true`, so Tasks needs no hook into Agent. `finish` after that is `CONFLICT` and does not complete the task twice.
-- **Limits** (settings): a cost cap of $10 and 240 minutes of running time per run. Reaching one fails the run with the reason ("Cost cap reached ($10.00)"); Retry continues with a fresh allowance. Turns and tokens are counted for display only. A monthly budget on the Gateway key is the last limit. The defaults are revisited after the Gateway check.
+- **Limits** (settings): a cost cap of $10 and 240 minutes of running time per run. Reaching one fails the run with the reason ("Cost cap reached ($10.00)"); Retry continues with a fresh allowance. Each heartbeat adds the time since the last one to `running_ms`, and `claim` resets `heartbeat_at`, so time queued or waiting doesn't count. The time cap compares `running_ms`; the cost cap compares `cost_usd − cost_base_usd`. Retry sets `running_ms` to 0 and `cost_base_usd` to `cost_usd`. Turns and tokens are counted for display only. A monthly budget on the Gateway key is the last limit. The defaults are revisited after the Gateway check.
+- **Pending.** `pending` is the open request a run filed. `suspend` sets it (approval or grant) and `fail` sets it (failure). `decide` clears it. Cancel, Back to me and a cancelling sweep resolve an approval or grant as `handled` and clear it. Retry resolves a failure and clears it. Make AI task and Back to me with no live run resolve a failure but keep `pending`, so Undo's reopened request still matches it.
+- **Undo of run actions.** Cancel, Back to me, Retry and `decide` keep the run as it was, and their Undo puts it back. Each conflicts with "Changed since" if a claim has run since (`heartbeat_at` changed), or the run is no longer in the state the action left. Cancel's and Back to me's also need the run to still be the task's latest, with no live run: a run that was running goes back to `queued`, since its container stopped. Retry's puts the run back to `failed` or `cancelled` with its allowance. `decide`'s puts the run back to `waiting` with its connections. Callee records then reopen the request.
 - **Your changes to the task.** Completing, deleting or unassigning a task mid-run cancels the run, at the next `heartbeat` for a running run and at the next `claim` for a queued or waiting one. Deleting the task removes its runs by cascade, and the workspace goes on its 7-day timer.
 
 ## Data model
@@ -149,11 +159,11 @@ cancelled from queued, running or waiting
 | Table | Columns | Notes |
 | --- | --- | --- |
 | `agent_assignments` | `task_id` (FK `items`, cascade), `connection_ids` uuid[], `request_id` uuid null | The connections a task starts with. `request_id` is set by `assignRequest`; `claim` reads the request with `requests.get` on it. Null for a task made with Make task |
-| `agent_runs` | `id`, `task_id` (FK `items`, cascade), `status`, `session_id`, `workspace`, `connection_ids`, `pending`, `decision`, `failures`, `heartbeat_at`, `created_at`, `started_at`, `finished_at`, `failure_code`, `failure_message`, `report` jsonb, `turns`, `input_tokens`, `output_tokens`, `cost_usd`, `image` | `status`: `queued`, `running`, `waiting`, `done`, `failed`, `cancelled`. `connection_ids` is the start set plus grants. `pending` is `{ requestId, seq, kind: "approval" \| "grant" \| "failure", connectionId?, tool?, inputHash? }`, the open request the run filed. `decision` is `{ seq, approve, delivered }`, set by `decide` and marked `delivered` by the `claim` that hands it over. `failures` int, default 0, counts `fail` calls. `image` is the digest it ran on. Unique on `task_id` where `status` is `queued`, `running` or `waiting` |
+| `agent_runs` | `id`, `task_id` (FK `items`, cascade), `status`, `session_id`, `workspace`, `connection_ids`, `pending`, `decision`, `failures`, `heartbeat_at`, `created_at`, `started_at`, `finished_at`, `failure_code`, `failure_message`, `report` jsonb, `turns`, `input_tokens`, `output_tokens`, `cost_usd`, `cost_base_usd`, `running_ms`, `image` | `status`: `queued`, `running`, `waiting`, `done`, `failed`, `cancelled`. `connection_ids` is the start set plus grants. `pending` is `{ requestId, seq, kind: "approval" \| "grant" \| "failure", connectionId?, tool?, inputHash? }`, the open request the run filed. `decision` is `{ seq, approve, delivered }`, set by `decide` and marked `delivered` by the `claim` that hands it over. `failures` int, default 0, counts `fail` calls. `started_at` is the first start. `running_ms` int and `cost_base_usd` numeric(10,4), both default 0, are the current allowance (see Limits). `image` is the digest it ran on. Unique on `task_id` where `status` is `queued`, `running` or `waiting` |
 | `agent_run_events` | `run_id`, `seq`, `at`, `kind`, `data` jsonb | `kind`: `text`, `tool`, `tool_result`, `file`, `permission`, `status`. Primary key `(run_id, seq)`. Removed 30 days after the run ends |
-| `agent_run_messages` | `id`, `run_id`, `at`, `body`, `delivered_at` | Your messages; `delivered_at` set when the runner takes them |
+| `agent_run_messages` | `id`, `run_id`, `at`, `body`, `delivered_at` | Your messages; `delivered_at` set when the runner takes them. Indexed on `run_id` |
 | `agent_connections` | `id`, `name`, `type`, `scope_summary`, `created_at`, `disabled_at` | `type`: `github`, `aws`, `slack`, `linear`, `gdrive`, `mcp`, `env`. Metadata only |
-| `agent_settings` | One row: `default_connection_ids`, `max_parallel` (3), `max_running_minutes` (240), `max_cost_usd` (10), `time_zone` (`UTC`), `instructions` | A module table, like Core's `ai_settings`. `time_zone` reads all-day due dates for "due by now"; Settings → Agent sets it |
+| `agent_settings` | One row: `default_connection_ids`, `max_parallel` (3), `max_running_minutes` (240), `max_cost_usd` (10), `time_zone` (`UTC`), `instructions` | A module table, like Core's `ai_settings`. `time_zone` reads all-day due dates for "due by now"; Settings → Agent sets it. It must be a zone `Intl` knows, and `max_cost_usd` at least 0.01, else `BAD_REQUEST` |
 
 `report` is `{ summary, links: [{ label, url }], filesChanged: string[] }`.
 
@@ -163,22 +173,26 @@ An operation's id is `<module>.<key>`, so every name below is flat: `agent.assig
 
 | Operation | Kind | Input | ⌘K | AI |
 | --- | --- | --- | --- | --- |
-| `assign` | mutation | `{ taskId, expectedUpdatedAt, connections? }` | "Make AI task" | ✓ |
-| `assignRequest` | mutation | `{ requestId, expectedUpdatedAt, title?, notes?, connections? }` | "Give to agent" on a request | ✓ |
-| `unassign` | mutation | `{ taskId, expectedUpdatedAt }` | "Back to me" | ✓ |
+| `assign` | mutation | `{ id, expectedUpdatedAt, connections? }` | "Make AI task" | ✓ (suggests) |
+| `assignRequest` | mutation | `{ id, expectedUpdatedAt, title?, notes?, connections? }` | "Give to agent" on a request | ✓ (suggests) |
+| `unassign` | mutation | `{ id, expectedUpdatedAt }` | "Back to me" | ✓ |
 | `message` | mutation | `{ runId, body }` | "Tell the agent…" | ✗ |
-| `cancel` | mutation | `{ runId }` | "Cancel run" | ✓ |
-| `retry` | mutation | `{ runId }` | "Retry run" | ✓ |
+| `cancel` | mutation | `{ id }` | "Cancel run" | ✓ |
+| `retry` | mutation | `{ id }` | "Retry run" | ✓ |
 | `decide` | mutation | `{ runId, seq, approve }` | ✗ | ✗ |
 | `run` | query | `{ runId }` | ✗ | ✗ |
-| `runs` | query | `{ taskId }` or `{ status? }` | ✗ | ✓ |
+| `runs` | query | `{ taskId }` or `{ status? }` | ✗ | ✗ |
 | `events` | query | `{ runId, after? }` | ✗ | ✗ |
 | `connections` | query | `{}` | ✗ | ✗ |
 | `setDefaultConnections`, `disableConnection` | mutation | `{ id, … }` | ✗ | ✗ |
 | `settings` / `setSettings` | query / mutation | — / partial settings | ✗ | ✗ |
 
+- `id` is the item on screen: the task, or the request for `assignRequest`. AI fills only `id` and `expectedUpdatedAt` from the screen, so `cancel` and `retry` take the task and act on its most recent run.
+- `assign` and `assignRequest` declare the `touchItems` effect, which caps AI at suggest: AI proposes giving a task to the agent and you confirm.
+- `runs` is the panel's run history, so it is off for AI: an AI list returns item summaries, not runs.
 - `message` is refused unless the run is `running` or `waiting`; a message to a waiting run is delivered on resume.
-- `cancel` stops the container and keeps the workspace. `retry` queues a `failed` or `cancelled` run again with the same session, and resolves the run's open failure request as `handled` (it declares `calls: [requests.resolve]`).
+- `cancel` stops the container and keeps the workspace, and resolves an approval or grant the run waited on as `handled`. `retry` queues a `failed` or `cancelled` run again with the same session and a fresh allowance, and resolves the run's open failure request as `handled` (it declares `calls: [tasks.get, requests.get, requests.resolve]`).
+- An operation declares every operation it calls, queries included: `assign` and `unassign` call `tasks.setAssignee`, `requests.get` and `requests.resolve`.
 - AI-callable agent operations set `access: "user"`: a run token gets `FORBIDDEN` on them.
 - `decide` records the answer as `decision` `{ seq, approve, delivered: false }`, resolves the request through `requests.resolve` (outcome `handled`) and queues the run. The request is filed after the event, so its actions name the event `seq`, not a request id. A `seq` that isn't the run's current `pending.seq` is `CONFLICT`. When the stored `decision` has the same `seq` and answer it is a no-op; the same `seq` with a different answer is `CONFLICT`. It is the operation behind the Approve and Decline actions.
 - `events` returns events after `seq`, at most 500.
@@ -271,6 +285,11 @@ Repos add their own `CLAUDE.md`. Your messages during the run arrive as user mes
 | `decide` on an answered request | No-op for the same `seq` and answer, `CONFLICT` for a different answer |
 | `decide` with a `seq` that isn't the run's pending one | `CONFLICT` |
 | `finish` after the run was cancelled | `CONFLICT`; the task is not completed |
+| `suspend`, `finish` or `fail` sent again | No-op; the run as it is |
+| A request already filed under the run's next id | `suspend` and `fail` are `CONFLICT` |
+| Retry after Back to me | `CONFLICT` "This task is back with you" |
+| Make AI task while a run is live | `CONFLICT` "The agent already has this task" |
+| Unknown or disabled connection | `BAD_REQUEST` "Unknown or disabled connection" |
 | A run token calls an operation it may not | `FORBIDDEN`; a revoked token is `UNAUTHORIZED` |
 | `message` to a run that has ended | `BAD_REQUEST` "This run has ended" |
 
@@ -278,7 +297,9 @@ Repos add their own `CLAUDE.md`. Your messages during the run arrive as user mes
 
 - **Unit:** claim rules (parallel limit, due time, oldest first, one active run per task); state transitions, with every illegal one refused; the permission table, including where-it-came-from for Slack and the `main` push patterns; approval matching on tool and input hash; the prompt, with a request body quoted as data.
 - **Core (`test:db`):** Undo of a mutation that called another reverts both, callee last-first, and conflicts as a whole if either item changed; a worker token is refused by user-only operations and a run token by worker operations; `touchItem` publishes without a version check.
+- **Core (`test:db`), more:** Undo of a caller with a null record still reverts its callees, from `ops.undo` and from an AI follow-up's Undo; a callee's writer has `viaCall` and a top-level run's doesn't; `ops.undo` refuses worker and run tokens.
 - **Database (`test:db`):** two workers claiming at once get different runs; a missed heartbeat returns the run to `queued`; `assign` and `unassign` through operation calls, with Undo; `finish` completes the task in one transaction; `decide` resolves the request and queues the run; events removed after 30 days; run tokens revoked when a run leaves `running`.
+- **Database, more:** Undo of Back to me on a failed run sets the assignee back; Make AI task and Back to me resolve a failed run's "Needs you" and Undo reopens it; assigning a task the agent already has publishes the new run; unknown or disabled connections are refused; `suspend`, `finish` and `fail` sent twice act once; a request pre-filed under the run's next id makes `suspend` and `fail` `CONFLICT`; a grant without a connection is refused; `requests.file` with actions is `BAD_REQUEST` from you or a run token and works through an operation call; `claim` returns `lastSeq`; Undo of cancel, Back to me, Retry and `decide` restores the run, and conflicts after a claim; Retry after Back to me is `CONFLICT`; caps count running time only, and Retry resets them; settings refuse an unknown time zone and a cost cap under a cent.
 - **Relay:** token and cost counting; the cost cap fails the run; `429` retries; the Gateway key absent from the container's environment.
 - **Container (needs Docker):** a fake model replays a scripted session that edits a file, asks to merge, suspends, resumes approved, then finishes; a grant request suspends and resumes with the connection; the container can't reach the metadata address or the API directly; no secret in the image or the log.
 - **Gateway check:** one real Agent SDK run through the Gateway's Claude Code endpoint, seen in the Gateway logs, then resumed from its session volume in a fresh container. Manual, with your key, once.

@@ -8,6 +8,13 @@
       "when": 1793642316229,
       "tag": "0000_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793827164982,
+      "tag": "0001_assignee",
+      "breakpoints": true
     }
   ]
 }

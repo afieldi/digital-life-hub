@@ -54,6 +54,16 @@ test("an unknown priority violates the check", async () => {
   await close();
 });
 
+test("the assignee check refuses other values", async () => {
+  const { db, id, close } = await setup();
+  await expect(
+    db.execute(
+      sql`insert into tasks (item_id, sort_key, assignee) values (${id}, 'a0', 'robot')`,
+    ),
+  ).rejects.toThrow();
+  await close();
+});
+
 test("deleting the item removes the task row", async () => {
   const { db, id, close } = await setup();
   await db.insert(tasks).values({ itemId: id, sortKey: "a0" });

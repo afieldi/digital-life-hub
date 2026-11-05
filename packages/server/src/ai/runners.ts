@@ -190,9 +190,9 @@ export function suggestOptions<S extends z.ZodRawShape>(
 }
 
 /**
- * Checks an AI action's or operation's id prefix and `appliesTo` against `mod`,
- * the module that registered it (`undefined` for Core: no prefix, and only
- * "*"/"none").
+ * Checks an AI action's or operation's id prefix against `mod`, the module that
+ * registered it, and its `appliesTo` types against the registered ones (`mod` is
+ * `undefined` for Core: no prefix, and only "*"/"none").
  */
 export function checkModuleAction(
   noun: "AI action" | "Operation",
@@ -214,9 +214,15 @@ export function checkModuleAction(
   const applies = Array.isArray(d.appliesTo) ? d.appliesTo : [d.appliesTo];
   for (const t of applies) {
     if (t === "*" || t === "none") continue;
-    if (mod === undefined || ownedTypes.get(t) !== mod) {
+    // A module may act on another module's item (Agent on a task), but not on a type nobody owns.
+    if (mod === undefined) {
       throw new ServerModuleError(
-        `${noun} "${d.id}" applies to item type "${t}" that its module does not own`,
+        `${noun} "${d.id}" is Core's and may apply only to "*" or "none", not "${t}"`,
+      );
+    }
+    if (!ownedTypes.has(t)) {
+      throw new ServerModuleError(
+        `${noun} "${d.id}" applies to item type "${t}" that no module owns`,
       );
     }
   }
