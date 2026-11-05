@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@aws-sdk/client-sts": "3.1163.0",
     "@dlh/agent-protocol": "workspace:*",
     "@dlh/api-contract": "workspace:*",
     "@dlh/core": "workspace:*",

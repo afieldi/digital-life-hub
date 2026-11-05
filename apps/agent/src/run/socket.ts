@@ -30,7 +30,7 @@ export type RunRoutes = {
   /** Long-polls up to `waitSeconds`; `gone` aborts when the runner hangs up. */
   messages(waitSeconds: number, gone: AbortSignal): Promise<Reply>;
   hub(body: HubRequest): Promise<Reply>;
-  credentials(type: string, name: string): Reply;
+  credentials(type: string, name: string): Reply | Promise<Reply>;
   suspend(body: SuspendRequest): Promise<Reply>;
   finish(body: FinishRequest): Promise<Reply>;
   fail(body: FailRequest): Promise<Reply>;

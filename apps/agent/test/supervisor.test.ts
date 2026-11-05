@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HubError, type WorkerApi } from "../src/api";
 import type { Docker, RunSpec } from "../src/docker/docker";
 import type { Price } from "../src/relay/prices";
+import type { AssumeRole } from "../src/run/credentials";
 import {
   type Claimed,
   type RunHandle,
@@ -185,6 +186,7 @@ function setup(
     runError?: Error;
     gateway?: () => Response;
     log?: (line: string) => void;
+    assumeRole?: AssumeRole;
   } = {},
 ) {
   // Unix socket paths are short (104 bytes on macOS); /tmp keeps them under it.
@@ -198,7 +200,11 @@ function setup(
   const store = {
     secretOf: vi.fn((id: string): Record<string, string> => {
       if (id === GITHUB) return { token: GITHUB_SECRET };
-      return { accessKeyId: "AKIA", secretAccessKey: "aws-secret" };
+      return {
+        role_arn: "arn:aws:iam::123456789012:role/dlh-agent",
+        access_key_id: "AKIA_LONG_LIVED",
+        secret_access_key: "aws-secret",
+      };
     }),
     markStarted: vi.fn(),
     markEnded: vi.fn(),
@@ -230,6 +236,11 @@ function setup(
     timers,
     now: () => new Date("2026-11-05T10:05:00.000Z"),
     log: opts.log ?? (() => {}),
+    assumeRole:
+      opts.assumeRole ??
+      (async () => {
+        throw new Error("STS isn't called in this test");
+      }),
   });
   handles.push(handle);
   const socketPath = join(dataDir, "runs", RUN, "dlh.sock");
@@ -500,6 +511,57 @@ describe("startRun", () => {
     expect(unknown.status).toBe(403);
     expect(t.store.secretOf).toHaveBeenCalledTimes(1);
     expect(t.store.secretOf).toHaveBeenCalledWith(GITHUB);
+  });
+
+  it("aws credentials are an assumed role's 1-hour keys, never the stored ones", async () => {
+    const assumeRole = vi.fn<AssumeRole>(async () => ({
+      accessKeyId: "ASIA_TEMP",
+      secretAccessKey: "temp-secret",
+      sessionToken: "temp-session",
+      expiration: new Date("2026-11-05T11:05:00.000Z"),
+    }));
+    const t = setup({ claim: { connectionIds: [GITHUB, AWS] }, assumeRole });
+    await t.started();
+    const res = await t.call("GET", "/credentials/aws/prod");
+    expect(res).toEqual({
+      status: 200,
+      body: {
+        secret: {
+          Version: "1",
+          AccessKeyId: "ASIA_TEMP",
+          SecretAccessKey: "temp-secret",
+          SessionToken: "temp-session",
+          Expiration: "2026-11-05T11:05:00.000Z",
+        },
+      },
+    });
+    expect(assumeRole).toHaveBeenCalledWith({
+      roleArn: "arn:aws:iam::123456789012:role/dlh-agent",
+      accessKeyId: "AKIA_LONG_LIVED",
+      secretAccessKey: "aws-secret",
+      sessionName: `dlh-run-${RUN}`,
+      durationSeconds: 3600,
+    });
+    expect(JSON.stringify(res.body)).not.toContain("aws-secret");
+    expect(JSON.stringify(res.body)).not.toContain("AKIA_LONG_LIVED");
+  });
+
+  it("a role that can't be assumed answers 502 and logs no key", async () => {
+    const lines: string[] = [];
+    const t = setup({
+      claim: { connectionIds: [AWS] },
+      log: (l) => lines.push(l),
+      assumeRole: async () => {
+        throw Object.assign(new Error("AKIA_LONG_LIVED is not valid"), {
+          name: "InvalidClientTokenId",
+        });
+      },
+    });
+    await t.started();
+    const res = await t.call("GET", "/credentials/aws/prod");
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body) + lines.join("\n")).not.toContain("AKIA");
+    expect(lines.join("\n")).toContain("InvalidClientTokenId");
   });
 
   it('a budget error fails the run with "AI budget reached"', async () => {

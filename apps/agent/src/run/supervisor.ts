@@ -16,6 +16,7 @@ import {
 } from "../docker/docker";
 import { createRelay, RelayError } from "../relay/relay";
 import type { Store } from "../store";
+import { type AssumeRole, secretForRun, stsAssumeRole } from "./credentials";
 import { createEventLog, createInbox, realTimers, type Timers } from "./events";
 import { createRunServer, type Reply } from "./socket";
 
@@ -43,6 +44,8 @@ export type SupervisorDeps = {
   dataDir: string;
   image: string;
   relay: Parameters<typeof createRelay>[0];
+  /** STS for `aws` connections; the real one by default. */
+  assumeRole?: AssumeRole;
   timers?: Timers;
   now?: () => Date;
   /** One line per problem; never a secret, the run token or a body. */
@@ -304,7 +307,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
           return { status: 200, body: { ok: false, code, message } };
         }
       },
-      credentials(type, connectionName) {
+      async credentials(type, connectionName) {
         const c = claimed.connections.find(
           (x) => x.type === type && x.name === connectionName,
         );
@@ -314,11 +317,29 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
             body: { error: `Not granted: ${connectionName}.` },
           };
         }
+        let stored: Record<string, string>;
         try {
-          return { status: 200, body: { secret: deps.store.secretOf(c.id) } };
+          stored = deps.store.secretOf(c.id);
         } catch {
           log(`no local secret for connection ${c.id}`);
           return { status: 404, body: { error: "No secret on this host" } };
+        }
+        try {
+          const secret = await secretForRun(
+            type,
+            stored,
+            runId,
+            deps.assumeRole ?? stsAssumeRole,
+          );
+          return { status: 200, body: { secret } };
+        } catch (e) {
+          // The error's name only: an AWS message can quote the key id.
+          const name = e instanceof Error ? e.name : "Error";
+          log(`assuming the role of connection ${c.id} failed: ${name}`);
+          return {
+            status: 502,
+            body: { error: `Couldn't assume the role of ${connectionName}` },
+          };
         }
       },
       suspend(body) {
