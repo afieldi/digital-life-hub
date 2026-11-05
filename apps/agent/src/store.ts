@@ -1,7 +1,30 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync as Database } from "node:sqlite";
+
+/**
+ * Loads node:sqlite without its one-off ExperimentalWarning (Node 22 prints it).
+ * Only that warning is dropped; every other warning still reaches stderr.
+ */
+function loadSqlite(): typeof import("node:sqlite") {
+  const emit = process.emitWarning;
+  process.emitWarning = ((warning: string | Error, ...args: unknown[]) => {
+    const text = typeof warning === "string" ? warning : warning.message;
+    const type =
+      typeof args[0] === "string"
+        ? args[0]
+        : (args[0] as { type?: string } | undefined)?.type;
+    if (type === "ExperimentalWarning" && text.startsWith("SQLite")) return;
+    return (emit as (...a: unknown[]) => void).call(process, warning, ...args);
+  }) as typeof process.emitWarning;
+  try {
+    return createRequire(import.meta.url)("node:sqlite");
+  } finally {
+    process.emitWarning = emit;
+  }
+}
 
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
@@ -57,7 +80,8 @@ function open(key: Buffer, sealed: string): string {
 /** Opens (creating if needed) `<dataDir>/agent.db`; secrets are AES-256-GCM sealed. */
 export function openStore(dataDir: string, secretsKey: Buffer): Store {
   mkdirSync(dataDir, { recursive: true });
-  const db = new DatabaseSync(join(dataDir, "agent.db"));
+  const { DatabaseSync } = loadSqlite();
+  const db: Database = new DatabaseSync(join(dataDir, "agent.db"));
   db.exec(`
     CREATE TABLE IF NOT EXISTS connections (
       id TEXT PRIMARY KEY,
