@@ -83,7 +83,8 @@ export function createControl(deps: {
   workspace: string;
   sessionId: () => string | undefined;
   events: EventSink;
-  onEnd: (outcome: Outcome) => void;
+  /** Awaited before the report's caller hears back, e.g. to stop the turn. */
+  onEnd: (outcome: Outcome) => void | Promise<void>;
 }): RunControl {
   let ending = false;
   let reporting: Promise<unknown> = Promise.resolve();
@@ -93,10 +94,10 @@ export function createControl(deps: {
       await deps.events.drain();
       await send();
     } catch (e) {
-      deps.onEnd("host_error");
+      await deps.onEnd("host_error");
       throw e;
     }
-    deps.onEnd(outcome);
+    await deps.onEnd(outcome);
   }
 
   function end(outcome: Outcome, send: () => Promise<unknown>): Promise<void> {

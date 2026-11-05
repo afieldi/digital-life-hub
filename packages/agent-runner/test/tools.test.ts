@@ -22,7 +22,9 @@ function setUp() {
     workspace: dir,
     sessionId: () => "session-1",
     events: { add() {}, drain: async () => {} },
-    onEnd: (outcome) => ended.push(outcome),
+    onEnd: (outcome) => {
+      ended.push(outcome);
+    },
   });
   const tools = createTools({
     host,

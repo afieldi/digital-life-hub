@@ -73,10 +73,11 @@ function fakeQuery(
   const seen = {
     options: undefined as Options | undefined,
     inputs: [] as string[],
+    interrupts: 0,
   };
   const query: QueryFn = ({ prompt, options }) => {
     seen.options = options;
-    return (async function* () {
+    const messages = (async function* () {
       let i = 0;
       for await (const m of prompt) {
         seen.inputs.push(textOf(m));
@@ -84,6 +85,11 @@ function fakeQuery(
         yield* await turn(m, i++, options);
       }
     })();
+    return Object.assign(messages, {
+      interrupt: async () => {
+        seen.interrupts++;
+      },
+    });
   };
   return { query, seen };
 }
@@ -285,5 +291,23 @@ describe("runSession", () => {
     });
     // Events sent before the suspend, the permission among them.
     expect(calls.events.flat().map((e) => e.kind)).toContain("permission");
+  });
+
+  it("a report interrupts the turn before the answer goes back", async () => {
+    // A tool that reports (request_connection, finish_task) answers the SDK
+    // after its report; the turn must stop there, not go on to the model.
+    const { host } = fakeHost({ suspendSeq: 3 });
+    const { query, seen } = fakeQuery(async (_m, _i, options) => {
+      const signal = new AbortController().signal;
+      await options.canUseTool?.(
+        "Bash",
+        { command: "gh pr merge 1" },
+        { signal, toolUseID: "t1", requestId: "r1" },
+      );
+      expect(seen.interrupts).toBe(1);
+      return [result()];
+    });
+    expect(await runSession(runStart(), deps(host, query))).toBe("suspended");
+    expect(seen.interrupts).toBe(1);
   });
 });

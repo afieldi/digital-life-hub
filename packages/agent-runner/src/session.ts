@@ -32,7 +32,7 @@ import { createTools } from "./tools";
 export type QueryFn = (params: {
   prompt: AsyncIterable<SDKUserMessage>;
   options: Options;
-}) => AsyncIterable<SDKMessage>;
+}) => AsyncIterable<SDKMessage> & { interrupt?(): Promise<unknown> };
 
 export type SessionDeps = {
   query: QueryFn;
@@ -60,6 +60,8 @@ export const MODEL_ENV = {
 /** Long-poll length for `GET /messages`. */
 const POLL_SECONDS = 25;
 const NO_REPORT = "Ended without a report";
+/** How long a report waits for the SDK to stop the turn. */
+const INTERRUPT_MS = 5_000;
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 const firstLine = (e: unknown) =>
@@ -235,13 +237,26 @@ export async function runSession(
   let sessionId: string | undefined = resume;
   let announced = false;
   let outcome: Outcome | undefined;
+  let session: ReturnType<QueryFn> | undefined;
   const control = createControl({
     host,
     workspace,
     sessionId: () => sessionId,
     events,
-    onEnd: (o) => {
+    // The run is over for the worker: stop the turn before the tool that
+    // reported answers, or the SDK would call the model and run tools again
+    // while the container is being stopped.
+    onEnd: async (o) => {
       outcome = o;
+      if (!session?.interrupt) return;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        session.interrupt().catch((e) => log(`interrupt: ${firstLine(e)}`)),
+        new Promise((r) => {
+          timer = setTimeout(r, INTERRUPT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
     },
   });
 
@@ -297,7 +312,8 @@ export async function runSession(
   };
 
   try {
-    for await (const msg of deps.query({ prompt: input, options })) {
+    session = deps.query({ prompt: input, options });
+    for await (const msg of session) {
       if (!announced && msg.session_id) {
         announced = true;
         sessionId = msg.session_id;
@@ -317,6 +333,8 @@ export async function runSession(
   } catch (e) {
     log(`session: ${firstLine(e)}`);
   } finally {
+    // Over: a report from here on has no turn to stop.
+    session = undefined;
     stopPolling.abort();
     input.end();
   }
