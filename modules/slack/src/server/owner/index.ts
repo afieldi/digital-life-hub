@@ -6,6 +6,7 @@ import type {
   SlackSettings,
 } from "../../schema";
 import { ESCALATED_PREFIX, firstLine, keyOf } from "../coworker";
+import { handOff } from "./handoff";
 import { interpretOwner, type OwnerPick } from "./interpret";
 import { runOwnerAction } from "./run";
 
@@ -29,6 +30,7 @@ async function escalateOwner(
     sourceUrl: input.event.permalink,
     sourceHandle: input.sender.slackUserId,
     fromName: input.sender.name,
+    fromOwner: true,
   });
   return { reply: "Not sure what you meant, so I put it in your queue." };
 }
@@ -68,6 +70,7 @@ export async function handleOwner(
     case "escalate":
       return escalateOwner(deps, input);
     case "handOff":
+      return handOff(deps, input, pick.subjectId);
     case "draftReply":
       throw new Error("NOT_IMPLEMENTED");
   }

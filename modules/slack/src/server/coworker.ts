@@ -123,6 +123,7 @@ async function file(
       sourceUrl: m.event.permalink,
       sourceHandle: m.sender.slackUserId,
       fromName: m.sender.name,
+      fromOwner: m.sender.isOwner,
       actions,
     }),
   );

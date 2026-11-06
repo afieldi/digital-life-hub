@@ -125,7 +125,11 @@ test("an owner message that is unsure escalates to the queue", async () => {
   expect(items.map((r) => r.title)).toEqual(["Bot wasn't sure: hmm"]);
   const { request } = await h.caller.requests.get({ id: items[0]?.id ?? "" });
   expect(request.actions).toBeNull();
-  expect(request).toMatchObject({ source: "slack", sourceHandle: "UOWNER" });
+  expect(request).toMatchObject({
+    source: "slack",
+    sourceHandle: "UOWNER",
+    fromOwner: true,
+  });
   await h.close();
 });
 

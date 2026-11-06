@@ -20,6 +20,7 @@ type RawRow = {
   updated_at: string | Date;
   body: string | null;
   from_name: string | null;
+  from_owner: boolean;
   source: string;
   source_handle: string | null;
   source_url: string | null;
@@ -37,7 +38,7 @@ const iso = (v: string | Date) => new Date(v).toISOString();
 function rowsQuery(where: SQL, tail: SQL): SQL {
   return sql`
     select i.id, i.type, i.title, i.archived_at, i.updated_at,
-      r.body, r.from_name, r.source, r.source_handle, r.source_url,
+      r.body, r.from_name, r.from_owner, r.source, r.source_handle, r.source_url,
       r.external_id, r.received_at, r.actions, r.resolved_at, r.outcome, r.appended_ids
     from requests r
     join items i on i.id = r.item_id and i.deleted_at is null
@@ -60,6 +61,7 @@ function toRow(r: RawRow): RequestRow {
       itemId: r.id,
       body: r.body,
       fromName: r.from_name,
+      fromOwner: r.from_owner,
       source: r.source,
       sourceHandle: r.source_handle,
       sourceUrl: r.source_url,

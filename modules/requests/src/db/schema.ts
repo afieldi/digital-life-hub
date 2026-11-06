@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   jsonb,
@@ -22,6 +23,7 @@ export const requests = pgTable(
     itemId: uuid("item_id").primaryKey(),
     body: text("body"),
     fromName: text("from_name"),
+    fromOwner: boolean("from_owner").notNull().default(false),
     source: text("source").notNull(),
     sourceHandle: text("source_handle"),
     sourceUrl: text("source_url"),
