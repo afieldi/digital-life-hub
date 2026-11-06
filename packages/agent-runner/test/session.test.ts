@@ -13,8 +13,8 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import { approvalAsk, inputHash } from "@dlh/agent-protocol";
 import type { Host } from "../src/host";
-import { inputHash } from "../src/permissions";
 import { buildPrompt } from "../src/prompt";
 import { type QueryFn, runSession } from "../src/session";
 import { fakeHost, runStart } from "./fixtures";
@@ -147,7 +147,9 @@ describe("runSession", () => {
           approve: true,
           delivered: true,
           tool: "Bash",
-          inputHash: inputHash("Bash", merge),
+          // As the worker hashed it, from the input it parsed off the socket.
+          inputHash: approvalAsk("Bash", JSON.parse(JSON.stringify(merge)))
+            .inputHash,
         },
       }),
       deps(host, query),
@@ -358,15 +360,10 @@ describe("runSession", () => {
 
     expect(outcome).toBe("suspended");
     expect(calls.fail).toEqual([]);
+    // The tool and its input: the worker words and hashes the ask from them.
     expect(calls.suspend).toEqual([
-      expect.objectContaining({
-        sessionId: SESSION,
-        kind: "approval",
-        tool: "Bash",
-        inputHash: inputHash("Bash", push),
-      }),
+      { sessionId: SESSION, kind: "approval", tool: "Bash", input: push },
     ]);
-    expect(calls.suspend[0]?.body).toContain("git push origin HEAD:main");
     const pending = JSON.parse(
       readFileSync(join(workspace, ".dlh", "pending.json"), "utf8"),
     );

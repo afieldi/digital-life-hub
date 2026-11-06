@@ -1,7 +1,7 @@
 import { chmodSync, chownSync, mkdirSync, rmSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
-import type { RunStart } from "@dlh/agent-protocol";
+import { approvalAsk, type RunStart } from "@dlh/agent-protocol";
 import { moduleDescriptions } from "@dlh/agent-protocol/modules";
 import { accessOf, type OperationDescription } from "@dlh/core";
 import type { ClaimResult } from "@dlh/module-agent/server";
@@ -412,12 +412,45 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
         }
       },
       suspend(body) {
+        // The ask is worded here, from what it allows: an approval from the
+        // input it hashes, a grant from the claim's connection of that id.
+        let ask: {
+          title: string;
+          body: string;
+          tool?: string;
+          inputHash?: string;
+          connectionId?: string;
+        };
+        if (body.kind === "approval") {
+          const a = approvalAsk(body.tool, body.input);
+          ask = {
+            title: a.title,
+            body: a.body,
+            tool: body.tool,
+            inputHash: a.inputHash,
+          };
+        } else {
+          const c = claimed.connections.find((x) => x.id === body.connectionId);
+          if (!c) {
+            return Promise.resolve({
+              status: 400,
+              body: { error: "No such connection" },
+            });
+          }
+          ask = {
+            title: `Grant ${c.name} (${c.type})`,
+            body: body.reason,
+            connectionId: c.id,
+          };
+        }
         const seq = events.nextSeq();
         sessionId = body.sessionId;
         const asked = {
-          ...body,
-          title: redact.text(body.title),
-          body: redact.text(body.body),
+          sessionId: body.sessionId,
+          kind: body.kind,
+          ...ask,
+          title: redact.text(ask.title),
+          body: redact.text(ask.body),
         };
         return report(
           "suspend",

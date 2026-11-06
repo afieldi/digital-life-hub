@@ -55,7 +55,10 @@ function writePending(workspace: string, p: Pending) {
   writeFileSync(file, `${JSON.stringify(p)}\n`);
 }
 
-export type Suspension = Omit<SuspendRequest, "sessionId"> & {
+/** What the runner asks, without the session id the control adds. */
+type Ask<R = SuspendRequest> = R extends unknown ? Omit<R, "sessionId"> : never;
+
+export type Suspension = Ask & {
   connectionName?: string;
   /** The exact action quoted to the owner, at most 500 characters. */
   action: string;

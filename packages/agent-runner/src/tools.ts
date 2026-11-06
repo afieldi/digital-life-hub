@@ -169,9 +169,8 @@ export function createTools(deps: {
       try {
         await control.suspend({
           kind: "grant",
-          title: `Grant ${c.name}`,
-          body: reason,
           connectionId: c.id,
+          reason,
           connectionName: c.name,
           action,
         });

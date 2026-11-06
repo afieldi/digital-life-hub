@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import type {
   CanUseTool,
   PermissionResult,
 } from "@anthropic-ai/claude-agent-sdk";
+import { describeAction, inputHash } from "@dlh/agent-protocol";
 import type { RunControl } from "./control";
 import type { EventSink } from "./events";
 
@@ -421,39 +421,6 @@ function ghAsks(args: string[]): boolean {
 
 // ---------------------------------------------------------------- approvals
 
-/** JSON with every object's keys sorted, so equal inputs hash equal. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-/**
- * The part of a tool's input that says what it does. A model re-issuing an
- * approved Bash call words its `description` (and may pick a `timeout`)
- * anew, so only the command and whether it runs in the background count.
- */
-function whatItDoes(tool: string, input: unknown): unknown {
-  if (tool !== "Bash" || !input || typeof input !== "object") return input;
-  const { command, run_in_background } = input as Record<string, unknown>;
-  return {
-    command,
-    ...(run_in_background === true ? { run_in_background } : {}),
-  };
-}
-
-/** sha256 of the tool's name and what its input does, as canonical JSON. */
-export function inputHash(tool: string, input: unknown): string {
-  return createHash("sha256")
-    .update(`${tool}\n${canonical(whatItDoes(tool, input))}`)
-    .digest("hex");
-}
-
 /** Actions the owner approved, each allowed once, matched on tool and input hash. */
 export class Approvals {
   private readonly allowed = new Set<string>();
@@ -466,24 +433,6 @@ export class Approvals {
     return this.allowed.delete(`${tool}\n${hash}`);
   }
 }
-
-const MAX_ACTION = 500;
-
-/** The action quoted to the owner: the tool and its input, at most 500 characters. */
-export function describeAction(
-  tool: string,
-  input: Record<string, unknown>,
-): string {
-  const what =
-    tool === "Bash" && typeof input.command === "string"
-      ? input.command
-      : canonical(input);
-  const line = `${tool}: ${what}`;
-  return line.length <= MAX_ACTION ? line : `${line.slice(0, MAX_ACTION - 1)}…`;
-}
-
-const short = (s: string, n: number) =>
-  s.length <= n ? s : `${s.slice(0, n - 1)}…`;
 
 /**
  * The SDK's permission hook. Alone, or an approval taken, is allowed. An ask
@@ -516,14 +465,8 @@ export function createCanUseTool(deps: {
     const action = describeAction(tool, input);
     deps.events.add("permission", { tool, action });
     try {
-      await deps.control.suspend({
-        kind: "approval",
-        title: `Approve: ${short(action, 120)}`,
-        body: action,
-        tool,
-        inputHash: hash,
-        action,
-      });
+      // The worker words the ask and hashes it from this input.
+      await deps.control.suspend({ kind: "approval", tool, input, action });
     } catch (e) {
       deps.log(`suspend failed: ${e instanceof Error ? e.message : String(e)}`);
       return {

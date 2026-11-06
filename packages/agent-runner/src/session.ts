@@ -8,7 +8,7 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { RunStart } from "@dlh/agent-protocol";
+import { describeAction, type RunStart } from "@dlh/agent-protocol";
 import {
   clearPending,
   createControl,
@@ -19,12 +19,7 @@ import {
 import { createEventSink, type EventSink } from "./events";
 import { FORWARDER_PORT } from "./forwarder";
 import type { Host } from "./host";
-import {
-  Approvals,
-  createCanUseTool,
-  describeAction,
-  RUNNER_SERVER,
-} from "./permissions";
+import { Approvals, createCanUseTool, RUNNER_SERVER } from "./permissions";
 import { buildPrompt } from "./prompt";
 import { createTools } from "./tools";
 

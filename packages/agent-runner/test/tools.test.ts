@@ -121,11 +121,12 @@ describe("ending tools", () => {
       {},
     );
     expect(calls.suspend).toEqual([
-      expect.objectContaining({
+      {
         sessionId: "session-1",
         kind: "grant",
         connectionId: "c3",
-      }),
+        reason: "To file the follow-up",
+      },
     ]);
     expect(ended).toEqual(["suspended"]);
   });

@@ -1,9 +1,5 @@
-import {
-  Approvals,
-  type ClassifyContext,
-  classify,
-  inputHash,
-} from "../src/permissions";
+import { inputHash } from "@dlh/agent-protocol";
+import { Approvals, type ClassifyContext, classify } from "../src/permissions";
 
 function ctx(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
   return {
@@ -169,35 +165,6 @@ describe("classify", () => {
 });
 
 describe("approvals", () => {
-  it("hashes the tool and its input, whatever the key order", () => {
-    expect(inputHash("Other", { a: 1, b: { c: 2, d: 3 } })).toBe(
-      inputHash("Other", { b: { d: 3, c: 2 }, a: 1 }),
-    );
-    expect(inputHash("Other", { a: 1 })).not.toBe(inputHash("Other", { a: 2 }));
-    expect(inputHash("Other", { a: 1 })).not.toBe(inputHash("Else", { a: 1 }));
-    expect(inputHash("Bash", { command: "x" })).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it("a Bash call matches on its command alone, whatever its description", () => {
-    // A model re-issuing the approved call words its description anew.
-    const asked = {
-      command: "gh pr merge 3",
-      description: "Merge the PR",
-      timeout: 60000,
-    };
-    const again = { command: "gh pr merge 3", description: "Merge PR #3" };
-    expect(inputHash("Bash", again)).toBe(inputHash("Bash", asked));
-    expect(inputHash("Bash", { ...again, run_in_background: false })).toBe(
-      inputHash("Bash", asked),
-    );
-    expect(inputHash("Bash", { ...again, command: "gh pr merge 4" })).not.toBe(
-      inputHash("Bash", asked),
-    );
-    expect(inputHash("Bash", { ...again, run_in_background: true })).not.toBe(
-      inputHash("Bash", asked),
-    );
-  });
-
   it("an approval allows that exact action once", () => {
     const approvals = new Approvals();
     const merge = { command: "gh pr merge 3" };

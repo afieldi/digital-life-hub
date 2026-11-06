@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runStart } from "@dlh/agent-protocol";
+import { inputHash, runStart } from "@dlh/agent-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HubError, type WorkerApi } from "../src/api";
 import type { Docker, RunSpec } from "../src/docker/docker";
@@ -593,16 +593,19 @@ describe("startRun", () => {
       ],
     });
 
+    const curl = { command: `curl -H ${GITHUB_SECRET}` };
     await t.call("POST", "/suspend", {
       sessionId: "sess-1",
       kind: "approval",
-      title: `Approve: curl -H ${GITHUB_SECRET}`,
-      body: `curl -H ${GITHUB_SECRET}`,
+      tool: "Bash",
+      input: curl,
     });
     expect(t.agent.suspend.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: "Approve: curl -H [redacted]",
-        body: "curl -H [redacted]",
+        title: "Approve: Bash: curl -H [redacted]",
+        body: "Bash: curl -H [redacted]",
+        // What the runner will match: the input as asked, not as shown.
+        inputHash: inputHash("Bash", curl),
       }),
     );
   });
@@ -792,9 +795,8 @@ describe("startRun", () => {
     const res = await t.call("POST", "/suspend", {
       sessionId: "sess-1",
       kind: "grant",
-      title: "Use prod",
-      body: "Needs AWS",
       connectionId: AWS,
+      reason: "Needs AWS",
     });
     expect(res).toEqual({ status: 200, body: { seq: 9 } });
     const end = await t.handle.done;
@@ -806,10 +808,92 @@ describe("startRun", () => {
       seq: 9,
       sessionId: "sess-1",
       kind: "grant",
-      title: "Use prod",
+      title: "Grant prod (aws)",
       body: "Needs AWS",
       connectionId: AWS,
     });
+  });
+
+  it("an approval is worded and hashed from the input it allows", async () => {
+    const t = setup();
+    await t.started();
+    const merge = { command: "gh pr merge 3", description: "List files" };
+    const res = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: merge,
+    });
+    expect(res.status).toBe(200);
+    expect(t.agent.suspend.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      seq: 8,
+      sessionId: "sess-1",
+      kind: "approval",
+      title: "Approve: Bash: gh pr merge 3",
+      body: "Bash: gh pr merge 3",
+      tool: "Bash",
+      inputHash: inputHash("Bash", merge),
+    });
+  });
+
+  it("an approval that brings its own wording or hash is refused", async () => {
+    // The agent can reach the socket: "Approve: Bash: ls" over a merge's
+    // hash would have the owner allow what they never read.
+    const t = setup();
+    await t.started();
+    const merge = { command: "gh pr merge 3" };
+    const forged = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      title: "Approve: Bash: ls",
+      body: "Bash: ls",
+      tool: "Bash",
+      inputHash: inputHash("Bash", merge),
+    });
+    const worded = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: merge,
+      title: "Approve: Bash: ls",
+    });
+    expect(forged.status).toBe(400);
+    expect(worded.status).toBe(400);
+    expect(t.agent.suspend.mutate).not.toHaveBeenCalled();
+  });
+
+  it("an action cut short in the quote is given in full in the body", async () => {
+    const t = setup();
+    await t.started();
+    const command = `echo ${"x".repeat(600)}; gh pr merge 3`;
+    await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: { command },
+    });
+    const sent = t.agent.suspend.mutate.mock.calls[0]?.[0] as {
+      title: string;
+      body: string;
+    };
+    expect(sent.title).not.toContain("gh pr merge 3");
+    expect(sent.body).toBe(`Bash: ${command}`);
+  });
+
+  it("a grant of a connection the claim doesn't list is refused", async () => {
+    const t = setup();
+    await t.started();
+    const res = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "grant",
+      connectionId: "44444444-4444-4444-8444-444444444444",
+      reason: "Needs it",
+    });
+    expect(res.status).toBe(400);
+    expect(t.agent.suspend.mutate).not.toHaveBeenCalled();
+    // Refused, not ended: the run goes on.
+    expect((await t.call("GET", "/run")).status).toBe(200);
   });
 
   it("a container that exits without a report fails the run", async () => {
@@ -899,8 +983,8 @@ describe("startRun", () => {
       JSON.stringify({
         sessionId: "sess-1",
         kind: "approval",
-        title: "Merge",
-        body: "gh pr merge 1",
+        tool: "Bash",
+        input: { command: "gh pr merge 1" },
       }),
     );
     await vi.waitFor(() => expect(t.agent.suspend.mutate).toHaveBeenCalled());
