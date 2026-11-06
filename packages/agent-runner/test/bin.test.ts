@@ -81,69 +81,73 @@ const run = (
     },
   );
 
-describe.skipIf(!has("jq") || !has("curl"))("bin scripts", () => {
-  it("dlh-credential git answers get for github.com only", async () => {
-    const env = { DLH_GITHUB_CONNECTION: "GitHub work" };
-    const get = await run(
-      "dlh-credential",
-      ["git", "get"],
-      "protocol=https\nhost=github.com\n\n",
-      env,
-    );
-    expect(get.status).toBe(0);
-    expect(get.stdout).toBe(
-      "username=x-access-token\npassword=ghp_test_token\n",
-    );
+// POSIX shell scripts talking to a Unix socket: they run in the Linux image.
+describe.skipIf(process.platform === "win32" || !has("jq") || !has("curl"))(
+  "bin scripts",
+  () => {
+    it("dlh-credential git answers get for github.com only", async () => {
+      const env = { DLH_GITHUB_CONNECTION: "GitHub work" };
+      const get = await run(
+        "dlh-credential",
+        ["git", "get"],
+        "protocol=https\nhost=github.com\n\n",
+        env,
+      );
+      expect(get.status).toBe(0);
+      expect(get.stdout).toBe(
+        "username=x-access-token\npassword=ghp_test_token\n",
+      );
 
-    const other = await run(
-      "dlh-credential",
-      ["git", "get"],
-      "protocol=https\nhost=gitlab.com\n\n",
-      env,
-    );
-    expect(other.stdout).toBe("");
-    const store = await run(
-      "dlh-credential",
-      ["git", "store"],
-      "protocol=https\nhost=github.com\npassword=x\n\n",
-      env,
-    );
-    expect(store.status).toBe(0);
-    expect(store.stdout).toBe("");
-    const none = await run(
-      "dlh-credential",
-      ["git", "get"],
-      "protocol=https\nhost=github.com\n\n",
-      {},
-    );
-    expect(none.stdout).toBe("");
-  });
-
-  it("dlh-credential aws prints credential_process JSON, and a refusal on stderr", async () => {
-    const ok = await run("dlh-credential", ["aws", "Prod AWS"], "", {});
-    expect(ok.status).toBe(0);
-    expect(JSON.parse(ok.stdout)).toEqual({
-      Version: 1,
-      AccessKeyId: "ASIA_TEMP",
-      SecretAccessKey: "temp-secret",
-      SessionToken: "temp-session",
-      Expiration: "2026-11-05T11:00:00.000Z",
+      const other = await run(
+        "dlh-credential",
+        ["git", "get"],
+        "protocol=https\nhost=gitlab.com\n\n",
+        env,
+      );
+      expect(other.stdout).toBe("");
+      const store = await run(
+        "dlh-credential",
+        ["git", "store"],
+        "protocol=https\nhost=github.com\npassword=x\n\n",
+        env,
+      );
+      expect(store.status).toBe(0);
+      expect(store.stdout).toBe("");
+      const none = await run(
+        "dlh-credential",
+        ["git", "get"],
+        "protocol=https\nhost=github.com\n\n",
+        {},
+      );
+      expect(none.stdout).toBe("");
     });
-    const refused = await run("dlh-credential", ["aws", "Other"], "", {});
-    expect(refused.status).toBe(1);
-    expect(refused.stdout).toBe("");
-    expect(refused.stderr).toContain("Not granted: x.");
-  });
 
-  it("gh runs the real gh with GH_TOKEN in its environment only", async () => {
-    const real = join(dir, "real-gh");
-    const r = await run("gh", ["pr", "list"], "", {
-      DLH_GITHUB_CONNECTION: "GitHub work",
-      DLH_REAL_GH: real,
+    it("dlh-credential aws prints credential_process JSON, and a refusal on stderr", async () => {
+      const ok = await run("dlh-credential", ["aws", "Prod AWS"], "", {});
+      expect(ok.status).toBe(0);
+      expect(JSON.parse(ok.stdout)).toEqual({
+        Version: 1,
+        AccessKeyId: "ASIA_TEMP",
+        SecretAccessKey: "temp-secret",
+        SessionToken: "temp-session",
+        Expiration: "2026-11-05T11:00:00.000Z",
+      });
+      const refused = await run("dlh-credential", ["aws", "Other"], "", {});
+      expect(refused.status).toBe(1);
+      expect(refused.stdout).toBe("");
+      expect(refused.stderr).toContain("Not granted: x.");
     });
-    expect(r.stdout).toBe("token=ghp_test_token args=pr list\n");
-    const without = await run("gh", ["--version"], "", { DLH_REAL_GH: real });
-    expect(without.stdout).toBe("token=none args=--version\n");
-    expect(without.stderr).toContain("request_connection");
-  });
-});
+
+    it("gh runs the real gh with GH_TOKEN in its environment only", async () => {
+      const real = join(dir, "real-gh");
+      const r = await run("gh", ["pr", "list"], "", {
+        DLH_GITHUB_CONNECTION: "GitHub work",
+        DLH_REAL_GH: real,
+      });
+      expect(r.stdout).toBe("token=ghp_test_token args=pr list\n");
+      const without = await run("gh", ["--version"], "", { DLH_REAL_GH: real });
+      expect(without.stdout).toBe("token=none args=--version\n");
+      expect(without.stderr).toContain("request_connection");
+    });
+  },
+);

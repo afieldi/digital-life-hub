@@ -15,7 +15,8 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe("forwarder", () => {
+// The forwarder pipes to a Unix socket: the runner runs in the Linux image.
+describe.skipIf(process.platform === "win32")("forwarder", () => {
   it("passes model calls through to the socket, and nothing else", async () => {
     const socketPath = join(dir, "dlh.sock");
     const seen: string[] = [];
