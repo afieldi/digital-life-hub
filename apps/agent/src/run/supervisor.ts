@@ -170,6 +170,14 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     what: string,
     call: () => Promise<unknown>,
   ): Promise<boolean> {
+    // The usage since the last beat (and the image, for a short run) would
+    // be lost: no heartbeat comes after the report.
+    await beating;
+    try {
+      await beat();
+    } catch (e) {
+      log(`heartbeat before ${what}: ${firstLine(e)}`);
+    }
     try {
       await events.flush();
     } catch (e) {
@@ -196,32 +204,39 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     await end(sent ? "failed" : "worker_error");
   }
 
-  let beating = false;
-  async function heartbeat() {
-    if (beating || ending) return;
-    beating = true;
-    try {
-      const u = relay.usage();
-      const image = !imageSent ? digest : undefined;
-      const { result } = await workerCall(() =>
-        agent.heartbeat.mutate({
-          runId,
-          turns: claimed.run.turns + u.turns,
-          inputTokens: claimed.run.inputTokens + u.inputTokens,
-          outputTokens: claimed.run.outputTokens + u.outputTokens,
-          costUsd: claimed.run.costUsd + u.costUsd,
-          ...(image ? { image } : {}),
-          ...(sessionId ? { sessionId } : {}),
-        }),
-      );
-      if (image) imageSent = true;
-      if (result.stop) await end("stopped");
-    } catch (e) {
-      log(`heartbeat: ${firstLine(e)}`);
-      await end("worker_error");
-    } finally {
-      beating = false;
-    }
+  /** Sends the run's totals so far; resolves with whether it should stop. */
+  async function beat(): Promise<boolean> {
+    const u = relay.usage();
+    const image = !imageSent ? digest : undefined;
+    const { result } = await workerCall(() =>
+      agent.heartbeat.mutate({
+        runId,
+        turns: claimed.run.turns + u.turns,
+        inputTokens: claimed.run.inputTokens + u.inputTokens,
+        outputTokens: claimed.run.outputTokens + u.outputTokens,
+        costUsd: claimed.run.costUsd + u.costUsd,
+        ...(image ? { image } : {}),
+        ...(sessionId ? { sessionId } : {}),
+      }),
+    );
+    if (image) imageSent = true;
+    return result.stop;
+  }
+
+  /** The beat in flight, if any; a tick during it is skipped. */
+  let beating: Promise<void> | undefined;
+  function heartbeat() {
+    if (beating || ending || reporting) return;
+    beating = (async () => {
+      try {
+        if (await beat()) await end("stopped");
+      } catch (e) {
+        log(`heartbeat: ${firstLine(e)}`);
+        await end("worker_error");
+      }
+    })().finally(() => {
+      beating = undefined;
+    });
   }
 
   let polling = false;

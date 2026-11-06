@@ -642,6 +642,26 @@ describe("startRun", () => {
     expect(t.agent.finish.mutate).toHaveBeenCalledWith({ runId: RUN, report });
   });
 
+  it("a report sends the usage since the last heartbeat first", async () => {
+    const t = setup();
+    await t.started();
+    await t.call("POST", "/model/v1/messages", {
+      model: "claude-opus-5-5",
+      messages: [],
+    });
+    // No heartbeat tick: the run ends between two.
+    const report = { summary: "Fixed", links: [], filesChanged: [] };
+    expect((await t.call("POST", "/finish", { report })).status).toBe(200);
+    await t.handle.done;
+    expect(t.agent.heartbeat.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN, turns: 4, image: DIGEST }),
+    );
+    const beatOrder = t.agent.heartbeat.mutate.mock.invocationCallOrder[0] ?? 0;
+    const finishOrder = t.agent.finish.mutate.mock.invocationCallOrder[0] ?? 0;
+    expect(beatOrder).toBeGreaterThan(0);
+    expect(finishOrder).toBeGreaterThan(beatOrder);
+  });
+
   it("suspend numbers its seq after the events and stops the container", async () => {
     const t = setup();
     await t.started();
