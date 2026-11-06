@@ -71,7 +71,8 @@ packages/core         + detailPanels in the manifest
 packages/server       + service tokens (worker, run); callee undo records; touchItem
 apps/api              mounts modules/agent; accepts service tokens on tRPC and /changes
 apps/desktop          task detail renders registered detail panels
-docker-compose.yml    + agent and docker services for the VPS
+deploy/vps/docker-compose.yml  NEW: db, api and agent for the VPS. The root docker-compose.yml stays the dev database
+packages/agent-protocol        + modules.gen.ts: the module descriptions, shared by worker and runner
 apps/agent            NEW: worker. Claim loop, Docker runner, connection store and CLI, model relay, socket relay
 packages/agent-runner NEW: inside the container. Agent SDK session, canUseTool hook, hub MCP server, request_connection
 ```
@@ -80,7 +81,7 @@ packages/agent-runner NEW: inside the container. Agent SDK session, canUseTool h
 
 - The desktop app talks only to the API, as today.
 - `apps/agent` talks only to the API, with a **worker token**, and to Docker on its own host.
-- The runner in a container talks only to `apps/agent`, over a Unix socket mounted into the container: events, permission checks, grant requests, model calls and hub operations. `apps/agent` calls the API for hub operations with that run's **run token**, which it holds; the container never holds a hub token, the worker token, the Gateway key or another run's secrets.
+- The runner in a container talks only to `apps/agent`, over its run's Unix socket mounted into the container: events, permission checks, grant requests, model calls and hub operations. `apps/agent` calls the API for hub operations with that run's **run token**, which it holds; the container never holds a hub token, the worker token, the Gateway key or another run's secrets.
 
 ## Core changes
 
@@ -136,15 +137,25 @@ cancelled from queued, running or waiting
 ```
 
 - **Claim.** The worker listens on `/changes` with its worker token and calls `agent.claim` when a task changes, and every 30 seconds as a fallback. It gets the oldest queued run whose task is open (`completed_at` is null), still assigned to the agent and due by now (or has no due time), while fewer than the parallel limit (3) are running. The claim moves it to `running`, mints its run token and returns what the container needs, including the request the task came from, read with `requests.get` on the assignment's `request_id`. A task made with Make task and then assigned has no `request_id`, so no quoted request.
+  - The request carries `source` and `sourceUrl` (for the Slack rule). The reply also has `instructions` (from settings) and `connections`: every connection that isn't disabled, as `{ id, name, type, scopeSummary }`, for the prompt and for grants. The agent sees them all; those in the run's `connection_ids` are usable and the rest it can request (see Grants). `claim` records `agent_settings.worker_seen_at`, which Settings shows as the worker's status.
   - Claims are serialised by `pg_advisory_xact_lock(hashtext('agent.claim'))`, so the parallel limit can't be overshot.
   - Before choosing a run, `claim` sweeps: running runs with no heartbeat for 2 minutes go back to `queued` and their tokens are revoked; events of runs that ended more than 30 days ago are deleted; a queued or waiting run whose task was completed, deleted or unassigned is cancelled.
   - If the run has a `decision` not yet delivered, `claim` returns it for the next message and sets `decision.delivered = true`. It does not clear `decision`.
   - `claim` returns `lastSeq`: the highest of the run's event `seq`, `pending.seq` and `decision.seq`, or 0. A resumed session numbers its events after it.
-- **Done.** The runner's last step is `finish`: the report is written and the task completed through `tasks.complete`, in one transaction.
+- **Done.** The runner's last step is `finish`: the report is written and the task completed through `tasks.complete`, in one transaction. The runner ends a run with `finish_task({ summary, links })`: it adds `filesChanged` from `git status --porcelain` in each repository under `/workspace`, then calls `finish`. `give_up({ reason })` fails the run with `code: "stuck"`. A session that ends with neither fails with `code: "no_report"`, message "Ended without a report".
 - **Sent again.** A lost answer or a host restart can repeat a worker call, so these are no-ops that return the run: `suspend` when the run already waits with `pending.seq` equal to its `seq`; `finish` when the run is `done`; `fail` when it is `failed` with a failure pending. `suspend` and `fail` refuse a request already filed under the run's next `externalId` (`requests.file` returned `existing: true`) with `CONFLICT`: this run didn't file it.
 - **Failed.** A crash, a timeout, a cap, a Gateway refusal, or the agent saying it is stuck. `fail` files a request "Needs you: \<task\>" with the reason and a Retry action (`agent.retry` with input `{ id: <taskId> }`), with `externalId` `<runId>:fail:<failures + 1>`, and increments `failures`, so a retried `fail` files once. The workspace is kept, so Retry resumes the session. Retry resolves the run's open failure request as `handled` through `requests.resolve`, which is what `requests.file` requires of an action's operation. Retry after Back to me is `CONFLICT` "This task is back with you"; Make AI task again instead.
 - **Waiting.** `suspend` records the session id, files the approval or grant request and moves the run to `waiting`; the worker stops the container. A grant names its `connectionId`, else `BAD_REQUEST`. Your answer through `decide` stores `decision` and queues the run again; the next claim starts a container on the same workspace, resumes the session and sends your decision as the next message.
-- **Heartbeat.** A running run's worker calls `heartbeat` every 30 seconds. A run with no heartbeat for 2 minutes goes back to `queued` and resumes from its session; the sweep in `claim` does this. `heartbeat` returns `{ stop: boolean }`: when the task is completed, deleted or no longer assigned to the agent, it sets the run to `cancelled`, revokes its token and returns `stop: true`, so Tasks needs no hook into Agent. `finish` after that is `CONFLICT` and does not complete the task twice.
+- **Resume.** Before suspending, the runner writes `/workspace/.dlh/pending.json`: `{ seq, kind, tool?, inputHash?, connectionName?, action }`. On resume, a claimed `decision` with that `seq` becomes the next user message:
+  - approved action: "Approved: \<action\>. Go ahead.", and that tool and input hash are allowed once;
+  - declined action: "Declined: \<action\>. Don't do it another way.";
+  - approved grant: "Granted: \<name\>.";
+  - declined grant: "Not granted: \<name\>."
+- **Messages.** The worker calls `takeMessages` every 5 seconds for each live run and queues the messages on the run's socket. The runner long-polls `GET /messages` and feeds them into the SDK's streaming input.
+- **Worker restart.** On start, the worker stops and removes every `dlh-run-*` container. Their runs miss heartbeats, the stale sweep requeues them, and the next claim resumes them from their sessions. The worker's SQLite file keeps a `runs` table (`run_id`, `volume`, `ended_at`); each hour it removes volumes that ended more than 7 days ago.
+- **Worker errors.** A network error from the API gets one retry. After that, any error from `heartbeat`, `suspend`, `finish` or `fail` makes the worker stop the run's container and mark it ended locally; the stale sweep then requeues the run. `heartbeat`'s `{ stop: true }` stops it too.
+- **Worker timings.** Claim on a `/changes` event and every 30 seconds; `heartbeat` every 30 seconds per run; `takeMessages` every 5 seconds; `appendEvents` at most 200 events per call, flushed every 2 seconds.
+- **Heartbeat.** A running run's worker calls `heartbeat` every 30 seconds, with the image digest (`image`) and the SDK session id (`sessionId`) once it has them, and the run's cumulative `costUsd`; the API stores them on the run. Without `sessionId`, a run restarted before its first suspend would start over. A run with no heartbeat for 2 minutes goes back to `queued` and resumes from its session; the sweep in `claim` does this. `heartbeat` returns `{ stop: boolean }`: when the task is completed, deleted or no longer assigned to the agent, it sets the run to `cancelled`, revokes its token and returns `stop: true`, so Tasks needs no hook into Agent. `finish` after that is `CONFLICT` and does not complete the task twice.
 - **Limits** (settings): a cost cap of $10 and 240 minutes of running time per run. Reaching one fails the run with the reason ("Cost cap reached ($10.00)"); Retry continues with a fresh allowance. Each heartbeat adds the time since the last one to `running_ms`, and `claim` resets `heartbeat_at`, so time queued or waiting doesn't count. The time cap compares `running_ms`; the cost cap compares `cost_usd − cost_base_usd`. Retry sets `running_ms` to 0 and `cost_base_usd` to `cost_usd`. Turns and tokens are counted for display only. A monthly budget on the Gateway key is the last limit. The defaults are revisited after the Gateway check.
 - **Pending.** `pending` is the open request a run filed. `suspend` sets it (approval or grant) and `fail` sets it (failure). `decide` clears it. Cancel, Back to me and a cancelling sweep resolve an approval or grant as `handled` and clear it. Retry resolves a failure and clears it. Make AI task and Back to me with no live run resolve a failure but keep `pending`, so Undo's reopened request still matches it.
 - **Undo of run actions.** Cancel, Back to me, Retry and `decide` keep the run as it was, and their Undo puts it back. Each conflicts with "Changed since" if a claim has run since (`heartbeat_at` changed), or the run is no longer in the state the action left. Cancel's and Back to me's also need the run to still be the task's latest, with no live run: a run that was running goes back to `queued`, since its container stopped. Retry's puts the run back to `failed` or `cancelled` with its allowance. `decide`'s puts the run back to `waiting` with its connections. Callee records then reopen the request.
@@ -163,7 +174,7 @@ cancelled from queued, running or waiting
 | `agent_run_events` | `run_id`, `seq`, `at`, `kind`, `data` jsonb | `kind`: `text`, `tool`, `tool_result`, `file`, `permission`, `status`. Primary key `(run_id, seq)`. Removed 30 days after the run ends |
 | `agent_run_messages` | `id`, `run_id`, `at`, `body`, `delivered_at` | Your messages; `delivered_at` set when the runner takes them. Indexed on `run_id` |
 | `agent_connections` | `id`, `name`, `type`, `scope_summary`, `created_at`, `disabled_at` | `type`: `github`, `aws`, `slack`, `linear`, `gdrive`, `mcp`, `env`. Metadata only |
-| `agent_settings` | One row: `default_connection_ids`, `max_parallel` (3), `max_running_minutes` (240), `max_cost_usd` (10), `time_zone` (`UTC`), `instructions` | A module table, like Core's `ai_settings`. `time_zone` reads all-day due dates for "due by now"; Settings → Agent sets it. It must be a zone `Intl` knows, and `max_cost_usd` at least 0.01, else `BAD_REQUEST` |
+| `agent_settings` | One row: `default_connection_ids`, `max_parallel` (3), `max_running_minutes` (240), `max_cost_usd` (10), `time_zone` (`UTC`), `instructions`, `worker_seen_at` | A module table, like Core's `ai_settings`. `time_zone` reads all-day due dates for "due by now"; Settings → Agent sets it. It must be a zone `Intl` knows, and `max_cost_usd` at least 0.01, else `BAD_REQUEST` |
 
 `report` is `{ summary, links: [{ label, url }], filesChanged: string[] }`.
 
@@ -197,38 +208,46 @@ An operation's id is `<module>.<key>`, so every name below is flat: `agent.assig
 - `decide` records the answer as `decision` `{ seq, approve, delivered: false }`, resolves the request through `requests.resolve` (outcome `handled`) and queues the run. The request is filed after the event, so its actions name the event `seq`, not a request id. A `seq` that isn't the run's current `pending.seq` is `CONFLICT`. When the stored `decision` has the same `seq` and answer it is a no-op; the same `seq` with a different answer is `CONFLICT`. It is the operation behind the Approve and Decline actions.
 - `events` returns events after `seq`, at most 500.
 
-**Worker operations** take only the worker token, and are off for ⌘K and AI: `claim`, `heartbeat` (returns `{ stop }`), `appendEvents` (batched), `takeMessages`, `suspend({ runId, sessionId, request })`, `finish({ runId, report })`, `fail({ runId, code, message })`, `registerConnection` (used by the CLI). They have `access: "worker"`. `suspend` and `fail` file their request through `requests.file`.
+**Worker operations** take only the worker token, and are off for ⌘K and AI: `claim` (request `{ source, sourceUrl }`; reply as in Run lifecycle), `heartbeat` (takes `costUsd` and an optional `image` and `sessionId`; returns `{ stop }`), `appendEvents` (batched), `takeMessages`, `suspend({ runId, sessionId, request })`, `finish({ runId, report })`, `fail({ runId, code, message })`, `registerConnection` (used by the CLI). They have `access: "worker"`. `suspend` and `fail` file their request through `requests.file`.
 
 ## Containers
 
-**Host.** One always-on VPS, 8 vCPUs and 16 GB, running Postgres, `apps/api` and `apps/agent` with Docker through `docker-compose.yml`. That fits 3 runs at 2 CPUs and 4 GB each, with room for the API and Postgres. The worker reaches the API over the compose network; run containers are on their own network and can't reach it. This also settles the overview's hosting question, so Slack intake can run here. One image, `dlh-agent-runner`: Node, pnpm, Python, git, `gh`, the AWS CLI, the Agent SDK and `packages/agent-runner`. Built by `pnpm agent:image`; each run records its digest.
+**Host.** One always-on VPS, 8 vCPUs and 16 GB, running Postgres, `apps/api` and `apps/agent` with Docker through `deploy/vps/docker-compose.yml` (services `db`, `api` and `agent`; the root `docker-compose.yml` stays the dev database). That fits 3 runs at 2 CPUs and 4 GB each, with room for the API and Postgres. The worker reaches the API over the compose network; run containers are on their own network and can't reach it. This also settles the overview's hosting question, so Slack intake can run here. One image, `dlh-agent-runner`: Node, pnpm, Python, git, `gh` (behind a wrapper), the AWS CLI, `dlh-credential`, the Agent SDK and `packages/agent-runner`. Built by `pnpm agent:image`; each run records its digest.
+
+The worker drives Docker as a CLI behind a `Docker` interface (`run`, `stop`, `remove`, `inspect`, `listRunContainers`, `removeVolume`, `imageDigest`), with an `execFile` implementation and a fake for tests.
 
 **Per run**
 
 - A volume `dlh-ws-<runId>` at `/workspace`: repos, files and the SDK's session data, so resume works. Removed 7 days after the run ends; a Retry after that starts a fresh session.
-- Limits from settings: 2 CPUs, 4 GB of memory, a process limit.
-- Non-root, not privileged, no Docker socket, a read-only root apart from `/workspace` and `/tmp`.
-- Network open to the internet. The host's private network and the cloud metadata address are blocked.
-- The `apps/agent` socket mounted at `/run/dlh.sock`.
+- `docker run` flags: name `dlh-run-<runId>`, label `dlh.run=<runId>`, user `1000:1000`, `--read-only` with `--tmpfs /tmp`, `--cpus 2`, `--memory 4g`, `--pids-limit 512`, `--cap-drop ALL`, `--security-opt no-new-privileges`, network `dlh-runs`, `CLAUDE_CONFIG_DIR=/workspace/.claude`. Not privileged, no Docker socket.
+- Network `dlh-runs` is open to the internet. Outbound to `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (the cloud metadata address) and `100.64.0.0/10` is blocked.
+- One socket per run. The worker serves HTTP on a Unix socket at the host path `/var/lib/dlh-agent/runs/<runId>/dlh.sock`. That directory is the only mount besides the volume, at `/run/dlh`, so inside the container the socket is `/run/dlh/dlh.sock`. Which socket a request arrives on tells the worker which run it is from; there is no token inside the container. The directory is created 0700 and chowned to `1000:1000` when the worker runs as root (otherwise left as is), and the socket is 0600 likewise, so only the run's container user can reach it.
+- A loopback forwarder. The SDK needs an `http://` base URL, so the runner forwards `127.0.0.1:8788` to the socket.
+- The container never holds the worker token, a run token, the Gateway key or a connection secret in its configuration, image or logs: `docker inspect` shows no secret.
 
-**Model relay.** The container's `ANTHROPIC_BASE_URL` points at `apps/agent` over the socket. The relay adds the Gateway key, forwards to Vercel AI Gateway's Claude Code endpoint, counts turns, tokens and cost onto the run, and fails the run at its cost cap. A `429` waits and retries up to 3 times.
+**Model relay.** The container's `ANTHROPIC_BASE_URL` is `http://127.0.0.1:8788/model`, the forwarder to the run's socket. `ANTHROPIC_API_KEY` is empty (it must be, or it overrides the token) and `ANTHROPIC_AUTH_TOKEN` is the fixed placeholder `dlh-run`. The relay replaces the placeholder with the Gateway key, which it reads from `AI_GATEWAY_API_KEY` in the worker's environment and which reaches nothing else. It forwards to `https://ai-gateway.vercel.sh/claude-code`, counts turns, tokens and cost onto the run, and fails the run at its cost cap. A `429` is retried up to 3 times (after 1 s, 2 s, 4 s), then the run fails "Rate limited by the AI Gateway". A `402` fails it "AI budget reached".
 
-**Hub MCP server.** Runs in the runner and exposes hub operations (those marked for AI) as tools. Calls go over the socket to `apps/agent`, which calls the API with the run token.
+**Pricing.** The relay prices usage itself.
+- Prices come from `https://ai-gateway.vercel.sh/v1/models` (`pricing.input`, `output`, `input_cache_read`, `input_cache_write`, in dollars per token), cached for an hour.
+- A model maps to a price by stripping a trailing `-YYYYMMDD`, turning the last `-N-M` into `-N.M` and prefixing `anthropic/` (`claude-opus-5-5` becomes `anthropic/claude-opus-5.5`). A model with no price uses the most expensive `anthropic/*` price in the list.
+- Each heartbeat sends `costUsd`: the run's `costUsd` at claim plus this container's priced usage, so the total is cumulative across containers.
+
+**Hub MCP server.** Runs in the runner and exposes hub operations as tools. The list comes from the module descriptions: `scripts/gen-modules.ts` also writes `packages/agent-protocol/src/modules.gen.ts`, importing each module's `src/module.ts`, and the worker and the runner both use it. Every operation whose `accessOf(desc)` is `"everyone"` becomes a tool `hub__<module>_<key>`. A call goes over the socket; the worker POSTs it to `/trpc/<id>` (a query is a GET) with the run token.
 
 ## Connections
 
-**Adding one.** On the agent host: `pnpm agent connection add <type> "<name>"`. It prompts for the secret, so the secret stays out of shell history, stores it in `apps/agent`'s store, and registers the metadata through `registerConnection`. The store is a SQLite file on the host, encrypted with `AGENT_SECRETS_KEY` from the host's environment. The API and the desktop app never see a secret; Settings lists connections, sets the default set and disables one.
+**Adding one.** On the agent host: `pnpm agent connection add <type> "<name>"`. It prompts for the secret, so the secret stays out of shell history, stores it in `apps/agent`'s store, and registers the metadata through `registerConnection`. The store is a SQLite file on the host, `/var/lib/dlh-agent/agent.db`. Each value is encrypted with AES-256-GCM, with a random 12-byte nonce per value, under `AGENT_SECRETS_KEY` (32 bytes, base64) from the host's environment. The API and the desktop app never see a secret; Settings lists connections, sets the default set and disables one.
 
-**Into a run**
+**Into a run.** No secret is in a container's configuration: `docker inspect` must show none.
 
 | Type | Inside the run |
 | --- | --- |
-| `github` | A fine-grained token limited to listed repos, through a git credential helper and `GH_TOKEN`. Its repos are cloned into `/workspace` on the first start |
-| `aws` | `apps/agent` assumes the connection's role and hands out 1-hour credentials through `credential_process`. The role is the limit |
-| `slack`, `linear`, `gdrive`, `mcp` | MCP servers in the SDK options, their tokens in the server's environment |
-| `env` | Plain environment variables |
+| `github` | A fine-grained token limited to listed repos, through a git credential helper (`dlh-credential`) and a `gh` wrapper, both asking the socket for the token on each use. Its repos are cloned into `/workspace` on the first start |
+| `aws` | `apps/agent` assumes the connection's role and hands out 1-hour credentials through `credential_process` calling `dlh-credential aws <name>`. The role is the limit |
+| `slack`, `linear`, `gdrive`, `mcp` | MCP servers the runner starts, their tokens in those processes' environment only |
+| `env` | Set only in the SDK child process's environment |
 
-**Grants.** The runner adds a tool, `request_connection({ name, reason })`. The agent sees every connection's name, type and scope summary, never a secret. The run suspends with a grant request; Approve adds the connection to `connection_ids` and it is injected on resume; Decline resumes with "not granted". A connection disabled mid-run stays in a running container but is not injected on resume, which becomes a grant request.
+**Grants.** The runner adds a tool, `request_connection({ name, reason })`. The agent sees every connection's name, type and scope summary, never a secret. The run suspends with a grant request; Approve adds the connection to `connection_ids` and it is injected on resume; Decline resumes with the message in Resume ("Not granted: \<name\>."). A connection disabled mid-run stays in a running container but is not injected on resume, which becomes a grant request.
 
 **Least privilege.** Every connection is set up with only what the agent may do alone: branch protection on `main`, AWS roles limited to what it may change, Slack and Linear tokens with the narrowest scopes. The hook only sees tool calls, and a shell holding a credential can do whatever the credential allows.
 
@@ -277,9 +296,12 @@ Repos add their own `CLAUDE.md`. Your messages during the run arrive as user mes
 | --- | --- |
 | Worker offline | Runs stay queued; the panel and Settings say so |
 | Gateway out of credits or over budget (`402`) | The run fails "AI budget reached"; others stay queued until a claim succeeds |
+| Session ends without `finish_task` or `give_up` | The run fails `no_report`, "Ended without a report" |
+| The agent calls `give_up` | The run fails `stuck` with its reason |
+| An API error on `heartbeat`, `suspend`, `finish` or `fail` after one retry | The worker stops the container; the stale sweep requeues the run |
 | Cost or time cap reached | The run fails with the cap and its value; Retry gives a fresh allowance |
-| Gateway rate limit (`429`) | Up to 3 retries in the relay, then the run fails |
-| Container won't start | The run fails with the Docker error's first line; Retry |
+| Gateway rate limit (`429`) | Up to 3 retries in the relay, then the run fails "Rate limited by the AI Gateway" |
+| Container won't start | The run fails "Container didn't start: \<first line\>" (the Docker error's first line); Retry |
 | Workspace removed before a Retry | A fresh session on a fresh workspace |
 | Task completed, deleted or unassigned mid-run | The run is cancelled |
 | `decide` on an answered request | No-op for the same `seq` and answer, `CONFLICT` for a different answer |
@@ -301,7 +323,7 @@ Repos add their own `CLAUDE.md`. Your messages during the run arrive as user mes
 - **Database (`test:db`):** two workers claiming at once get different runs; a missed heartbeat returns the run to `queued`; `assign` and `unassign` through operation calls, with Undo; `finish` completes the task in one transaction; `decide` resolves the request and queues the run; events removed after 30 days; run tokens revoked when a run leaves `running`.
 - **Database, more:** Undo of Back to me on a failed run sets the assignee back; Make AI task and Back to me resolve a failed run's "Needs you" and Undo reopens it; assigning a task the agent already has publishes the new run; unknown or disabled connections are refused; `suspend`, `finish` and `fail` sent twice act once; a request pre-filed under the run's next id makes `suspend` and `fail` `CONFLICT`; a grant without a connection is refused; `requests.file` with actions is `BAD_REQUEST` from you or a run token and works through an operation call; `claim` returns `lastSeq`; Undo of cancel, Back to me, Retry and `decide` restores the run, and conflicts after a claim; Retry after Back to me is `CONFLICT`; caps count running time only, and Retry resets them; settings refuse an unknown time zone and a cost cap under a cent.
 - **Relay:** token and cost counting; the cost cap fails the run; `429` retries; the Gateway key absent from the container's environment.
-- **Container (needs Docker):** a fake model replays a scripted session that edits a file, asks to merge, suspends, resumes approved, then finishes; a grant request suspends and resumes with the connection; the container can't reach the metadata address or the API directly; no secret in the image or the log.
+- **Container (needs Docker, opt-in):** Docker tests run only with `DLH_DOCKER_TESTS=1`; the CI `server` job (Ubuntu, Docker available) sets it. A fake model replays a scripted session that edits a file, asks to merge, suspends, resumes approved, then finishes; a grant request suspends and resumes with the connection; the container can't reach the metadata address or the API directly; no secret in the image or the log.
 - **Gateway check:** one real Agent SDK run through the Gateway's Claude Code endpoint, seen in the Gateway logs, then resumed from its session volume in a fresh container. Manual, with your key, once.
 - **End to end (Playwright, fake model):** Make AI task, watch it run, send a message, approve a merge from the Queue, see the task done with its report.
 
@@ -329,7 +351,7 @@ Nov 5, 2026. `@anthropic-ai/claude-agent-sdk` 0.3.318 in a `node:22-slim` contai
 
 What it means for the build:
 
-- **Model calls.** `apps/agent`'s relay sets those three variables in the container, with `ANTHROPIC_BASE_URL` pointing at the relay; the relay forwards to `https://ai-gateway.vercel.sh/claude-code` and adds the key.
+- **Model calls.** `apps/agent`'s relay sets those three variables in the container, with `ANTHROPIC_BASE_URL` pointing at the relay and the token a placeholder (see Model relay); the relay forwards to `https://ai-gateway.vercel.sh/claude-code` and adds the key.
 - **Resume.** The runner keeps `CLAUDE_CONFIG_DIR` on the run's workspace volume and passes `resume` with the run's `session_id`. Nothing else is saved.
 - **Cost.** The SDK's `total_cost_usd` on a resumed session includes the earlier containers' cost ($0.0994 after resume). The relay counts cost itself, from the Gateway's responses, and the heartbeat sends the run's cumulative total, so `cost_usd − cost_base_usd` stays right across containers.
 - **Caps.** $10 is about a hundred small tasks, so it stays the default. The time cap stays 240 minutes.
