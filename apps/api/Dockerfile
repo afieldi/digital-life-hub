@@ -1,9 +1,13 @@
 FROM node:22-slim AS build
 RUN corepack enable
 WORKDIR /repo
+# Download every dependency from the lockfile alone, so this layer stays cached
+# until the lockfile changes; package.json pins the pnpm version for corepack.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
 COPY . .
 # Server modules are bundled into the API from their source, so they need their deps too.
-RUN pnpm install --frozen-lockfile --filter @dlh/api... --filter "./modules/*"
+RUN pnpm install --offline --frozen-lockfile --filter @dlh/api... --filter "./modules/*"
 RUN pnpm --filter @dlh/api build
 RUN pnpm --filter @dlh/api deploy --prod /out
 # Core's and each module's migrations, keeping their repo-relative paths (modules may have none).

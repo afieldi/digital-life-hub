@@ -7,9 +7,13 @@
 FROM node:22-slim AS build
 RUN npm install -g pnpm@9.12.3
 WORKDIR /src
+# Download every dependency from the lockfile alone, so this layer stays cached
+# until the lockfile changes.
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
 COPY . .
 # The protocol imports each module's description by path, so the modules too.
-RUN pnpm install --frozen-lockfile --filter "@dlh/agent-runner..." --filter "./modules/*..."
+RUN pnpm install --offline --frozen-lockfile --filter "@dlh/agent-runner..." --filter "./modules/*..."
 RUN pnpm --filter @dlh/agent-runner bundle \
  && pnpm --filter @dlh/agent-runner deploy --prod /out/runner \
  && find /out/runner -mindepth 1 -maxdepth 1 ! -name node_modules ! -name package.json -exec rm -rf {} + \

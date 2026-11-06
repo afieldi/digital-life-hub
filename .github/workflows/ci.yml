@@ -15,11 +15,7 @@ concurrency:
 jobs:
   check:
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -37,30 +33,22 @@ jobs:
       - run: pnpm test
 
       # Screenshot baselines exist for darwin only. Desktop e2e needs the API and
-      # Postgres, so it runs in the server job.
-      # Outstanding follow-up: generate Windows baselines, then drop the macOS guard.
+      # Postgres, so it runs in the e2e job.
       - uses: actions/cache@v4
-        if: runner.os == 'macOS'
         with:
           path: ~/Library/Caches/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       # macOS needs no system packages, so no --with-deps; a cache hit makes this a no-op.
       - run: pnpm --filter @dlh/ui exec playwright install webkit chromium
-        if: runner.os == 'macOS'
 
       - run: pnpm --filter @dlh/ui test:screens
-        if: runner.os == 'macOS'
 
   # The Tauri build runs beside the checks instead of after them: it is the
   # slowest step, and needs nothing the checks produce.
   desktop-build:
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -92,8 +80,10 @@ jobs:
       # build, which writes the dist folder the Tauri context embeds.
       - run: pnpm --filter @dlh/desktop test:rust
 
-  server:
-    timeout-minutes: 40
+  # The server side runs as three jobs in parallel on Linux: the database tests,
+  # the desktop e2e (one job per browser) and the Docker images and tests.
+  db:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     env:
       TEST_DATABASE_URL: postgres://dlh:dlh@127.0.0.1:54329/dlh_test
@@ -125,28 +115,105 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:db
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+  e2e:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    runs-on: ubuntu-latest
+    # Playwright's image ships every browser and its system packages, so nothing
+    # is downloaded from apt (whose mirror has stalled a run for 12 minutes).
+    # Its version must match @playwright/test in pnpm-lock.yaml.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
+    env:
+      # From inside the job container the service is reached by its name.
+      E2E_DATABASE_URL: postgres://dlh:dlh@postgres:5432/dlh_e2e
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: dlh
+          POSTGRES_PASSWORD: dlh
+          POSTGRES_DB: dlh
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U dlh -d dlh"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
 
-      # --with-deps still installs the system packages; the browser download is
-      # skipped on a cache hit.
-      - run: pnpm --filter @dlh/desktop exec playwright install --with-deps webkit chromium
-      - run: pnpm --filter @dlh/desktop test:e2e
+      # The version comes from package.json's packageManager.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @dlh/desktop test:e2e --project=${{ matrix.browser }}
 
       # Traces and the HTML report of a red e2e run, to diagnose it without
       # reproducing it (npx playwright show-trace <trace.zip>).
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-${{ matrix.browser }}
           path: |
             apps/desktop/playwright-report
             apps/desktop/test-results
           retention-days: 7
 
-      - run: pnpm --filter @dlh/api docker:build
+  docker:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgres://dlh:dlh@127.0.0.1:54329/dlh_test
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: dlh
+          POSTGRES_PASSWORD: dlh
+          POSTGRES_DB: dlh
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U dlh -d dlh"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version comes from package.json's packageManager.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Both images build with buildx from layers in the Actions cache. Only
+      # pushes to main write that cache (uploading it costs more than the build
+      # saves); pull requests read main's.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          tags: dlh-api
+          load: true
+          cache-from: type=gha,scope=dlh-api
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=dlh-api' || '' }}
 
       - name: Smoke-test the API image
         run: |
@@ -161,8 +228,17 @@ jobs:
           docker logs dlh-api
           exit 1
 
+      # The same image `pnpm agent:image` builds.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/agent-runner/Dockerfile
+          tags: dlh-agent-runner
+          load: true
+          cache-from: type=gha,scope=dlh-agent-runner
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=dlh-agent-runner' || '' }}
+
       # The Docker tests: runs in the runner image with a fake model
       # (apps/agent/test/docker.e2e.test.ts). As root, like the real worker,
       # which gives each run's socket to the container's user only then.
-      - run: pnpm agent:image
       - run: sudo -E env "PATH=$PATH" pnpm --filter @dlh/agent test:docker
