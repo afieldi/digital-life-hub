@@ -72,11 +72,13 @@ function onWhat(appliesTo: unknown): string {
     : `Works on ${subject}.`;
 }
 
-/** True when the action can run with no item: `appliesTo` is "none" or lists it. */
-function runsWithoutItem(appliesTo: unknown): boolean {
-  return Array.isArray(appliesTo)
-    ? appliesTo.includes("none")
-    : appliesTo === "none";
+/** The kinds of `appliesTo` entries: whether it names items, and whether it allows none. */
+function appliesToParts(appliesTo: unknown) {
+  const list = Array.isArray(appliesTo) ? appliesTo : [appliesTo];
+  return {
+    onItems: list.some((a) => a !== "none"),
+    orNone: list.includes("none"),
+  };
 }
 
 const STOP_WORDS = new Set(
@@ -211,10 +213,11 @@ export async function interpretOwner(
     return escalate(first.confidence);
   }
 
-  const needsSubject =
-    picked === DRAFT_REPLY ||
-    (typeof picked !== "string" &&
-      !runsWithoutItem(deps.ai.runners.get(picked.actionId)?.action.appliesTo));
+  const parts =
+    typeof picked === "string"
+      ? { onItems: picked === DRAFT_REPLY, orNone: false }
+      : appliesToParts(deps.ai.runners.get(picked.actionId)?.action.appliesTo);
+  const needsSubject = parts.onItems;
   if (!needsSubject) {
     if (typeof picked === "string") {
       return {
@@ -237,7 +240,17 @@ export async function interpretOwner(
     input.text,
     picked === DRAFT_REPLY ? ["request"] : undefined,
   );
-  if (hits.length === 0) return escalate(first.confidence);
+  const noItem = (confidence: number): OwnerPick =>
+    parts.orNone && typeof picked !== "string"
+      ? {
+          kind: "action",
+          ...picked,
+          subjectId: null,
+          confidence,
+          alternatives: alternatives(first.choice),
+        }
+      : escalate(confidence);
+  if (hits.length === 0) return noItem(first.confidence);
   const actionNote =
     typeof picked === "string"
       ? "draft a reply to a request"
@@ -268,7 +281,8 @@ export async function interpretOwner(
     throw new AiError("bad_output", aiErrorMessage("bad_output", "vercel"));
   }
   const confidence = Math.min(first.confidence, second.confidence);
-  if (!hit || second.confidence < input.threshold) return escalate(confidence);
+  if (second.confidence < input.threshold) return escalate(confidence);
+  if (!hit) return noItem(confidence);
   if (typeof picked === "string") {
     return { kind: "draftReply", subjectId: hit.id, confidence };
   }

@@ -95,7 +95,13 @@ test("offers every action and kind, plus handOff, draftReply and escalate", asyn
 
 test("an action that applies to none asks one question", async () => {
   const h = await harness({
-    action: { choice: "tasks.create|do", confidence: 0.95 },
+    action: { choice: "test.note|do", confidence: 0.95 },
+  });
+  const create = h.deps.ai.runners.get("tasks.create");
+  if (!create) throw new Error("no tasks.create runner");
+  h.deps.ai.runners.set("test.note", {
+    ...create,
+    action: { ...create.action, id: "test.note", appliesTo: "none" },
   });
   const pick = await h.run("remind me to chase Dana Friday");
   expect(h.seen).toHaveLength(1);
@@ -104,11 +110,42 @@ test("an action that applies to none asks one question", async () => {
   );
   expect(pick).toEqual({
     kind: "action",
-    actionId: "tasks.create",
+    actionId: "test.note",
     aiKind: "do",
     subjectId: null,
     confidence: 0.95,
     alternatives: [],
+  });
+  await h.close();
+});
+
+test("an item-or-none action can pick none without escalating", async () => {
+  const h = await harness({
+    action: { choice: "tasks.create|do" },
+    subject: () => ({ choice: "none", confidence: 0.9 }),
+  });
+  await seed(h);
+  const pick = await h.run("remind me to chase Dana Friday");
+  expect(h.seen.map((r) => r.question.name)).toEqual(["action", "subject"]);
+  expect(pick).toMatchObject({
+    kind: "action",
+    actionId: "tasks.create",
+    subjectId: null,
+  });
+  await h.close();
+});
+
+test("an item-or-none action can pick an item", async () => {
+  const h = await harness({
+    action: { choice: "answer|ask" },
+    subject: byTitle("Chase Dana"),
+  });
+  const { taskId } = await seed(h);
+  const pick = await h.run("what's the Dana invoice task about?");
+  expect(pick).toMatchObject({
+    kind: "action",
+    actionId: "answer",
+    subjectId: taskId,
   });
   await h.close();
 });
