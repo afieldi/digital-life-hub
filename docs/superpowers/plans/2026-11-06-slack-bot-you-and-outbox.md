@@ -4,16 +4,16 @@
 
 **Goal:** Build steps 4–5 of the Slack Bot build order. When this lands:
 - You can DM the bot to ask, capture and act on your hub, with Undo in Slack, and hand work to the agent.
-- You can draft replies that go out under your name only after Send.
+- The bot never writes or sends a message as you. Drafts and the user token are removed (decided after Task 3; see Task 7).
 - Agent reports come back to your DM.
 - Escalation replies and agent posts actually reach Slack.
 - A coworker's request handed to the agent runs with coworker audience: it can read only what involves them unless you approve a call, and it can reply in their DM on its own.
 
 **Architecture:**
 - `slack.handleMessage` gains an owner path. The owner interpreter (Jev, as in Part 1) picks an AI action and a kind, and a subject from search.
-- The owner path never writes through its own writer. It runs each step in its own transaction through `deps`: the gateway's `prepare` / `apply` / `undo`, `runMutation` for `agent.assignRequest`, and `slack.draftReply`. So nothing it starts can see an uncommitted row or deadlock with it.
+- The owner path never writes through its own writer. It runs each step in its own transaction through `deps`: the gateway's `prepare` / `apply` / `undo`, and `runMutation` for `agent.assignRequest`. So nothing it starts can see an uncommitted row or deadlock with it.
 - Undo for operations the bot runs outside the gateway lives in a new `slack_actions` table.
-- `apps/slack` renders buttons, accepts clicks only from you, and runs an outbox loop: `/changes` plus a 30 s timer, sending as the bot or as you.
+- `apps/slack` renders buttons, accepts clicks only from you, and runs an outbox loop: `/changes` plus a 30 s timer, sending as the bot.
 - For the agent, a run carries an `audience`. A Core hook lets the agent module refuse a coworker-audience run's out-of-audience calls unless you approved that exact call. The runner's permission hook asks first.
 
 **Tech Stack:** TypeScript, Zod 4, tRPC 11, Drizzle + Postgres, Vitest, `@slack/bolt` 5.1.0 (Block Kit buttons, `block_actions`).
@@ -30,23 +30,16 @@ Task 1 writes each of these back into the spec.
 
 - **The owner path writes nothing through `w`.** `handleMessage` runs inside a mutation's transaction, and everything you ask for must commit on its own, so each step runs through `deps`:
   - the gateway's `prepare` / `apply` / `undo` (each opens its own transaction);
-  - `runMutation(deps, op, input)` for `requests.file`, `agent.assignRequest`, `agent.cancel` and `slack.draftReply`.
+  - `runMutation(deps, op, input)` for `requests.file`, `agent.assignRequest` and `agent.cancel`.
 
   So `handOff`'s request is committed before `assignRequest` reads it. A test pins that the owner path leaves no write in the outer transaction.
 - **Owner interpretation is two decisions, not one.**
-  - The first is a `choice` question. Its choices are every gateway AI action crossed with each kind it allows, as `"<actionId>|<kind>"`, plus `slack.handOff|do`, `slack.draftReply|do` and `escalate`.
+  - The first is a `choice` question. Its choices are every gateway AI action crossed with each kind it allows, as `"<actionId>|<kind>"`, plus `slack.handOff|do` and `escalate`.
   - The second, only when the picked action applies to items, chooses among up to 5 items from `searchItems` on the message text, plus `none`.
   - Below `threshold` on either decision, a pick of `none` for an action that needs an item, or `escalate`: the message escalates.
 - **`prepare` takes an origin.** `prepare(deps, input, opts?: { origin?: "app" | "slack" })` writes `ai_requests.origin`. `slack.handleAction` acts only on rows with `origin = 'slack'`.
 - **`slack_actions` holds Undo for operations the bot runs outside the gateway.** It holds `agent.assignRequest`'s Undo token from a handoff. A button's value names an `ai_requests` id or a `slack_actions` id, never a raw token.
-- **Drafts are an operation.** `requests.file` accepts actions only through an operation call, so `slack.draftReply({ requestId, instruction })` is a mutation that:
-  1. reads the request it replies to;
-  2. has the model write the draft (`completeOnServer`, purpose `slack.draftReply`);
-  3. files "Reply to \<name\>" with the actions Send and Discard;
-  4. inserts the outbox row (`pending`, `as: "me"`).
-
-  It is `access: "user"` and is also run from the request's detail panel ("Draft a reply").
-- **Request detail gets detail panels.** `RequestDetail` renders `useDetailPanels("request")`, as `TaskDetail` does for tasks. `modules/slack` registers one panel showing the thread link, the sender's GitHub login, and for a draft its text (editable while `pending`), status and error.
+- **No drafts, no request panel.** The user dropped reply-as-you drafts after Task 3. There is no user token, no `slack.draftReply` / `sendDraft` / `discardDraft` / `editDraft`, no `slack.requestInfo` and no request detail panel. The outbox posts only as the bot.
 - **The outbox loop owns staleness.** `slack.pendingSends` is a mutation. It:
   - records `slack_settings.seen_at`, which Settings → Slack shows as "Bot last seen";
   - marks `approved` rows older than 24 h as `failed` with "Too old to send", so escalation replies queued while no sender existed never go out days late;
@@ -78,10 +71,9 @@ Task 1 writes each of these back into the spec.
   - "Not sure what you meant, so I put it in your queue."
   - "Done: \<summary\>"
   - "Given to the agent: \<task title\>"
-  - "Draft ready in your queue: Reply to \<name\>"
   - "Undid \<action\>." (the gateway's Undo summary)
   - "Changed since" (the gateway's or the operation's conflict text)
-- **Buttons** (verbatim): "Undo", "Cancel run", "None of these", "Send", "Discard". Each Suggest option's label is the option's label.
+- **Buttons** (verbatim): "Undo", "Cancel run", "None of these". Each Suggest option's label is the option's label.
 - **Agent report copy** (verbatim):
   - "Done: \<task title\>" then the report summary, then one line per link (`<label>: <url>`)
   - "The agent couldn't finish \<task title\>: \<failure message\>"
@@ -93,7 +85,7 @@ Task 1 writes each of these back into the spec.
   - Approved rows older than 24 h fail with "Too old to send".
   - `postToSource`: at most 5 posts per run, at most 2,000 characters each.
 - **Only the owner's clicks act.** `apps/slack` ignores any `block_actions` from another user.
-- **Posting as you** happens only for an outbox row with `as = "me"`, which is only a draft you sent. A run never posts as you.
+- **Never post as you.** No user token exists; every outbox row is sent as the bot. A run never posts as you.
 - **Undo** works only on `ai_requests` rows with `origin = 'slack'` and `slack_actions` rows the bot made. Each is single use.
 - **Module boundaries:** modules never import `@dlh/db` and never read another module's tables. Cross-module reads and writes go through `w.call` or `runMutation(deps, deps.operations.get(id), input)`.
 - **A coworker-audience run, alone, may:**
@@ -107,7 +99,7 @@ Task 1 writes each of these back into the spec.
 
 1. **Someone other than you clicks a button** in a thread they can see. Nothing happens, and they get no error. Test: Task 11 `a click from someone else does nothing`.
 2. **A button pressed twice** (Undo twice, a Suggest option twice). The second press replies with the gateway's "already used" text and changes nothing. Test: Task 5 `a second undo is a no-op reply`.
-3. **`apps/slack` was down** while drafts were sent and runs ended. On start, each goes out once. Escalation replies older than 24 h never go out. Test: Task 9 `old approved rows fail as Too old to send` and Task 12 `a restart sends what was approved, once`.
+3. **`apps/slack` was down** while escalation replies were queued and runs ended. On start, each goes out once. Escalation replies older than 24 h never go out. Test: Task 9 `old approved rows fail as Too old to send` and Task 12 `a restart sends what was approved, once`.
 4. **"Rename the contract task" with two matching tasks**, or a task that doesn't exist. Low subject confidence, or `none`, escalates. It never acts on the wrong item. Test: Task 3 `an unsure subject escalates` and `no matching item escalates`.
 5. **A coworker-audience run calls an out-of-audience operation**, gets it approved, then calls it again. The first call after approval passes; the second is `FORBIDDEN`. Test: Task 15 `an approved hub call passes once`.
 
@@ -121,18 +113,17 @@ packages/server/src/modules.ts, compose.ts        runGuard hook collected; CoreD
 packages/server/src/operations/router.ts          run principals: runId check, then run guards
 packages/agent-protocol/src/{index,approval}.ts   re-export hash helpers; RunStart.audience, request.id
 modules/requests/                                 from_owner column, file input fromOwner, RequestRow.fromOwner;
-                                                  fromSender access everyone + ai; RequestDetail renders detail panels
+                                                  fromSender access everyone + ai
 modules/slack/
   src/db/schema.ts, drizzle/0001_*.sql            slack_actions table; slack_settings.seen_at
+  drizzle/0002_*.sql                              slack_outbox loses `as`, `draft` origin, pending/discarded
   src/server/owner/interpret.ts                   interpretOwner
   src/server/owner/run.ts                         runOwnerAction (gateway), handOff, cancelRun
   src/server/owner/index.ts                       handleOwner (the owner path)
   src/server/actions.ts                           slack.handleAction
-  src/server/drafts.ts                            draftReply, sendDraft, discardDraft, editDraft
   src/server/outbox.ts                            pendingSends, markSent, markFailed
   src/server/reports.ts                           syncRuns
   src/server/postToSource.ts                      postToSource
-  src/screens/RequestPanel.tsx                    the request detail panel
   test/owner-phrasings.ts                         40 labelled owner messages
 modules/agent/                                    audience, coworker_connection_ids, hub_approvals; recentRuns, runSource;
                                                   assignRequest audience; claim passes audience + request id; runGuard
@@ -241,7 +232,7 @@ apps/slack/src/{api,main,events}.ts                new hub methods; wiring; /cha
     - `applied` → `reply: "Done: <summary>"` with an "Undo" button (`undo`)
     - an `AiError` → `reply`: its message
   - **Escalation.** `{ kind: "escalate" }` files the message as "Bot wasn't sure: \<first line\>" with **no actions** at all, so the request keeps its normal outcomes (Make task, Handled, Not for me). Do not reuse Part 1's `escalate`: it always adds "Neither", which would hide them. Filing runs through `runMutation(deps, requests.file, { …slack fields, fromOwner: true })` once Task 6 adds `fromOwner`; until then, without it. Then reply "Not sure what you meant, so I put it in your queue.".
-  - **`handOff` and `draftReply` picks** route to Tasks 6 and 7. Until those land, the routing throws `NOT_IMPLEMENTED`, and each task replaces its branch.
+  - **A `handOff` pick** routes to Task 6. Until it lands, the routing throws `NOT_IMPLEMENTED`, and Task 6 replaces the branch. (Task 3 also returns a `draftReply` pick until Task 7 removes it; route it to the same `NOT_IMPLEMENTED` branch.)
 
 - [ ] **Step 1: Write the failing tests** (fake `decide` and `complete`):
   - `an owner Do runs through the gateway with origin slack and offers Undo`
@@ -320,69 +311,37 @@ apps/slack/src/{api,main,events}.ts                new hub methods; wiring; /cha
 
 ---
 
-### Task 7: Drafts
+### Task 7: Remove drafts and the user token
+
+The user dropped reply-as-you drafts after Task 3 had shipped its `draftReply` pick, and after Part 1 had shipped the user token and the outbox's `as` column. This task removes them.
 
 **Files:**
-- Create: `modules/slack/src/server/drafts.ts`
-- Modify: `modules/slack/src/operations.ts`, `src/server.ts`, `src/server/owner/run.ts`
-- Test: `modules/slack/test/drafts.db.test.ts`
-
-**Interfaces:**
-- Consumes: `requests.get`, `requests.file` and `requests.resolve` (calls), `completeOnServer`.
-- Produces (all `access: "user"`, palette/ai false):
-  - **`slack.draftReply({ requestId, instruction })`** (mutation; calls get and file):
-    - The target must be `source = "slack"`, else `BAD_REQUEST` "Not a Slack request".
-    - The model writes the reply from `instruction` and the request body (purpose `slack.draftReply`, `timeoutMs` 15000).
-    - It files `"Reply to <fromName>"` with actions Send (`slack.sendDraft({ draftId })`) and Discard (`slack.discardDraft({ draftId })`).
-    - It inserts an outbox row `{ origin: "draft", as: "me", status: "pending", key: "draft:<draftRequestId>", channel, thread }` from the target's `externalId` and `sourceUrl`.
-    - Result `{ draftId, requestId }`. Undo deletes the pending row (Core removes the filed request).
-  - **`slack.sendDraft({ draftId })`** (mutation; calls get and resolve): `pending` → `approved`, sets `approved_at`, resolves the draft request `handled`. Undo restores `pending` and reopens, only while the row is `approved`, else `CONFLICT` "Already sent".
-  - **`slack.discardDraft({ draftId })`**: → `discarded`, resolves `handled`.
-  - **`slack.editDraft({ draftId, text })`**: only `pending`, else `CONFLICT` "Already sent". `text` is 1–4000 characters.
-  - The owner path's `draftReply` pick runs `runMutation(deps, slack.draftReply, { requestId: subjectId, instruction: text })` and replies `"Draft ready in your queue: Reply to <name>"`.
-
-- [ ] **Step 1: Write the failing tests:**
-  - `draftReply files Reply to with Send and Discard and a pending row as me`
-  - `draftReply refuses a request not from Slack`
-  - `sendDraft approves and resolves; undo before sending restores pending`
-  - `undo after sending conflicts`
-  - `editDraft only while pending`
-  - `the owner path drafts a reply to the request it picked`
-- [ ] **Step 2: Run** `pnpm --filter @dlh/module-slack test:db drafts`. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the same command. Expected: PASS.
-- [ ] **Step 5: Commit:** `feat(slack): drafts you send as yourself`
-
----
-
-### Task 8: The request detail panel
-
-**Files:**
-- Modify: `modules/requests/src/screens/RequestDetail.tsx` (render `useDetailPanels("request")` below the body, as `TaskDetail` does)
-- Create: `modules/slack/src/screens/RequestPanel.tsx`
-- Modify: `modules/slack/src/manifest.tsx` (`detailPanels: [{ itemType: "request", id: "slack", label: "Slack", component: RequestPanel }]`), `modules/slack/src/operations.ts` (`slack.requestInfo` query)
-- Test: `apps/desktop/test/request-panel.db.test.tsx`
+- Modify: `modules/slack/src/server/owner/interpret.ts`, `src/server/owner/index.ts` (the `draftReply` branch), `test/owner-interpret.db.test.ts`, `test/owner-phrasings.ts`, `test/owner-phrasings.test.ts`
+- Modify: `modules/slack/src/db/schema.ts` and a generated migration; every outbox insert (`git grep -n slackOutbox modules/slack/src`); `test/migration.db.test.ts`
+- Modify: `apps/slack/src/config.ts`, `apps/slack/test/config.test.ts`, `deploy/vps/.env.example`, `deploy/vps/docker-compose.yml`, `deploy/vps/README.md`
 
 **Interfaces:**
 - Produces:
-  - **`slack.requestInfo({ requestId })`**: a query, `access: "user"`, palette/ai false, calls `requests.get`. It returns `null` for a non-Slack request, else `{ threadUrl, senderLogin: string | null, draft: { id, text, status, error } | null }`.
-  - **The panel:**
-    - renders nothing when `requestInfo` is null;
-    - otherwise shows the thread link (`useOpenExternal`) and the GitHub login;
-    - for a draft, a text area saved with `slack.editDraft` (disabled unless `pending`), plus the status and error;
-    - for a non-draft Slack request, a "Draft a reply" field and button that run `slack.draftReply`.
+  - `OwnerPick`'s second variant is `{ kind: "handOff"; subjectId: null; confidence: number }`. The first decision's choices are the actions × kinds, `slack.handOff|do` and `escalate`. Nothing else in `interpretOwner` changes.
+  - `slack_outbox` has no `as` column. `origin` is one of `agent`, `report`, `review_ping`, `escalation`. `status` is one of `approved`, `sent`, `failed`, default `approved`. The migration deletes any `draft` row first (there are none in practice).
+  - `apps/slack`'s config has no `userToken`, and `SLACK_USER_TOKEN` is gone from compose, `.env.example` and the README.
 
-    It uses `@dlh/ui` components only.
+- [ ] **Step 1: Update the tests first:**
+  - `offers every action and kind, plus handOff and escalate` (renamed; `slack.draftReply|do` is not offered)
+  - delete `draftReply asks for a request among the hits, and only requests are offered`
+  - the owner phrasings lose their `draftReply` entries; keep the suite's size by adding the same number of capture or ask phrasings
+  - `the outbox refuses a draft origin` replaces the `as me` migration tests
+  - the config test no longer lists `SLACK_USER_TOKEN`
+- [ ] **Step 2: Run** `pnpm --filter @dlh/module-slack test:db` and `pnpm --filter @dlh/slack test`. Expected: FAIL.
+- [ ] **Step 3: Implement**, and generate the migration with `pnpm --filter @dlh/module-slack generate`.
+- [ ] **Step 4: Run** both commands, `pnpm typecheck` and `pnpm lint`. Expected: PASS. Then `pnpm ai:eval-interpreter --suite=slack-owner` once with the Gateway key: report the score; the gate is 85%.
+- [ ] **Step 5: Commit:** `refactor(slack): no drafts, no user token`
 
-- [ ] **Step 1: Write the failing tests** (`signedInApp`):
-  - `a Slack request shows its panel`
-  - `a draft's text can be edited while pending`
-  - `Draft a reply files a draft`
-  - `a manual request shows no Slack panel`
-- [ ] **Step 2: Run** `pnpm --filter @dlh/desktop test:db request-panel`. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** it, `pnpm lint` (module class check) and `pnpm typecheck`. Expected: PASS.
-- [ ] **Step 5: Commit:** `feat(slack): a Slack panel on requests`
+---
+
+### Task 8: (dropped)
+
+The request detail panel existed for drafts. It is dropped with them; nothing to build.
 
 ---
 
@@ -398,16 +357,16 @@ apps/slack/src/{api,main,events}.ts                new hub methods; wiring; /cha
   - **`slack.pendingSends()`** (mutation):
     - sets `seen_at = now`;
     - marks `approved` rows with `approved_at` older than 24 h `failed`, `error` "Too old to send";
-    - returns up to 20 `approved` rows, oldest first, as `{ id, as, channelId, threadTs, text }`.
+    - returns up to 20 `approved` rows, oldest first, as `{ id, channelId, threadTs, text }`.
   - **`slack.markSent({ id, ts })`**: `approved` → `sent`, `sent_ts`, `sent_at`. Any other status is a no-op (idempotent).
-  - **`slack.markFailed({ id, error })`**: a draft → `pending` with `error`; anything else → `failed` with `error`.
+  - **`slack.markFailed({ id, error })`**: `approved` → `failed` with `error`. Any other status is a no-op.
   - `slack.settings` returns `seenAt`, and Settings → Slack shows "Bot last seen \<time\>" or "Bot not seen yet".
 
 - [ ] **Step 1: Write the failing tests:**
   - `pendingSends returns approved rows oldest first and records seen_at`
   - `old approved rows fail as Too old to send`
   - `markSent twice is a no-op`
-  - `a failed draft goes back to pending with its error`
+  - `markFailed records the error`
 - [ ] **Step 2: Run** `pnpm --filter @dlh/module-slack test:db outbox`. Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** the same command. Expected: PASS.
@@ -478,23 +437,23 @@ apps/slack/src/{api,main,events}.ts                new hub methods; wiring; /cha
 
 **Files:**
 - Create: `apps/slack/src/outbox.ts`
-- Modify: `apps/slack/src/{api,main,config}.ts`
+- Modify: `apps/slack/src/{api,main}.ts`
 - Test: `apps/slack/test/outbox.test.ts`
 
 **Interfaces:**
 - Consumes: `slack.syncRuns`, `slack.pendingSends`, `slack.markSent`, `slack.markFailed`, `/changes` (copy `onChanges` from `apps/agent/src/api.ts`).
 - Produces:
-  - `createOutbox(deps: { api; bot: SlackWeb; user: SlackWeb; log? }): { tick(): Promise<void> }`. A tick:
+  - `createOutbox(deps: { api; bot: SlackWeb; log? }): { tick(): Promise<void> }`. A tick:
     1. calls `syncRuns`;
     2. calls `pendingSends`;
-    3. posts each row with `chat.postMessage({ channel: channelId, text, thread_ts: threadTs ?? undefined })`, using the `user` client when `as === "me"`;
+    3. posts each row with `chat.postMessage({ channel: channelId, text, thread_ts: threadTs ?? undefined })` with the bot client;
     4. then calls `markSent` with the posted `ts`, or `markFailed` with Slack's error code.
 
     Ticks never overlap: a tick requested while one runs runs once after it.
-  - `main.ts` ticks on start, on every `/changes` event and every 30 s. The user client is `new WebClient(config.userToken)`.
+  - `main.ts` ticks on start, on every `/changes` event and every 30 s.
 
 - [ ] **Step 1: Write the failing tests** (stub API, stub clients, fake timers):
-  - `a draft is posted with your token, a report with the bot's`
+  - `a report is posted as the bot in its thread`
   - `a restart sends what was approved, once`
   - `a Slack error marks the row failed with its code`
   - `ticks never overlap`
@@ -639,8 +598,7 @@ apps/slack/src/{api,main,events}.ts                new hub methods; wiring; /cha
 - [ ] **Step 2: Update the README and spec as above.** In the README, add the Part 2 manual checks for the user:
   - "remind me to chase Dana Friday" → a task, and Undo removes it;
   - "what's due today?" answers;
-  - a draft reply goes out under your name only after Send;
   - "have the agent do X" starts a run with no further confirm, and its report lands in the DM;
   - a coworker's request given to the agent replies in their DM, and an out-of-audience read files an approval;
-  - restarting `apps/slack` sends approved drafts and agent posts once.
+  - restarting `apps/slack` sends queued escalation replies and agent posts once.
 - [ ] **Step 3: Commit:** `docs(slack-bot): part 2 checks`
