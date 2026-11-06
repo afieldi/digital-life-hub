@@ -24,7 +24,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createApi } from "../src/api";
 import { createClaimLoop } from "../src/claimLoop";
 import { cliDocker, execFile } from "../src/docker/cli";
-import { containerName, type Docker, volumeName } from "../src/docker/docker";
+import { type Docker, volumeName } from "../src/docker/docker";
 import { createPrices } from "../src/relay/prices";
 import type { Timers } from "../src/run/events";
 import { openStore } from "../src/store";
@@ -512,7 +512,14 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
     await h.newLoop().start();
 
     await waitFor("the third turn", async () => h.fake.turns.length >= 3);
-    const live = await docker("inspect", containerName(runId));
+    // Found by the run's label: each start names its container afresh.
+    const running = await docker(
+      "ps",
+      "-q",
+      "--filter",
+      `label=dlh.run=${runId}`,
+    );
+    const live = await docker("inspect", running.trim().split("\n")[0] ?? "");
     held.open();
     await h.runIn(runId, "done");
 

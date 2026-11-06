@@ -8,7 +8,7 @@ run, on its own network, `dlh-runs`, which can't reach private address space.
 internal network:  db  <-  api  <-  agent (worker)
                                       | /var/run/docker.sock
                                       v
-dlh-runs network:                   dlh-run-<id> containers (public internet only)
+dlh-runs network:                   dlh-run-<id>-<start> containers (public internet only)
 ```
 
 The worker holds the Docker socket, which is root on the host. It is the only

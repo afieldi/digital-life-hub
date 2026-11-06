@@ -20,6 +20,23 @@ function fakeExec(answer: { stdout?: string; stderr?: string; fail?: true }) {
 }
 
 describe("cliDocker", () => {
+  it("each start of a run gets its own container name", async () => {
+    const { exec, calls } = fakeExec({ stdout: "abc123\n" });
+    const docker = cliDocker(exec);
+    const spec = {
+      runId: RUN,
+      image: "dlh-agent-runner",
+      env: runEnv(RUN),
+      socketDir: `/var/lib/dlh-agent/runs/${RUN}/s-Ab12Cd`,
+    };
+    await docker.run(spec);
+    await docker.run(spec);
+    const names = calls.map((c) => c[c.indexOf("--name") + 1]);
+    expect(names[0]).not.toBe(names[1]);
+    // Both are still found as the run's, by its label.
+    for (const c of calls) expect(c).toContain(`dlh.run=${RUN}`);
+  });
+
   it("run uses exactly the isolation flags and no secret", async () => {
     const { exec, calls } = fakeExec({ stdout: "abc123\n" });
     const docker = cliDocker(exec);
@@ -39,7 +56,7 @@ describe("cliDocker", () => {
         "run",
         "-d",
         "--name",
-        `dlh-run-${RUN}`,
+        expect.stringMatching(new RegExp(`^dlh-run-${RUN}-[0-9a-f]{8}$`)),
         "--label",
         `dlh.run=${RUN}`,
         "--init",
