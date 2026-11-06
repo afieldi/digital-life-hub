@@ -168,6 +168,25 @@ function envOf(raw: string | undefined): Record<string, string> {
   );
 }
 
+/** What a third-party server may see of the launcher's environment. */
+const SERVER_ENV = new Set(["PATH", "HOME", "TMPDIR", "LANG"]);
+
+/**
+ * A connection's MCP server's environment: a minimal base and its own
+ * variables. The launcher inherits the SDK child's, which holds every `env`
+ * connection's secret; a third-party server gets none of it.
+ */
+export function serverEnv(
+  parent: NodeJS.ProcessEnv,
+  own: Record<string, string>,
+): Record<string, string> {
+  const base = Object.entries(parent).filter(
+    (e): e is [string, string] =>
+      e[1] !== undefined && (SERVER_ENV.has(e[0]) || e[0].startsWith("NODE_")),
+  );
+  return { ...Object.fromEntries(base), ...own };
+}
+
 export type LaunchSpec = {
   command: string;
   args: string[];

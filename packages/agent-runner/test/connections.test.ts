@@ -13,6 +13,7 @@ import {
   launchSpec,
   prepareWorkspace,
   reposOf,
+  serverEnv,
   wireConnections,
 } from "../src/connections";
 import { classify, mcpServerKey } from "../src/permissions";
@@ -235,6 +236,36 @@ describe("wireConnections", () => {
     });
     expect(w.env.DLH_GITHUB_CONNECTION).toBe("Alpha");
     expect(w.clone).toEqual(["a/two"]);
+  });
+});
+
+describe("serverEnv", () => {
+  it("a server gets a minimal environment and its own variables", () => {
+    const parent = {
+      PATH: "/usr/bin",
+      HOME: "/home/runner",
+      TMPDIR: "/tmp",
+      LANG: "C.UTF-8",
+      NODE_OPTIONS: "--max-old-space-size=512",
+      NODE_EXTRA_CA_CERTS: "/etc/ca.pem",
+      // The SDK child's: an env connection's secret, git and model settings.
+      DEPLOY_KEY: "env-connection-secret",
+      ANTHROPIC_AUTH_TOKEN: "dlh-run",
+      GIT_CONFIG_COUNT: "1",
+      DLH_GITHUB_CONNECTION: "GitHub work",
+    };
+    expect(
+      serverEnv(parent, { SLACK_BOT_TOKEN: "xoxb", PATH: "/opt" }),
+    ).toEqual({
+      PATH: "/opt",
+      HOME: "/home/runner",
+      TMPDIR: "/tmp",
+      LANG: "C.UTF-8",
+      NODE_OPTIONS: "--max-old-space-size=512",
+      NODE_EXTRA_CA_CERTS: "/etc/ca.pem",
+      SLACK_BOT_TOKEN: "xoxb",
+    });
+    expect(serverEnv({}, {})).toEqual({});
   });
 });
 

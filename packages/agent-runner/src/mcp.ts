@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
-import { launchSpec } from "./connections";
+import { launchSpec, serverEnv } from "./connections";
 import { createHost } from "./host";
 
 /**
  * `node /opt/runner/mcp.js <type> <name>`: starts a connection's MCP server
  * with its secret, fetched from the socket now, in that process's environment
- * only. The SDK gives server configs to its child on the command line, so the
- * config names this launcher and holds no secret. stdio passes straight through.
+ * only, which holds nothing else of the run's (see `serverEnv`). The SDK
+ * gives server configs to its child on the command line, so the config names
+ * this launcher and holds no secret. stdio passes straight through.
  */
 const [type, name] = process.argv.slice(2);
 const log = (line: string) => console.error(`dlh-mcp: ${line}`);
@@ -17,7 +18,7 @@ async function main(): Promise<void> {
   const spec = await launchSpec(type, name, (t, n) => host.credentials(t, n));
   const child = spawn(spec.command, spec.args, {
     stdio: "inherit",
-    env: { ...process.env, ...spec.env },
+    env: serverEnv(process.env, spec.env),
   });
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(signal, () => child.kill(signal));
