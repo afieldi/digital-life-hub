@@ -9,14 +9,18 @@ const NOW = new Date("2026-11-05T10:00:00.000Z");
 /** Timers fired by hand, by period. */
 function fakeTimers() {
   const every = new Map<number, () => void>();
+  const after = new Map<number, () => void>();
   const timers: Timers = {
     every(ms, fn) {
       every.set(ms, fn);
       return () => every.delete(ms);
     },
-    after: () => () => {},
+    after(ms, fn) {
+      after.set(ms, fn);
+      return () => after.delete(ms);
+    },
   };
-  return { timers, every };
+  return { timers, every, after };
 }
 
 const claim = (id: string) =>
@@ -28,7 +32,7 @@ function setup(opts: {
   containers?: string[];
   removeVolume?: (name: string) => Promise<void>;
 }) {
-  const { timers, every } = fakeTimers();
+  const { timers, every, after } = fakeTimers();
   let onChange: () => void = () => {};
   const unsubscribe = vi.fn();
   const queue = [...(opts.claims ?? [])];
@@ -98,6 +102,7 @@ function setup(opts: {
     handles,
     logs,
     every,
+    after,
     unsubscribe,
     startRun,
     change: () => onChange(),
@@ -214,6 +219,36 @@ describe("claim loop", () => {
     // The first one's end didn't drop the second from the live runs.
     await s.loop.stop();
     expect(s.handles[1]?.stop).toHaveBeenCalledWith("shutdown");
+  });
+
+  it("a last supervisor that never ends doesn't stop the claims", async () => {
+    const s = setup({
+      claims: [
+        async () => claim("r1"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+        async () => claim("r2"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+      ],
+    });
+    await s.loop.start();
+    await s.idle();
+    s.change();
+    await s.idle();
+    // r1's first supervisor hangs: after a minute the pass gives up on it.
+    expect(s.started).toEqual(["r1"]);
+    s.after.get(60_000)?.();
+    await s.idle();
+    await s.idle();
+    expect(s.logs.some((l) => l.includes("r1"))).toBe(true);
+    // The claim goes on to other runs, and r1 claimed again starts.
+    expect(s.started).toEqual(["r1", "r2"]);
+    s.change();
+    await s.idle();
+    expect(s.started).toEqual(["r1", "r2", "r1"]);
+    s.handles[0]?.end();
+    await s.loop.stop();
   });
 
   it("old volumes are removed and forgotten", async () => {

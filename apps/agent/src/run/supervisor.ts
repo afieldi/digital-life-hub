@@ -27,7 +27,7 @@ export type { Timers };
 
 export type RunEnd = {
   runId: string;
-  /** `finished`, `failed`, `suspended`, `exited`, `stopped` (heartbeat), `worker_error`, or what `stop` was given. */
+  /** `finished`, `failed`, `suspended`, `stopped` (heartbeat), `worker_error`, or what `stop` was given. */
   reason: string;
 };
 
@@ -127,8 +127,10 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   let ending = false;
   /** A finish, fail or suspend is under way; a second one is refused. */
   let reporting = false;
-  /** A finish, fail or suspend reached the API. */
-  let reported = false;
+  /** How the run ends once the finish, fail or suspend under way is answered. */
+  let reportEnd: Promise<string> | undefined;
+  /** The container exited on its own: there is nothing to stop. */
+  let exited = false;
   const cancels: Array<() => void> = [];
   let server: Server | undefined;
 
@@ -137,26 +139,32 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     resolveDone = r;
   });
 
+  /** Stops and removes the container and the socket. `done` always resolves. */
   async function end(reason: string) {
     if (ending) return;
     ending = true;
-    for (const c of cancels.splice(0)) c();
-    inbox.close();
-    await flush();
-    if (started && reason !== "exited") {
-      await deps.docker.stop(name).catch((e) => log(`stop: ${firstLine(e)}`));
+    try {
+      for (const c of cancels.splice(0)) c();
+      inbox.close();
+      await flush();
+      if (started && !exited) {
+        await deps.docker.stop(name).catch((e) => log(`stop: ${firstLine(e)}`));
+      }
+      await deps.docker.remove(name).catch(() => {});
+      if (server) {
+        const s = server;
+        await new Promise<void>((r) => {
+          s.close(() => r());
+          s.closeAllConnections();
+        });
+      }
+      rmSync(socketPath, { force: true });
+      deps.store.markEnded(runId, now());
+    } catch (e) {
+      log(`end: ${firstLine(e)}`);
+    } finally {
+      resolveDone({ runId, reason });
     }
-    await deps.docker.remove(name).catch(() => {});
-    if (server) {
-      const s = server;
-      await new Promise<void>((r) => {
-        s.close(() => r());
-        s.closeAllConnections();
-      });
-    }
-    rmSync(socketPath, { force: true });
-    deps.store.markEnded(runId, now());
-    resolveDone({ runId, reason });
   }
 
   /**
@@ -186,7 +194,6 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     }
     try {
       await workerCall(call);
-      reported = true;
       return true;
     } catch (e) {
       log(`${what}: ${firstLine(e)}`);
@@ -198,10 +205,10 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   async function failRun(code: string, message: string) {
     if (ending || reporting) return;
     reporting = true;
-    const sent = await sendReport("fail", () =>
+    reportEnd = sendReport("fail", () =>
       agent.fail.mutate({ runId, code, message }),
-    );
-    await end(sent ? "failed" : "worker_error");
+    ).then((sent) => (sent ? "failed" : "worker_error"));
+    await end(await reportEnd);
   }
 
   /** Sends the run's totals so far; resolves with whether it should stop. */
@@ -265,7 +272,10 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       return { status: 409, body: { error: "Run is ending" } };
     }
     reporting = true;
-    if (await sendReport(what, call)) {
+    reportEnd = sendReport(what, call).then((sent) =>
+      sent ? ok.reason : "worker_error",
+    );
+    if ((await reportEnd) === ok.reason) {
       return { status: 200, body: ok.body, after: () => void end(ok.reason) };
     }
     return {
@@ -439,9 +449,13 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     );
     deps.docker.wait(name).then(
       ({ exitCode }) => {
+        exited = true;
         // Every stop the worker causes sets `ending` first, so this exit is
         // the container's own; without a report it crashed (or hung up early).
-        if (ending || reported) return end("exited");
+        if (ending) return;
+        // Exited during (or after) a report: end as that report says, once
+        // it's answered; the runner may not be there to hear it.
+        if (reportEnd) return reportEnd.then(end);
         log(`container exited (${exitCode}) without a report`);
         return failRun("no_report", "Ended without a report");
       },

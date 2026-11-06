@@ -9,6 +9,8 @@ import {
 
 const CLAIM_EVERY_MS = 30_000;
 const SWEEP_EVERY_MS = 60 * 60_000;
+/** How long a run claimed again waits for its last supervisor to end. */
+const PREVIOUS_END_MS = 60_000;
 /** A run's volume is kept this long after the run ends. */
 const VOLUME_KEPT_MS = 7 * 24 * 60 * 60_000;
 
@@ -60,9 +62,28 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
       // one takes: start once that one has ended.
       const previous = live.get(claimed.run.id);
       if (previous) {
-        await previous.done.catch(() => {});
+        let cancel: () => void = () => {};
+        const ended = await Promise.race([
+          previous.done.then(
+            () => true,
+            () => true,
+          ),
+          new Promise<false>((r) => {
+            cancel = timers.after(PREVIOUS_END_MS, () => r(false));
+          }),
+        ]);
+        cancel();
         // Stopped meanwhile: the stale sweep requeues the run.
         if (stopped) return;
+        if (!ended) {
+          // Never ending: forget it, so the run can start when the stale
+          // sweep requeues it, and claim on.
+          log(`run ${claimed.run.id}: its last supervisor didn't end`);
+          if (live.get(claimed.run.id) === previous) {
+            live.delete(claimed.run.id);
+          }
+          continue;
+        }
       }
       try {
         const handle = start(claimed, { ...supervisorDeps, log });

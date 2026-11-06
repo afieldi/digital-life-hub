@@ -752,6 +752,82 @@ describe("startRun", () => {
     expect(t.docker.stop).toHaveBeenCalled();
   });
 
+  it("a runner that hangs up during /suspend still ends the run", async () => {
+    const t = setup();
+    await t.started();
+    let release!: () => void;
+    t.agent.suspend.mutate.mockImplementation(
+      () =>
+        new Promise((r) => {
+          release = () => r(answer({}));
+        }),
+    );
+    const req = request({
+      socketPath: t.socketPath,
+      method: "POST",
+      path: "/suspend",
+      headers: { "content-type": "application/json" },
+    });
+    req.on("error", () => {});
+    req.end(
+      JSON.stringify({
+        sessionId: "sess-1",
+        kind: "approval",
+        title: "Merge",
+        body: "gh pr merge 1",
+      }),
+    );
+    await vi.waitFor(() => expect(t.agent.suspend.mutate).toHaveBeenCalled());
+    // Killed mid-report (OOM, a stop): the connection is gone before the answer.
+    req.destroy();
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    const end = await Promise.race([
+      t.handle.done,
+      new Promise((r) => setTimeout(() => r("hung"), 1000)),
+    ]);
+    expect(end).toEqual({ runId: RUN, reason: "suspended" });
+  });
+
+  it("a container that exits during a report ends the run once it's in", async () => {
+    const t = setup();
+    await t.started();
+    let release!: () => void;
+    t.agent.finish.mutate.mockImplementation(
+      () =>
+        new Promise((r) => {
+          release = () => r(answer({}));
+        }),
+    );
+    const res = t
+      .call("POST", "/finish", {
+        report: { summary: "Fixed", links: [], filesChanged: [] },
+      })
+      .catch(() => null);
+    await vi.waitFor(() => expect(t.agent.finish.mutate).toHaveBeenCalled());
+    t.exit(137);
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await res;
+    const end = await t.handle.done;
+    expect(end.reason).toBe("finished");
+    expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+  });
+
+  it("done resolves even when ending throws", async () => {
+    const t = setup();
+    await t.started();
+    t.store.markEnded.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    t.handle.stop("test");
+    const end = await Promise.race([
+      t.handle.done,
+      new Promise((r) => setTimeout(() => r("hung"), 1000)),
+    ]);
+    expect(end).toEqual({ runId: RUN, reason: "test" });
+  });
+
   it("refuses a body that doesn't match the route", async () => {
     const t = setup();
     await t.started();
