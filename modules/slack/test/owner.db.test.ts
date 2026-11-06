@@ -124,7 +124,7 @@ test("an owner message that is unsure escalates to the queue", async () => {
   const { items } = await h.caller.requests.open({});
   expect(items.map((r) => r.title)).toEqual(["Bot wasn't sure: hmm"]);
   const { request } = await h.caller.requests.get({ id: items[0]?.id ?? "" });
-  expect(request.actions ?? []).toEqual([]);
+  expect(request.actions).toBeNull();
   expect(request).toMatchObject({ source: "slack", sourceHandle: "UOWNER" });
   await h.close();
 });
@@ -133,8 +133,8 @@ test("the owner path writes nothing through the message's writer", async () => {
   const h = await harness({ choice: "tasks.create|do" });
   h.completions.push(JSON.stringify({ title: "Chase Dana" }));
   const out = await h.send("add a task to chase Dana");
-  expect(out.undo?.created ?? []).toEqual([]);
-  expect(out.undo?.calls ?? []).toEqual([]);
+  // The outer token is real and empty: nothing was created or called through its writer.
+  expect(out.undo).toEqual({ record: null, created: [], calls: [] });
   expect(await h.taskTitles()).toEqual(["Chase Dana"]);
   await h.close();
 });
@@ -142,7 +142,7 @@ test("the owner path writes nothing through the message's writer", async () => {
 test("a gateway failure replies with its message", async () => {
   const h = await harness({ choice: "tasks.create|do" });
   const out = await h.send("add a task to chase Dana");
-  expect(out.result.reply).toMatch(/\S/);
+  expect(out.result.reply).toBe("The model is down");
   expect(out.result.buttons).toBeUndefined();
   expect(await h.aiRows()).toEqual([{ origin: "slack", status: "failed" }]);
   await h.close();

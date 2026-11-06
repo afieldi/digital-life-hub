@@ -5,7 +5,7 @@ import type {
   HandleMessageResult,
   SlackSettings,
 } from "../../schema";
-import { ESCALATED_PREFIX, firstLine } from "../coworker";
+import { ESCALATED_PREFIX, firstLine, keyOf } from "../coworker";
 import { interpretOwner, type OwnerPick } from "./interpret";
 import { runOwnerAction } from "./run";
 
@@ -25,7 +25,7 @@ async function escalateOwner(
     title: `${ESCALATED_PREFIX}${firstLine(input.event.text)}`,
     body: input.event.text,
     source: "slack",
-    externalId: `${input.event.channel}:${input.event.ts}`,
+    externalId: keyOf(input.event),
     sourceUrl: input.event.permalink,
     sourceHandle: input.sender.slackUserId,
     fromName: input.sender.name,
