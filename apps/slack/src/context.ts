@@ -68,6 +68,21 @@ export async function fetchContext(
   web: SlackWeb,
   event: SlackMessageEvent,
   settings: Pick<BotSettings, "ownerSlackId" | "botUserId">,
+  /** Told when the conversation can't be read; the message goes on without it. */
+  log?: (line: string) => void,
+): Promise<Turn[]> {
+  try {
+    return await readContext(web, event, settings);
+  } catch {
+    log?.(`${event.channel}:${event.ts} context unreadable`);
+    return [];
+  }
+}
+
+async function readContext(
+  web: SlackWeb,
+  event: SlackMessageEvent,
+  settings: Pick<BotSettings, "ownerSlackId" | "botUserId">,
 ): Promise<Turn[]> {
   const base = { channel: event.channel, latest: event.ts, inclusive: false };
   const messages = event.thread_ts

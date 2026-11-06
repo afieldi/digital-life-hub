@@ -20,6 +20,8 @@ export function stubWeb(
     replies?: Msg[];
     fields?: Record<string, { value?: string; label?: string }>;
     realName?: string;
+    /** `conversations.history` and `replies` fail, as when the bot isn't in the channel. */
+    contextFails?: boolean;
   } = {},
 ) {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
@@ -36,8 +38,14 @@ export function stubWeb(
         }),
     },
     conversations: {
-      history: (a) => rec("history", a, { messages: data.history ?? [] }),
-      replies: (a) => rec("replies", a, { messages: data.replies ?? [] }),
+      history: (a) =>
+        data.contextFails
+          ? Promise.reject(new Error("channel_not_found"))
+          : rec("history", a, { messages: data.history ?? [] }),
+      replies: (a) =>
+        data.contextFails
+          ? Promise.reject(new Error("channel_not_found"))
+          : rec("replies", a, { messages: data.replies ?? [] }),
     },
     reactions: { add: (a) => rec("reactions.add", a, {}) },
     users: {

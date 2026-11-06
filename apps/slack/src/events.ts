@@ -109,7 +109,7 @@ export async function handleEvent(
     const sender = event.user as string;
     const [permalink, context] = await Promise.all([
       web.chat.getPermalink({ channel: event.channel, message_ts: event.ts }),
-      fetchContext(web, event, settings),
+      fetchContext(web, event, settings, deps.log),
     ]);
     const link = permalink.permalink;
     if (!link) throw new Error("Slack gave no permalink");

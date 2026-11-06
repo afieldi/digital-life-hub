@@ -167,6 +167,18 @@ describe("handleEvent", () => {
     expect(web.of("chat.postMessage")).toHaveLength(0);
   });
 
+  it("a context read failure still files the message", async () => {
+    const web = stubWeb({ contextFails: true });
+    const api = stubApi();
+    const log: string[] = [];
+    await handleEvent({ ...deps(web, api), log: (l) => log.push(l) }, dm);
+    expect(firstSent(api).context).toEqual([]);
+    // Still answered, not apologised for.
+    expect(web.of("chat.postMessage")[0]?.args).toMatchObject({ text: "ok" });
+    expect(log.some((l) => l.includes("context unreadable"))).toBe(true);
+    expect(log.join("\n")).not.toContain("failed");
+  });
+
   it("ignored events reach nothing", async () => {
     const web = stubWeb();
     const api = stubApi();
