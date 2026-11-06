@@ -5,7 +5,6 @@ import {
   getItem,
   type ScopedWriter,
 } from "@dlh/server";
-import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { slackOps } from "../operations";
 import type { HandleMessageInput, HandleMessageResult } from "../schema";
@@ -91,7 +90,7 @@ export function recentIn(
 /** Their requests, open or resolved, newest first. */
 export async function sendersRequests(
   w: ScopedWriter,
-  sender: CoworkerMessage["sender"],
+  sender: Pick<CoworkerMessage["sender"], "slackUserId" | "githubLogin">,
 ): Promise<SenderRequest[]> {
   const rows = await allowed(w.call)(requestOps.fromSender, {
     asker: {
@@ -149,27 +148,28 @@ const COMMAND_LABELS: Record<Exclude<CoworkerCommand, "escalate">, string> = {
   askAbout: "Answer their question",
 };
 
-/** Stands in for the request's id until it is filed and has one. */
-const NO_ID = "00000000-0000-0000-0000-000000000000";
-
-/** The action buttons: the `candidates` that can be run, then Neither. */
+/**
+ * The action buttons: the `candidates` that can be run, then Neither. They name
+ * the message (sender and `<channel>:<ts>`), which exists before the request does.
+ */
 function escalationActions(
-  requestId: string,
-  candidates: CoworkerCommand[],
+  m: CoworkerMessage,
+  candidates: Exclude<CoworkerCommand, "escalate">[],
 ): RequestAction[] {
-  const commands = candidates.filter(
-    (c): c is Exclude<CoworkerCommand, "escalate"> => c !== "escalate",
-  );
+  const message = {
+    slackUserId: m.sender.slackUserId,
+    externalId: keyOf(m.event),
+  };
   return [
-    ...commands.map((command) => ({
+    ...candidates.map((command) => ({
       label: COMMAND_LABELS[command],
       operation: slackOps.runEscalated.id,
-      input: { requestId, command },
+      input: { ...message, command },
     })),
     {
       label: "Neither",
       operation: slackOps.dismissEscalation.id,
-      input: { requestId },
+      input: message,
     },
   ];
 }
@@ -186,22 +186,15 @@ export async function escalate(
   candidates: CoworkerCommand[],
 ): Promise<HandleMessageResult> {
   const usable = [...new Set(candidates)]
-    .filter((c) => c !== "escalate")
+    .filter((c): c is Exclude<CoworkerCommand, "escalate"> => c !== "escalate")
     .slice(0, 2);
-  const filed = await file(
+  const { id } = await file(
     w,
     m,
     `${ESCALATED_PREFIX}${firstLine(m.event.text)}`,
-    // Filed with a stand-in id, which only has to pass the check on the operations.
-    escalationActions(NO_ID, usable),
+    escalationActions(m, usable),
   );
-  if (!filed.existing) {
-    // The buttons run with their input as stored, so it needs the id the filing just made.
-    await w.tx.execute(
-      sql`update requests set actions = ${JSON.stringify(escalationActions(filed.id, usable))}::jsonb where item_id = ${filed.id}`,
-    );
-  }
-  return { reply: ackText, filedRequestId: filed.id };
+  return { reply: ackText, filedRequestId: id };
 }
 
 export async function addToRequest(

@@ -114,7 +114,11 @@ const handleMessage = describeOperation({
   ...bot,
 });
 
-const requestId = z.uuid();
+/** Which escalation: the message it was filed for, as the request's `sourceHandle` and `externalId`. */
+const message = {
+  slackUserId: z.string().min(1),
+  externalId: z.string().min(1),
+};
 
 const runEscalated = describeOperation({
   id: "slack.runEscalated",
@@ -122,9 +126,9 @@ const runEscalated = describeOperation({
   label: "Run for an escalation",
   description:
     "Runs what the bot could have done for an escalated message, as it would have, resolves the request as handled and queues the reply for the thread.",
-  appliesTo: ["request"],
-  input: z.object({ requestId, command: escalatable }),
-  subject: (input) => input.requestId,
+  appliesTo: ["none"],
+  input: z.object({ ...message, command: escalatable }),
+  subject: () => null,
   effects: [],
   calls: [
     requestOps.get,
@@ -143,11 +147,11 @@ const dismissEscalation = describeOperation({
   label: "Neither",
   description:
     "Resolves an escalation as not for me, kept for tuning the threshold; nothing is posted.",
-  appliesTo: ["request"],
-  input: z.object({ requestId }),
-  subject: (input) => input.requestId,
+  appliesTo: ["none"],
+  input: z.object(message),
+  subject: () => null,
   effects: [],
-  calls: [requestOps.get, requestOps.resolve],
+  calls: [requestOps.get, requestOps.fromSender, requestOps.resolve],
   summary: () => "Dismiss an escalation",
   ...mine,
 });

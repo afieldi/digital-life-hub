@@ -42,7 +42,11 @@ async function harness(replies: string[] = []) {
       context: [],
     });
     const id = result.filedRequestId as string;
-    return { id, request: (await s.caller.requests.get({ id })).request };
+    return {
+      id,
+      msg: { slackUserId: "U1", externalId: `D1:${ts}` },
+      request: (await s.caller.requests.get({ id })).request,
+    };
   };
   const outbox = () =>
     s.db.execute<{
@@ -62,22 +66,23 @@ async function harness(replies: string[] = []) {
 
 test("an escalation carries two candidates and Neither", async () => {
   const h = await harness();
-  const { id, request } = await h.escalate("what is going on");
+  const { request } = await h.escalate("what is going on");
+  const message = { slackUserId: "U1", externalId: "D1:1700000000.000001" };
   expect(request.actions).toEqual([
     {
       label: "Pass on as a request",
       operation: "slack.runEscalated",
-      input: { requestId: id, command: "leaveRequest" },
+      input: { ...message, command: "leaveRequest" },
     },
     {
       label: "Reply with their status",
       operation: "slack.runEscalated",
-      input: { requestId: id, command: "requestStatus" },
+      input: { ...message, command: "requestStatus" },
     },
     {
       label: "Neither",
       operation: "slack.dismissEscalation",
-      input: { requestId: id },
+      input: message,
     },
   ]);
   await h.close();
@@ -85,9 +90,9 @@ test("an escalation carries two candidates and Neither", async () => {
 
 test("runEscalated runs the command, resolves handled and queues one approved outbox reply", async () => {
   const h = await harness(["Your request is still open."]);
-  const { id } = await h.escalate("did you see it?", "1700000000.000009");
+  const { id, msg } = await h.escalate("did you see it?", "1700000000.000009");
   const out = await h.caller.slack.runEscalated({
-    requestId: id,
+    ...msg,
     command: "requestStatus",
   });
   expect(out.result).toEqual({ reply: "Your request is still open." });
@@ -110,13 +115,10 @@ test("runEscalated runs the command, resolves handled and queues one approved ou
 
 test("runEscalated twice queues one reply", async () => {
   const h = await harness(["Still open.", "Second"]);
-  const { id } = await h.escalate("status?");
-  await h.caller.slack.runEscalated({
-    requestId: id,
-    command: "requestStatus",
-  });
+  const { msg } = await h.escalate("status?");
+  await h.caller.slack.runEscalated({ ...msg, command: "requestStatus" });
   const again = await h.caller.slack.runEscalated({
-    requestId: id,
+    ...msg,
     command: "requestStatus",
   });
   expect(again.result).toEqual({ reply: "Still open." });
@@ -126,9 +128,9 @@ test("runEscalated twice queues one reply", async () => {
 
 test("undo of runEscalated before sending reopens the request and removes the reply", async () => {
   const h = await harness(["Still open."]);
-  const { id } = await h.escalate("status?");
+  const { id, msg } = await h.escalate("status?");
   const out = await h.caller.slack.runEscalated({
-    requestId: id,
+    ...msg,
     command: "requestStatus",
   });
   await h.caller.ops.undo({ id: "slack.runEscalated", token: out.undo });
@@ -139,9 +141,9 @@ test("undo of runEscalated before sending reopens the request and removes the re
 
 test("undo after the reply was sent conflicts and changes nothing", async () => {
   const h = await harness(["Still open."]);
-  const { id } = await h.escalate("status?");
+  const { id, msg } = await h.escalate("status?");
   const out = await h.caller.slack.runEscalated({
-    requestId: id,
+    ...msg,
     command: "requestStatus",
   });
   await h.db.execute(sql`update slack_outbox set status = 'sent'`);
@@ -155,9 +157,9 @@ test("undo after the reply was sent conflicts and changes nothing", async () => 
 
 test("passing on as a request replies with the ack", async () => {
   const h = await harness();
-  const { id } = await h.escalate("can you look at this", "1700000000.000003");
+  const { msg } = await h.escalate("can you look at this", "1700000000.000003");
   const out = await h.caller.slack.runEscalated({
-    requestId: id,
+    ...msg,
     command: "leaveRequest",
   });
   expect(out.result).toEqual({ reply: "Got it, I've passed this to Arek." });
@@ -174,8 +176,8 @@ test("withdraw withdraws their other open request", async () => {
     sourceHandle: "U1",
     fromName: "Dana",
   });
-  const { id } = await h.escalate("never mind that");
-  await h.caller.slack.runEscalated({ requestId: id, command: "withdraw" });
+  const { msg } = await h.escalate("never mind that");
+  await h.caller.slack.runEscalated({ ...msg, command: "withdraw" });
   const older = await h.caller.requests.get({ id: other.result.request.id });
   expect(older.request.outcome).toBe("handled");
   expect((await h.outbox())[0]?.text).toBe("OK, withdrawn.");
@@ -192,9 +194,9 @@ test("addToRequest queues no reply", async () => {
     sourceHandle: "U1",
     fromName: "Dana",
   });
-  const { id } = await h.escalate("and one more thing");
+  const { id, msg } = await h.escalate("and one more thing");
   const out = await h.caller.slack.runEscalated({
-    requestId: id,
+    ...msg,
     command: "addToRequest",
   });
   expect(out.result).toEqual({ reply: null });
@@ -207,11 +209,61 @@ test("addToRequest queues no reply", async () => {
 
 test("dismissEscalation resolves not_for_me and queues nothing", async () => {
   const h = await harness();
-  const { id } = await h.escalate("hmm");
-  await h.caller.slack.dismissEscalation({ requestId: id });
+  const { id, msg } = await h.escalate("hmm");
+  await h.caller.slack.dismissEscalation(msg);
   expect((await h.caller.requests.get({ id })).request.outcome).toBe(
     "not_for_me",
   );
   expect(await h.outbox()).toHaveLength(0);
+  await h.close();
+});
+
+test("a late click still adds to the request that was recent when the message came", async () => {
+  const h = await harness();
+  const other = await h.caller.requests.file({
+    title: "Older",
+    body: "first",
+    source: "slack",
+    externalId: "D1:1700000000.000000",
+    sourceHandle: "U1",
+    fromName: "Dana",
+  });
+  const { msg } = await h.escalate("and one more thing");
+  const now = h.deps.now();
+  h.deps.now = () => new Date(now.getTime() + 3 * 3_600_000);
+  await h.caller.slack.runEscalated({ ...msg, command: "addToRequest" });
+  const older = await h.caller.requests.get({ id: other.result.request.id });
+  expect(older.request.body).toBe("first\n\nand one more thing");
+  await h.close();
+});
+
+test("withdraw from the queue ignores requests filed after the escalated message", async () => {
+  const h = await harness();
+  const { id, msg } = await h.escalate("never mind that");
+  const later = await h.caller.requests.file({
+    title: "Later",
+    source: "slack",
+    externalId: "D1:1700000999.000000",
+    sourceHandle: "U1",
+    fromName: "Dana",
+    receivedAt: new Date(h.deps.now().getTime() + 60_000).toISOString(),
+  });
+  await expect(
+    h.caller.slack.runEscalated({ ...msg, command: "withdraw" }),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  const row = await h.caller.requests.get({ id: later.result.request.id });
+  expect(row.request.outcome).toBeNull();
+  expect((await h.caller.requests.get({ id })).request.outcome).toBeNull();
+  await h.close();
+});
+
+test("a button for an unknown message is not found", async () => {
+  const h = await harness();
+  await expect(
+    h.caller.slack.dismissEscalation({
+      slackUserId: "U1",
+      externalId: "D1:9.9",
+    }),
+  ).rejects.toMatchObject({ code: "NOT_FOUND" });
   await h.close();
 });
