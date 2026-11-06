@@ -391,6 +391,23 @@ test("a top-level mention doesn't append to a request filed inside a thread", as
   await h.close();
 });
 
+test("two top-level channel mentions file two requests", async () => {
+  const h = await harness([
+    { choice: "leaveRequest", confidence: 0.9 },
+    // What Jev would pick if a follow-on were offered.
+    { choice: "addToRequest", confidence: 0.9 },
+  ]);
+  await h.slack.slack.handleMessage(
+    h.message("first topic", { event: { channel: "C1", isDm: false } }),
+  );
+  const second = await h.slack.slack.handleMessage(
+    h.message("an unrelated topic", { event: { channel: "C1", isDm: false } }),
+  );
+  expect(second.result.filedRequestId).toBeDefined();
+  expect(await h.requests()).toHaveLength(2);
+  await h.close();
+});
+
 test("a reply in a thread appends to a request filed from another reply in that thread", async () => {
   const h = await harness([
     { choice: "leaveRequest", confidence: 0.9 },

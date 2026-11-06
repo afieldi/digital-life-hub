@@ -76,8 +76,13 @@ export function recentIn(
     const channel = r.externalId.slice(0, at);
     const ts = r.externalId.slice(at + 1);
     // A request filed from the thread's root message is in that thread too.
+    // Two top-level messages are one conversation only in a DM; in a channel
+    // each is its own topic.
+    const thread = threadOf(r);
     const sameThread =
-      threadOf(r) === (event.threadTs ?? null) ||
+      (thread === null
+        ? event.threadTs === undefined && event.isDm
+        : thread === event.threadTs) ||
       (event.threadTs !== undefined && ts === event.threadTs);
     return (
       channel === event.channel &&
