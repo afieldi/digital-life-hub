@@ -335,14 +335,49 @@ Nov 6, 2026. 30 coworker messages (5 that should escalate) against the 8 coworke
 
 What it means for the build:
 
-- **Endpoint.** Decision models are not reachable through `/v1/chat/completions`, so a `response_format` schema doesn't apply. `createVercelGateway` calls `POST https://ai-gateway.vercel.sh/v1/decisions` with `{ model, input, questions: [{ type: "choice", name: "actionId", instructions, choices: [{ value, description }] }] }` and reads `answers[0].choice` and `answers[0].confidence`. A `choice` question is the enum: the answer is always one of the supplied values. Cost is `provider_metadata.gateway.cost`; usage is `usage.input_tokens`.
+- **Endpoint.** Decision models are not reachable through `/v1/chat/completions`, so a `response_format` schema doesn't apply. `createVercelGateway` calls `POST https://ai-gateway.vercel.sh/v1/decisions` with `Authorization: Bearer <AI_GATEWAY_API_KEY>` and `Content-Type: application/json`. The model id goes in the body's `model`, the message goes in `input` as a plain string, and the commands are the `choices` of one `choice` question, `escalate` among them. A `choice` question is the enum: the answer is always one of the supplied `value`s. Request body (the message is made up; the real check offered all 8 commands):
+
+  ```json
+  {
+    "model": "typesafe-ai/jev",
+    "input": "Could you chase the vendor about the invoice?",
+    "questions": [{
+      "type": "choice",
+      "name": "actionId",
+      "instructions": "A coworker sent this Slack message to the owner's bot. Pick the command that handles it.",
+      "choices": [
+        { "value": "leaveRequest", "description": "file a request for the owner" },
+        { "value": "escalate", "description": "needs the owner's own judgement" }
+      ]
+    }]
+  }
+  ```
+
+  The part of the response the build reads (the real response also carries `usage` and routing details):
+
+  ```json
+  {
+    "answers": [{
+      "type": "choice", "name": "actionId", "choice": "escalate", "confidence": 0.4,
+      "probabilities": [
+        { "value": "leaveRequest", "probability": 0.3 },
+        { "value": "escalate", "probability": 0.7 }
+      ]
+    }],
+    "usage": { "input_tokens": 342, "output_tokens": 40, "total_tokens": 382 },
+    "provider_metadata": { "gateway": { "cost": "0.000014364" } }
+  }
+  ```
+
+  The build reads `answers[0].choice`, `answers[0].confidence` (not the top probability, which differs: 0.4 against 0.7 here), `usage` and `provider_metadata.gateway.cost`. The check sent only the one message. In the build the last 10 messages of the conversation go into `input` too; Task 9 decides the exact layout. The `cost` figures in the table are that field. The Gateway response also lists `gatewayCost`, which on the team used for the check was higher because of account-level surcharges (zero-data-retention and model allowlist), so the build should record `cost` and not assume it is the whole bill.
 - **Default interpreter model id: `typesafe-ai/jev`.** It was the more accurate and the faster. `openai/gpt-6-luna-decisions` is the fallback and works through the same endpoint with the same request, so it is a model id in settings. `typesafe-ai/jev-1.14.0` is the pinned version if the unpinned id moves.
 - **Escalation threshold.** Jev's one wrong answer below 0.6 confidence was `escalate` for a plausible request (0.53), which is the safe direction; its other miss (`requestStatus` for "Which of my requests are still open?", 0.98) is a boundary between two commands that both read the sender's requests. Both models were only given the single message, so Luna's `addToRequest` misses (0.39 to 0.47) may improve once the open request is in the input; re-measure with context in Task 9.
 - **Timeout.** p95 is 234 ms for Jev and 610 ms for Luna, well under 3 s, so the 3 s timeout stands.
 - **Cost.** About $0.02 per 1,000 coworker messages on Jev.
+- **Sample size.** The 30 phrasings are a small sample written by one person, so the 0.6 threshold remains a starting value to tune from real escalations.
 
 ## Open questions
 
 - [ ] The threshold (0.6) and the append window (15 minutes): tune from escalations marked Not for me.
-- [ ] Whether Jev's latency suits a chat reply; Luna is the fallback (a setting).
+- [x] Whether Jev's latency suits a chat reply; Luna is the fallback (a setting). Yes: p95 234 ms (see Jev check results).
 - [ ] Whether coworker-audience runs need a per-run cost cap below the global one.
