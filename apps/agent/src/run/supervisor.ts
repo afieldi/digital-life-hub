@@ -18,6 +18,7 @@ import { createRelay, RelayError } from "../relay/relay";
 import type { Store } from "../store";
 import { type AssumeRole, secretForRun, stsAssumeRole } from "./credentials";
 import { createEventLog, createInbox, realTimers, type Timers } from "./events";
+import { createRedactor } from "./redact";
 import { createRunServer, type Reply } from "./socket";
 
 /** A claim that got a run. */
@@ -153,6 +154,8 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     (deps.log ?? console.error)(`run ${runId}: ${line}`);
   const agent = deps.api.worker.agent;
   const relay = createRelay(deps.relay);
+  /** What the run reports goes out without the secrets it was served. */
+  const redact = createRedactor();
 
   const events = createEventLog({
     lastSeq: claimed.lastSeq,
@@ -339,7 +342,9 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     {
       run: () => ({ status: 200, body: start }),
       events(body) {
-        events.add(body.events);
+        events.add(
+          body.events.map((e) => ({ ...e, data: redact.deep(e.data) })),
+        );
         return { status: 200, body: {} };
       },
       async messages(waitSeconds, gone) {
@@ -394,6 +399,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
             runId,
             deps.assumeRole ?? stsAssumeRole,
           );
+          redact.served(secret);
           return { status: 200, body: { secret } };
         } catch (e) {
           // The error's name only: an AWS message can quote the key id.
@@ -408,21 +414,28 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       suspend(body) {
         const seq = events.nextSeq();
         sessionId = body.sessionId;
+        const asked = {
+          ...body,
+          title: redact.text(body.title),
+          body: redact.text(body.body),
+        };
         return report(
           "suspend",
-          () => agent.suspend.mutate({ runId, seq, ...body }),
+          () => agent.suspend.mutate({ runId, seq, ...asked }),
           { body: { seq }, reason: "suspended" },
         );
       },
       finish(body) {
+        const done = redact.deep(body.report);
         return report(
           "finish",
-          () => agent.finish.mutate({ runId, report: body.report }),
+          () => agent.finish.mutate({ runId, report: done }),
           { body: {}, reason: "finished" },
         );
       },
       fail(body) {
-        return report("fail", () => agent.fail.mutate({ runId, ...body }), {
+        const failed = { code: body.code, message: redact.text(body.message) };
+        return report("fail", () => agent.fail.mutate({ runId, ...failed }), {
           body: {},
           reason: "failed",
         });

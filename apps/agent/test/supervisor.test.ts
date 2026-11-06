@@ -556,6 +556,84 @@ describe("startRun", () => {
     expect(t.store.secretOf).toHaveBeenCalledWith(GITHUB);
   });
 
+  it("secrets served to the run are redacted from what it reports", async () => {
+    const t = setup();
+    await t.started();
+    await t.call("GET", "/credentials/github/gh");
+    await t.call("POST", "/events", {
+      events: [
+        {
+          at: "2026-11-05T10:01:00.000Z",
+          kind: "tool_result",
+          data: {
+            text: `GH_TOKEN=${GITHUB_SECRET}\nPATH=/bin`,
+            nested: [{ deep: `x${GITHUB_SECRET}y` }],
+            isError: false,
+          },
+        },
+      ],
+    });
+    t.fire(2000);
+    await vi.waitFor(() =>
+      expect(t.agent.appendEvents.mutate).toHaveBeenCalled(),
+    );
+    const sent = JSON.stringify(t.agent.appendEvents.mutate.mock.calls);
+    expect(sent).not.toContain(GITHUB_SECRET);
+    expect(t.agent.appendEvents.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      events: [
+        expect.objectContaining({
+          data: {
+            text: "GH_TOKEN=[redacted]\nPATH=/bin",
+            nested: [{ deep: "x[redacted]y" }],
+            isError: false,
+          },
+        }),
+      ],
+    });
+
+    await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      title: `Approve: curl -H ${GITHUB_SECRET}`,
+      body: `curl -H ${GITHUB_SECRET}`,
+    });
+    expect(t.agent.suspend.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Approve: curl -H [redacted]",
+        body: "curl -H [redacted]",
+      }),
+    );
+  });
+
+  it("an env JSON's values are redacted, and short values aren't", async () => {
+    const MCP = "33333333-3333-4333-8333-333333333333";
+    const t = setup({
+      claim: {
+        connections: [
+          { id: MCP, name: "tool", type: "mcp", scopeSummary: "x" },
+        ],
+        connectionIds: [MCP],
+      },
+    });
+    t.store.secretOf.mockReturnValue({
+      command: "npx",
+      env: JSON.stringify({ API_KEY: "mcp-key-1234567", LEVEL: "1" }),
+    });
+    await t.started();
+    await t.call("GET", "/credentials/mcp/tool");
+    await t.call("POST", "/fail", {
+      code: "x",
+      message: "npx says API_KEY=mcp-key-1234567 LEVEL=1",
+    });
+    await t.handle.done;
+    expect(t.agent.fail.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      code: "x",
+      message: "npx says API_KEY=[redacted] LEVEL=1",
+    });
+  });
+
   it("aws credentials are an assumed role's 1-hour keys, never the stored ones", async () => {
     const assumeRole = vi.fn<AssumeRole>(async () => ({
       accessKeyId: "ASIA_TEMP",

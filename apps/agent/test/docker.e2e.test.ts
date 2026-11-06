@@ -481,14 +481,30 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
     const held = gate();
     const h = await harness([
       bash(SHOW_SECRET_SHA),
+      // Prints the env connection's secret: the worker redacts it.
+      bash("env | grep E2E_SECRET"),
       // Held while the live container is inspected.
       { ...finish("Kept the secret"), hold: held.opened },
     ]);
+    // The worker's own secrets, where main.ts reads them, so a leak of its
+    // environment into the container would show.
+    const saved = {
+      AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+      AGENT_WORKER_TOKEN: process.env.AGENT_WORKER_TOKEN,
+    };
+    process.env.AI_GATEWAY_API_KEY = GATEWAY_KEY;
+    process.env.AGENT_WORKER_TOKEN = h.workerToken;
+    cleanups.push(async () => {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
     const connectionId = await h.envConnection("e2e-env");
     const { runId } = await h.agentTask("Keep a secret", [connectionId]);
     await h.newLoop().start();
 
-    await waitFor("the second turn", async () => h.fake.turns.length >= 2);
+    await waitFor("the third turn", async () => h.fake.turns.length >= 3);
     const live = await docker("inspect", containerName(runId));
     held.open();
     await h.runIn(runId, "done");
@@ -506,8 +522,10 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
     );
     const history = await docker("history", "--no-trunc", IMAGE);
     const events = JSON.stringify(await h.eventsOf(runId));
-    // The secret did reach the agent's shell, as a hash only.
+    // The secret did reach the agent's shell: as a hash, and `env` printed
+    // it, redacted.
     expect(events).toContain(SECRET_SHA);
+    expect(events).toContain("E2E_SECRET=[redacted]");
     const places = {
       "docker inspect (live)": live,
       ...Object.fromEntries(
