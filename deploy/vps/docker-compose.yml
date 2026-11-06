@@ -1,0 +1,78 @@
+# The hub on one VPS: Postgres, the API and the agent worker. Run from the repo
+# root: `docker compose -f deploy/vps/docker-compose.yml up -d --build`.
+# Settings come from deploy/vps/.env (see README.md and .env.example). Each
+# service gets only its own: the API never sees the Gateway key or secrets key.
+name: dlh
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dlh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/vps/.env}
+      POSTGRES_DB: dlh
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dlh -d dlh"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MIGRATE_ON_START: "1"
+      DATABASE_URL: postgres://dlh:${POSTGRES_PASSWORD}@db:5432/dlh
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID in deploy/vps/.env}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in deploy/vps/.env}
+      ALLOWED_EMAIL: ${ALLOWED_EMAIL:?set ALLOWED_EMAIL in deploy/vps/.env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    # Loopback only: put a TLS reverse proxy in front for outside access.
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks: [internal]
+
+  agent:
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    # Shutdown stops each live run's container (Docker's 10 s each, at once)
+    # before the worker exits; the runs resume on the next start.
+    stop_grace_period: 30s
+    environment:
+      API_URL: http://api:8787
+      AGENT_DATA_DIR: /var/lib/dlh-agent
+      # Empty until step 9 of the README; the worker refuses to start without it.
+      AGENT_WORKER_TOKEN: ${AGENT_WORKER_TOKEN:-}
+      AGENT_SECRETS_KEY: ${AGENT_SECRETS_KEY:?set AGENT_SECRETS_KEY in deploy/vps/.env}
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:?set AI_GATEWAY_API_KEY in deploy/vps/.env}
+    volumes:
+      # The worker starts run containers on the host's daemon. It is root-
+      # equivalent on the host: nothing else mounts this socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # The same path inside and out: the worker makes <dir>/runs/<id> and the
+      # daemon bind-mounts it into the run container by that host path.
+      - /var/lib/dlh-agent:/var/lib/dlh-agent
+    networks: [internal]
+
+volumes:
+  db-data:
+
+networks:
+  internal: {}
+  # Run containers' network, made by runs-firewall.sh (see README.md).
+  dlh-runs:
+    external: true
+    name: dlh-runs

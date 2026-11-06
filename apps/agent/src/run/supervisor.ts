@@ -1,13 +1,12 @@
-import { chmodSync, chownSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, chownSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
-import type { RunStart } from "@dlh/agent-protocol";
+import { approvalAsk, type RunStart } from "@dlh/agent-protocol";
 import { moduleDescriptions } from "@dlh/agent-protocol/modules";
 import { accessOf, type OperationDescription } from "@dlh/core";
 import type { ClaimResult } from "@dlh/module-agent/server";
 import { HubError, type WorkerApi } from "../api";
 import {
-  containerName,
   type Docker,
   runDir,
   runEnv,
@@ -16,7 +15,9 @@ import {
 } from "../docker/docker";
 import { createRelay, RelayError } from "../relay/relay";
 import type { Store } from "../store";
+import { type AssumeRole, secretForRun, stsAssumeRole } from "./credentials";
 import { createEventLog, createInbox, realTimers, type Timers } from "./events";
+import { createRedactor } from "./redact";
 import { createRunServer, type Reply } from "./socket";
 
 /** A claim that got a run. */
@@ -26,7 +27,7 @@ export type { Timers };
 
 export type RunEnd = {
   runId: string;
-  /** `finished`, `failed`, `suspended`, `exited`, `stopped` (heartbeat), `worker_error`, or what `stop` was given. */
+  /** `finished`, `failed`, `suspended`, `stopped` (heartbeat), `worker_error`, or what `stop` was given. */
   reason: string;
 };
 
@@ -43,11 +44,21 @@ export type SupervisorDeps = {
   dataDir: string;
   image: string;
   relay: Parameters<typeof createRelay>[0];
+  /** STS for `aws` connections; the real one by default. */
+  assumeRole?: AssumeRole;
   timers?: Timers;
   now?: () => Date;
   /** One line per problem; never a secret, the run token or a body. */
   log?: (line: string) => void;
 };
+
+/**
+ * How a run ends for good in the hub: finished, failed, or stopped by its
+ * heartbeat (cancelled or capped). Its volume is kept 7 days from then; a run
+ * that ends any other way (suspended, shutdown, a worker error) is still live
+ * and keeps it.
+ */
+const TERMINAL = new Set(["finished", "failed", "stopped"]);
 
 const HEARTBEAT_MS = 30_000;
 const MESSAGES_MS = 5_000;
@@ -87,21 +98,65 @@ function lockDown(path: string, mode: number) {
 }
 
 /**
+ * The runner's start, built field by field: the runner refuses a field it
+ * doesn't know, so one the agent module adds to a claim mustn't pass through.
+ */
+function runStartOf(claimed: Claimed): RunStart {
+  const { task, request: r, decision: d } = claimed;
+  return {
+    runId: claimed.run.id,
+    task: { id: task.id, title: task.title, notes: task.notes },
+    request: r
+      ? {
+          sender: r.sender,
+          body: r.body,
+          source: r.source,
+          sourceUrl: r.sourceUrl,
+        }
+      : null,
+    instructions: claimed.instructions,
+    connections: claimed.connections.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      scopeSummary: c.scopeSummary,
+    })),
+    grantedIds: [...claimed.connectionIds],
+    sessionId: claimed.sessionId,
+    decision: d
+      ? {
+          seq: d.seq,
+          approve: d.approve,
+          delivered: d.delivered,
+          ...(d.connectionId ? { connectionId: d.connectionId } : {}),
+          ...(d.tool ? { tool: d.tool } : {}),
+          ...(d.inputHash ? { inputHash: d.inputHash } : {}),
+        }
+      : null,
+    lastSeq: claimed.lastSeq,
+  };
+}
+
+/**
  * Supervises one claimed run: serves its socket, starts its container, and
  * reports to the API until the run finishes, fails, suspends, exits or is
  * stopped. The container gets no secret; the run token stays here.
  */
 export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   const runId = claimed.run.id;
-  const name = containerName(runId);
   const dir = runDir(deps.dataDir, runId);
-  const socketPath = join(dir, SOCKET_FILE);
+  /** This start's socket directory, made in `boot`; never another start's. */
+  let socketDir: string | undefined;
+  /** The container `docker run` started; never acted on by name. */
+  let containerId: string | undefined;
   const timers = deps.timers ?? realTimers;
   const now = deps.now ?? (() => new Date());
   const log = (line: string) =>
     (deps.log ?? console.error)(`run ${runId}: ${line}`);
   const agent = deps.api.worker.agent;
   const relay = createRelay(deps.relay);
+  /** What the run reports goes out without the secrets it was served. */
+  const redact = createRedactor();
 
   const events = createEventLog({
     lastSeq: claimed.lastSeq,
@@ -120,12 +175,13 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   let sessionId: string | undefined;
   let digest: string | undefined;
   let imageSent = false;
-  let started = false;
   let ending = false;
   /** A finish, fail or suspend is under way; a second one is refused. */
   let reporting = false;
-  /** A finish, fail or suspend reached the API. */
-  let reported = false;
+  /** How the run ends once the finish, fail or suspend under way is answered. */
+  let reportEnd: Promise<string> | undefined;
+  /** The container exited on its own: there is nothing to stop. */
+  let exited = false;
   const cancels: Array<() => void> = [];
   let server: Server | undefined;
 
@@ -134,26 +190,35 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     resolveDone = r;
   });
 
+  /** Stops and removes the container and the socket. `done` always resolves. */
   async function end(reason: string) {
     if (ending) return;
     ending = true;
-    for (const c of cancels.splice(0)) c();
-    inbox.close();
-    await flush();
-    if (started && reason !== "exited") {
-      await deps.docker.stop(name).catch((e) => log(`stop: ${firstLine(e)}`));
+    try {
+      for (const c of cancels.splice(0)) c();
+      inbox.close();
+      await flush();
+      if (containerId) {
+        const id = containerId;
+        if (!exited) {
+          await deps.docker.stop(id).catch((e) => log(`stop: ${firstLine(e)}`));
+        }
+        await deps.docker.remove(id).catch(() => {});
+      }
+      if (server) {
+        const s = server;
+        await new Promise<void>((r) => {
+          s.close(() => r());
+          s.closeAllConnections();
+        });
+      }
+      if (socketDir) rmSync(socketDir, { recursive: true, force: true });
+      if (TERMINAL.has(reason)) deps.store.markEnded(runId, now());
+    } catch (e) {
+      log(`end: ${firstLine(e)}`);
+    } finally {
+      resolveDone({ runId, reason });
     }
-    await deps.docker.remove(name).catch(() => {});
-    if (server) {
-      const s = server;
-      await new Promise<void>((r) => {
-        s.close(() => r());
-        s.closeAllConnections();
-      });
-    }
-    rmSync(socketPath, { force: true });
-    deps.store.markEnded(runId, now());
-    resolveDone({ runId, reason });
   }
 
   /**
@@ -167,6 +232,14 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     what: string,
     call: () => Promise<unknown>,
   ): Promise<boolean> {
+    // The usage since the last beat (and the image, for a short run) would
+    // be lost: no heartbeat comes after the report.
+    await beating;
+    try {
+      await beat();
+    } catch (e) {
+      log(`heartbeat before ${what}: ${firstLine(e)}`);
+    }
     try {
       await events.flush();
     } catch (e) {
@@ -175,7 +248,6 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     }
     try {
       await workerCall(call);
-      reported = true;
       return true;
     } catch (e) {
       log(`${what}: ${firstLine(e)}`);
@@ -187,38 +259,45 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   async function failRun(code: string, message: string) {
     if (ending || reporting) return;
     reporting = true;
-    const sent = await sendReport("fail", () =>
+    reportEnd = sendReport("fail", () =>
       agent.fail.mutate({ runId, code, message }),
-    );
-    await end(sent ? "failed" : "worker_error");
+    ).then((sent) => (sent ? "failed" : "worker_error"));
+    await end(await reportEnd);
   }
 
-  let beating = false;
-  async function heartbeat() {
-    if (beating || ending) return;
-    beating = true;
-    try {
-      const u = relay.usage();
-      const image = !imageSent ? digest : undefined;
-      const { result } = await workerCall(() =>
-        agent.heartbeat.mutate({
-          runId,
-          turns: claimed.run.turns + u.turns,
-          inputTokens: claimed.run.inputTokens + u.inputTokens,
-          outputTokens: claimed.run.outputTokens + u.outputTokens,
-          costUsd: claimed.run.costUsd + u.costUsd,
-          ...(image ? { image } : {}),
-          ...(sessionId ? { sessionId } : {}),
-        }),
-      );
-      if (image) imageSent = true;
-      if (result.stop) await end("stopped");
-    } catch (e) {
-      log(`heartbeat: ${firstLine(e)}`);
-      await end("worker_error");
-    } finally {
-      beating = false;
-    }
+  /** Sends the run's totals so far; resolves with whether it should stop. */
+  async function beat(): Promise<boolean> {
+    const u = relay.usage();
+    const image = !imageSent ? digest : undefined;
+    const { result } = await workerCall(() =>
+      agent.heartbeat.mutate({
+        runId,
+        turns: claimed.run.turns + u.turns,
+        inputTokens: claimed.run.inputTokens + u.inputTokens,
+        outputTokens: claimed.run.outputTokens + u.outputTokens,
+        costUsd: claimed.run.costUsd + u.costUsd,
+        ...(image ? { image } : {}),
+        ...(sessionId ? { sessionId } : {}),
+      }),
+    );
+    if (image) imageSent = true;
+    return result.stop;
+  }
+
+  /** The beat in flight, if any; a tick during it is skipped. */
+  let beating: Promise<void> | undefined;
+  function heartbeat() {
+    if (beating || ending || reporting) return;
+    beating = (async () => {
+      try {
+        if (await beat()) await end("stopped");
+      } catch (e) {
+        log(`heartbeat: ${firstLine(e)}`);
+        await end("worker_error");
+      }
+    })().finally(() => {
+      beating = undefined;
+    });
   }
 
   let polling = false;
@@ -247,7 +326,10 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       return { status: 409, body: { error: "Run is ending" } };
     }
     reporting = true;
-    if (await sendReport(what, call)) {
+    reportEnd = sendReport(what, call).then((sent) =>
+      sent ? ok.reason : "worker_error",
+    );
+    if ((await reportEnd) === ok.reason) {
       return { status: 200, body: ok.body, after: () => void end(ok.reason) };
     }
     return {
@@ -257,23 +339,15 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     };
   }
 
-  const start: RunStart = {
-    runId,
-    task: claimed.task,
-    request: claimed.request,
-    instructions: claimed.instructions,
-    connections: claimed.connections,
-    grantedIds: claimed.connectionIds,
-    sessionId: claimed.sessionId,
-    decision: claimed.decision,
-    lastSeq: claimed.lastSeq,
-  };
+  const start = runStartOf(claimed);
 
   server = createRunServer(
     {
       run: () => ({ status: 200, body: start }),
       events(body) {
-        events.add(body.events);
+        events.add(
+          body.events.map((e) => ({ ...e, data: redact.deep(e.data) })),
+        );
         return { status: 200, body: {} };
       },
       async messages(waitSeconds, gone) {
@@ -304,7 +378,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
           return { status: 200, body: { ok: false, code, message } };
         }
       },
-      credentials(type, connectionName) {
+      async credentials(type, connectionName) {
         const c = claimed.connections.find(
           (x) => x.type === type && x.name === connectionName,
         );
@@ -314,31 +388,90 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
             body: { error: `Not granted: ${connectionName}.` },
           };
         }
+        let stored: Record<string, string>;
         try {
-          return { status: 200, body: { secret: deps.store.secretOf(c.id) } };
+          stored = deps.store.secretOf(c.id);
         } catch {
           log(`no local secret for connection ${c.id}`);
           return { status: 404, body: { error: "No secret on this host" } };
         }
+        try {
+          const secret = await secretForRun(
+            type,
+            stored,
+            runId,
+            deps.assumeRole ?? stsAssumeRole,
+          );
+          redact.served(secret);
+          return { status: 200, body: { secret } };
+        } catch (e) {
+          // The error's name only: an AWS message can quote the key id.
+          const name = e instanceof Error ? e.name : "Error";
+          log(`assuming the role of connection ${c.id} failed: ${name}`);
+          return {
+            status: 502,
+            body: { error: `Couldn't assume the role of ${connectionName}` },
+          };
+        }
       },
       suspend(body) {
+        // The ask is worded here, from what it allows: an approval from the
+        // input it hashes, a grant from the claim's connection of that id.
+        let ask: {
+          title: string;
+          body: string;
+          tool?: string;
+          inputHash?: string;
+          connectionId?: string;
+        };
+        if (body.kind === "approval") {
+          const a = approvalAsk(body.tool, body.input);
+          ask = {
+            title: a.title,
+            body: a.body,
+            tool: body.tool,
+            inputHash: a.inputHash,
+          };
+        } else {
+          const c = claimed.connections.find((x) => x.id === body.connectionId);
+          if (!c) {
+            return Promise.resolve({
+              status: 400,
+              body: { error: "No such connection" },
+            });
+          }
+          ask = {
+            title: `Grant ${c.name} (${c.type})`,
+            body: body.reason,
+            connectionId: c.id,
+          };
+        }
         const seq = events.nextSeq();
         sessionId = body.sessionId;
+        const asked = {
+          sessionId: body.sessionId,
+          kind: body.kind,
+          ...ask,
+          title: redact.text(ask.title),
+          body: redact.text(ask.body),
+        };
         return report(
           "suspend",
-          () => agent.suspend.mutate({ runId, seq, ...body }),
+          () => agent.suspend.mutate({ runId, seq, ...asked }),
           { body: { seq }, reason: "suspended" },
         );
       },
       finish(body) {
+        const done = redact.deep(body.report);
         return report(
           "finish",
-          () => agent.finish.mutate({ runId, report: body.report }),
+          () => agent.finish.mutate({ runId, report: done }),
           { body: {}, reason: "finished" },
         );
       },
       fail(body) {
-        return report("fail", () => agent.fail.mutate({ runId, ...body }), {
+        const failed = { code: body.code, message: redact.text(body.message) };
+        return report("fail", () => agent.fail.mutate({ runId, ...failed }), {
           body: {},
           reason: "failed",
         });
@@ -360,7 +493,10 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   async function boot() {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     lockDown(dir, 0o700);
-    rmSync(socketPath, { force: true });
+    const ownDir = mkdtempSync(join(dir, "s-"));
+    socketDir = ownDir;
+    lockDown(ownDir, 0o700);
+    const socketPath = join(ownDir, SOCKET_FILE);
     await new Promise<void>((resolve, reject) => {
       server?.once("error", reject);
       server?.listen(socketPath, () => {
@@ -372,7 +508,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     if (ending) {
       // Stopped while the socket was opening, after `end` closed it.
       server?.close();
-      rmSync(socketPath, { force: true });
+      rmSync(ownDir, { recursive: true, force: true });
       return;
     }
 
@@ -382,30 +518,40 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       timers.every(FLUSH_MS, () => void flush()),
     );
     deps.store.markStarted(runId, volumeName(runId));
+    let id: string;
     try {
-      await deps.docker.run({ runId, image: deps.image, env: runEnv(runId) });
+      ({ containerId: id } = await deps.docker.run({
+        runId,
+        image: deps.image,
+        env: runEnv(runId),
+        socketDir: ownDir,
+      }));
     } catch (e) {
       await failRun("docker", `Container didn't start: ${firstLine(e)}`);
       return;
     }
-    started = true;
     if (ending) {
-      // Stopped while the container was starting.
-      await deps.docker.stop(name).catch(() => {});
-      await deps.docker.remove(name).catch(() => {});
+      // Stopped while the container was starting: `end` didn't know it.
+      await deps.docker.stop(id).catch(() => {});
+      await deps.docker.remove(id).catch(() => {});
       return;
     }
+    containerId = id;
     deps.docker.imageDigest(deps.image).then(
       (d) => {
         digest = d;
       },
       (e) => log(`image digest: ${firstLine(e)}`),
     );
-    deps.docker.wait(name).then(
+    deps.docker.wait(id).then(
       ({ exitCode }) => {
+        exited = true;
         // Every stop the worker causes sets `ending` first, so this exit is
         // the container's own; without a report it crashed (or hung up early).
-        if (ending || reported) return end("exited");
+        if (ending) return;
+        // Exited during (or after) a report: end as that report says, once
+        // it's answered; the runner may not be there to hear it.
+        if (reportEnd) return reportEnd.then(end);
         log(`container exited (${exitCode}) without a report`);
         return failRun("no_report", "Ended without a report");
       },

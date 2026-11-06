@@ -1,0 +1,24 @@
+#!/bin/sh
+# Runs the real gh with the run's GitHub token, fetched from the socket now.
+# GH_TOKEN is set only in the environment of the gh it runs.
+set -u
+
+REAL_GH=${DLH_REAL_GH:-/usr/bin/gh}
+SOCKET=${DLH_SOCKET:-/run/dlh/dlh.sock}
+name=${DLH_GITHUB_CONNECTION:-}
+
+if [ -n "$name" ]; then
+  path=$(jq -rn --arg n "$name" '"/credentials/github/\($n|@uri)"')
+  if body=$(curl -sS --fail-with-body --max-time 30 \
+    --unix-socket "$SOCKET" "http://dlh$path" 2>/dev/null) &&
+    token=$(printf '%s' "$body" | jq -er '.secret.token'); then
+    GH_TOKEN=$token
+    export GH_TOKEN
+  else
+    reason=$(printf '%s' "${body:-}" | jq -r '.error // empty' 2>/dev/null)
+    echo "gh: no GitHub token: ${reason:-no answer from the worker}" >&2
+  fi
+else
+  echo "gh: no GitHub connection granted to this run; ask with request_connection" >&2
+fi
+exec "$REAL_GH" "$@"

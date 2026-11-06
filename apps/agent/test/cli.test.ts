@@ -80,7 +80,7 @@ describe("connection CLI", () => {
   });
 
   it("connection add with an existing name refuses before registering", async () => {
-    const s = setup(["tok", "scope"]);
+    const s = setup(["tok", "T0001", "scope"]);
     await runCli(["connection", "add", "slack", "team"], s.deps);
     s.registered.length = 0;
     await expect(
@@ -90,7 +90,7 @@ describe("connection CLI", () => {
   });
 
   it("list prints metadata and remove deletes the local secret", async () => {
-    const s = setup(["tok", "channels"]);
+    const s = setup(["tok", "T0001", "channels"]);
     await runCli(["connection", "add", "slack", "team"], s.deps);
     await runCli(["connection", "list"], s.deps);
     expect(s.out.join("\n")).toMatch(/team\s+slack\s+channels/);

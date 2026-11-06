@@ -462,6 +462,9 @@ export const decide = implementOperation(agentOps.decide, {
             seq: input.seq,
             approve: input.approve,
             delivered: false,
+            ...(asked.connectionId ? { connectionId: asked.connectionId } : {}),
+            ...(asked.tool ? { tool: asked.tool } : {}),
+            ...(asked.inputHash ? { inputHash: asked.inputHash } : {}),
           },
           ...(granted && !run.connectionIds.includes(granted)
             ? { connectionIds: [...run.connectionIds, granted] }

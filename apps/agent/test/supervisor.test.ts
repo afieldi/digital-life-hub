@@ -1,11 +1,14 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inputHash, runStart } from "@dlh/agent-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HubError, type WorkerApi } from "../src/api";
+import { createApi, HubError, type WorkerApi } from "../src/api";
 import type { Docker, RunSpec } from "../src/docker/docker";
 import type { Price } from "../src/relay/prices";
+import type { AssumeRole } from "../src/run/credentials";
 import {
   type Claimed,
   type RunHandle,
@@ -113,6 +116,7 @@ function fakeDocker(opts: { runError?: Error } = {}) {
     listRunContainers: vi.fn(async () => []),
     removeVolume: vi.fn(async () => {}),
     imageDigest: vi.fn(async () => DIGEST),
+    networkIsolated: vi.fn(async () => true),
   } satisfies Docker;
   return { docker, specs, exit: (code: number) => exit(code) };
 }
@@ -185,20 +189,31 @@ function setup(
     runError?: Error;
     gateway?: () => Response;
     log?: (line: string) => void;
+    assumeRole?: AssumeRole;
+    /** Another run's data directory, to share it. */
+    dataDir?: string;
+    /** A real client in place of the fake one. */
+    api?: WorkerApi;
   } = {},
 ) {
   // Unix socket paths are short (104 bytes on macOS); /tmp keeps them under it.
-  const dataDir = mkdtempSync(
-    join(process.platform === "darwin" ? "/tmp" : tmpdir(), "dlh-"),
-  );
-  dirs.push(dataDir);
+  const dataDir =
+    opts.dataDir ??
+    mkdtempSync(
+      join(process.platform === "darwin" ? "/tmp" : tmpdir(), "dlh-"),
+    );
+  if (!opts.dataDir) dirs.push(dataDir);
   const { timers, fire } = fakeTimers();
   const { docker, specs, exit } = fakeDocker({ runError: opts.runError });
   const { api, agent, hubCalls, answerHub } = fakeApi();
   const store = {
     secretOf: vi.fn((id: string): Record<string, string> => {
       if (id === GITHUB) return { token: GITHUB_SECRET };
-      return { accessKeyId: "AKIA", secretAccessKey: "aws-secret" };
+      return {
+        role_arn: "arn:aws:iam::123456789012:role/dlh-agent",
+        access_key_id: "AKIA_LONG_LIVED",
+        secret_access_key: "aws-secret",
+      };
     }),
     markStarted: vi.fn(),
     markEnded: vi.fn(),
@@ -215,7 +230,7 @@ function setup(
       ),
   );
   const handle = startRun(claimed(opts.claim), {
-    api,
+    api: opts.api ?? api,
     docker,
     store,
     dataDir,
@@ -230,9 +245,19 @@ function setup(
     timers,
     now: () => new Date("2026-11-05T10:05:00.000Z"),
     log: opts.log ?? (() => {}),
+    assumeRole:
+      opts.assumeRole ??
+      (async () => {
+        throw new Error("STS isn't called in this test");
+      }),
   });
   handles.push(handle);
-  const socketPath = join(dataDir, "runs", RUN, "dlh.sock");
+  /** The socket in the directory this run's container was given. */
+  const socketPath = () => {
+    const dir = specs[0]?.socketDir;
+    if (!dir) throw new Error("No container started yet");
+    return join(dir, "dlh.sock");
+  };
 
   const call = (
     method: string,
@@ -242,7 +267,7 @@ function setup(
     new Promise((resolve, reject) => {
       const req = request(
         {
-          socketPath,
+          socketPath: socketPath(),
           method,
           path,
           headers: { "content-type": "application/json" },
@@ -331,6 +356,47 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     expect(JSON.stringify(res.body)).not.toContain(RUN_TOKEN);
   });
 
+  it("GET /run takes only the protocol's fields from the claim", async () => {
+    const decision = {
+      seq: 7,
+      approve: true,
+      delivered: true,
+      tool: "Bash",
+      inputHash: "h1",
+      // A field the agent module may add later.
+      decidedBy: "someone",
+    };
+    const t = setup({
+      claim: {
+        decision,
+        request: {
+          sender: "Ann",
+          body: "Please",
+          source: "slack",
+          sourceUrl: null,
+          extra: 1,
+        } as Claimed["request"],
+      },
+    });
+    await t.started();
+    const res = await t.call("GET", "/run");
+    // The runner's own check, which refuses extra fields.
+    const start = runStart.parse(res.body);
+    expect(start.decision).toEqual({
+      seq: 7,
+      approve: true,
+      delivered: true,
+      tool: "Bash",
+      inputHash: "h1",
+    });
+    expect(start.request).toEqual({
+      sender: "Ann",
+      body: "Please",
+      source: "slack",
+      sourceUrl: null,
+    });
+  });
+
   it("events are numbered after lastSeq", async () => {
     const t = setup();
     await t.started();
@@ -406,10 +472,40 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     t.fire(30_000);
     const end = await t.handle.done;
     expect(end.reason).toBe("stopped");
-    expect(t.docker.stop).toHaveBeenCalledWith(`dlh-run-${RUN}`);
-    expect(t.docker.remove).toHaveBeenCalledWith(`dlh-run-${RUN}`);
+    expect(t.docker.stop).toHaveBeenCalledWith("c1");
+    expect(t.docker.remove).toHaveBeenCalledWith("c1");
     expect(t.store.markEnded).toHaveBeenCalledWith(RUN, expect.any(Date));
-    expect(existsSync(t.socketPath)).toBe(false);
+    expect(existsSync(t.socketPath())).toBe(false);
+  });
+
+  it("acts on its container by the id docker gave it, never by name", async () => {
+    // A successor's container takes the same name.
+    const t = setup();
+    await t.started();
+    t.exit(0);
+    await t.handle.done;
+    expect(t.docker.wait).toHaveBeenCalledWith("c1");
+    expect(t.docker.remove).toHaveBeenCalledWith("c1");
+    const calls = [
+      ...t.docker.stop.mock.calls,
+      ...t.docker.remove.mock.calls,
+      ...t.docker.wait.mock.calls,
+    ];
+    expect(JSON.stringify(calls)).not.toContain("dlh-run-");
+  });
+
+  it("a supervisor that ends after its successor started leaves the successor's socket", async () => {
+    // A supervisor the claim loop stopped waiting for ends late.
+    const first = setup();
+    await first.started();
+    const next = setup({ dataDir: first.dataDir });
+    await next.started();
+    expect(next.specs[0]?.socketDir).not.toBe(first.specs[0]?.socketDir);
+
+    first.handle.stop("test");
+    await first.handle.done;
+    expect(existsSync(first.socketPath())).toBe(false);
+    expect((await next.call("GET", "/run")).status).toBe(200);
   });
 
   it("a heartbeat error twice stops the container", async () => {
@@ -421,8 +517,31 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     expect(t.agent.heartbeat.mutate).toHaveBeenCalledTimes(2);
     expect(end.reason).toBe("worker_error");
     expect(t.docker.stop).toHaveBeenCalled();
-    expect(t.store.markEnded).toHaveBeenCalled();
+    // The stale sweep requeues it: its volume stays.
+    expect(t.store.markEnded).not.toHaveBeenCalled();
     expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+  });
+
+  it("an API that never answers a heartbeat stops the container", async () => {
+    // Hung, not down: without a timeout the beat would wait forever.
+    const hung = createServer(() => {});
+    await new Promise<void>((r) => hung.listen(0, "127.0.0.1", r));
+    try {
+      const { port } = hung.address() as AddressInfo;
+      const api = createApi(
+        { apiUrl: `http://127.0.0.1:${port}`, workerToken: "w" },
+        { timeoutMs: 50 },
+      );
+      const t = setup({ api });
+      await t.started();
+      t.fire(30_000);
+      const end = await t.handle.done;
+      expect(end.reason).toBe("worker_error");
+      expect(t.docker.stop).toHaveBeenCalled();
+    } finally {
+      hung.closeAllConnections();
+      hung.close();
+    }
   });
 
   it("an API error from heartbeat stops the container without a retry", async () => {
@@ -503,6 +622,138 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     expect(t.store.secretOf).toHaveBeenCalledWith(GITHUB);
   });
 
+  it("secrets served to the run are redacted from what it reports", async () => {
+    const t = setup();
+    await t.started();
+    await t.call("GET", "/credentials/github/gh");
+    await t.call("POST", "/events", {
+      events: [
+        {
+          at: "2026-11-05T10:01:00.000Z",
+          kind: "tool_result",
+          data: {
+            text: `GH_TOKEN=${GITHUB_SECRET}\nPATH=/bin`,
+            nested: [{ deep: `x${GITHUB_SECRET}y` }],
+            isError: false,
+          },
+        },
+      ],
+    });
+    t.fire(2000);
+    await vi.waitFor(() =>
+      expect(t.agent.appendEvents.mutate).toHaveBeenCalled(),
+    );
+    const sent = JSON.stringify(t.agent.appendEvents.mutate.mock.calls);
+    expect(sent).not.toContain(GITHUB_SECRET);
+    expect(t.agent.appendEvents.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      events: [
+        expect.objectContaining({
+          data: {
+            text: "GH_TOKEN=[redacted]\nPATH=/bin",
+            nested: [{ deep: "x[redacted]y" }],
+            isError: false,
+          },
+        }),
+      ],
+    });
+
+    const curl = { command: `curl -H ${GITHUB_SECRET}` };
+    await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: curl,
+    });
+    expect(t.agent.suspend.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Approve: Bash: curl -H [redacted]",
+        body: "Bash: curl -H [redacted]",
+        // What the runner will match: the input as asked, not as shown.
+        inputHash: inputHash("Bash", curl),
+      }),
+    );
+  });
+
+  it("an env JSON's values are redacted, and short values aren't", async () => {
+    const MCP = "33333333-3333-4333-8333-333333333333";
+    const t = setup({
+      claim: {
+        connections: [
+          { id: MCP, name: "tool", type: "mcp", scopeSummary: "x" },
+        ],
+        connectionIds: [MCP],
+      },
+    });
+    t.store.secretOf.mockReturnValue({
+      command: "npx",
+      env: JSON.stringify({ API_KEY: "mcp-key-1234567", LEVEL: "1" }),
+    });
+    await t.started();
+    await t.call("GET", "/credentials/mcp/tool");
+    await t.call("POST", "/fail", {
+      code: "x",
+      message: "npx says API_KEY=mcp-key-1234567 LEVEL=1",
+    });
+    await t.handle.done;
+    expect(t.agent.fail.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      code: "x",
+      message: "npx says API_KEY=[redacted] LEVEL=1",
+    });
+  });
+
+  it("aws credentials are an assumed role's 1-hour keys, never the stored ones", async () => {
+    const assumeRole = vi.fn<AssumeRole>(async () => ({
+      accessKeyId: "ASIA_TEMP",
+      secretAccessKey: "temp-secret",
+      sessionToken: "temp-session",
+      expiration: new Date("2026-11-05T11:05:00.000Z"),
+    }));
+    const t = setup({ claim: { connectionIds: [GITHUB, AWS] }, assumeRole });
+    await t.started();
+    const res = await t.call("GET", "/credentials/aws/prod");
+    expect(res).toEqual({
+      status: 200,
+      body: {
+        secret: {
+          Version: "1",
+          AccessKeyId: "ASIA_TEMP",
+          SecretAccessKey: "temp-secret",
+          SessionToken: "temp-session",
+          Expiration: "2026-11-05T11:05:00.000Z",
+        },
+      },
+    });
+    expect(assumeRole).toHaveBeenCalledWith({
+      roleArn: "arn:aws:iam::123456789012:role/dlh-agent",
+      accessKeyId: "AKIA_LONG_LIVED",
+      secretAccessKey: "aws-secret",
+      sessionName: `dlh-run-${RUN}`,
+      durationSeconds: 3600,
+    });
+    expect(JSON.stringify(res.body)).not.toContain("aws-secret");
+    expect(JSON.stringify(res.body)).not.toContain("AKIA_LONG_LIVED");
+  });
+
+  it("a role that can't be assumed answers 502 and logs no key", async () => {
+    const lines: string[] = [];
+    const t = setup({
+      claim: { connectionIds: [AWS] },
+      log: (l) => lines.push(l),
+      assumeRole: async () => {
+        throw Object.assign(new Error("AKIA_LONG_LIVED is not valid"), {
+          name: "InvalidClientTokenId",
+        });
+      },
+    });
+    await t.started();
+    const res = await t.call("GET", "/credentials/aws/prod");
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body) + lines.join("\n")).not.toContain("AKIA");
+    expect(lines.join("\n")).toContain("InvalidClientTokenId");
+  });
+
   it('a budget error fails the run with "AI budget reached"', async () => {
     const t = setup({
       gateway: () =>
@@ -539,7 +790,7 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     });
     expect(end.reason).toBe("failed");
     expect(t.store.markEnded).toHaveBeenCalled();
-    expect(existsSync(t.socketPath)).toBe(false);
+    expect(existsSync(t.socketPath())).toBe(false);
   });
 
   it("messages reach a waiting GET /messages", async () => {
@@ -573,12 +824,33 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     expect(res.status).toBe(200);
     const end = await t.handle.done;
     expect(end.reason).toBe("finished");
+    expect(t.store.markEnded).toHaveBeenCalledWith(RUN, expect.any(Date));
     const appendOrder =
       t.agent.appendEvents.mutate.mock.invocationCallOrder[0] ?? 0;
     const finishOrder = t.agent.finish.mutate.mock.invocationCallOrder[0] ?? 0;
     expect(appendOrder).toBeGreaterThan(0);
     expect(finishOrder).toBeGreaterThan(appendOrder);
     expect(t.agent.finish.mutate).toHaveBeenCalledWith({ runId: RUN, report });
+  });
+
+  it("a report sends the usage since the last heartbeat first", async () => {
+    const t = setup();
+    await t.started();
+    await t.call("POST", "/model/v1/messages", {
+      model: "claude-opus-5-5",
+      messages: [],
+    });
+    // No heartbeat tick: the run ends between two.
+    const report = { summary: "Fixed", links: [], filesChanged: [] };
+    expect((await t.call("POST", "/finish", { report })).status).toBe(200);
+    await t.handle.done;
+    expect(t.agent.heartbeat.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: RUN, turns: 4, image: DIGEST }),
+    );
+    const beatOrder = t.agent.heartbeat.mutate.mock.invocationCallOrder[0] ?? 0;
+    const finishOrder = t.agent.finish.mutate.mock.invocationCallOrder[0] ?? 0;
+    expect(beatOrder).toBeGreaterThan(0);
+    expect(finishOrder).toBeGreaterThan(beatOrder);
   });
 
   it("suspend numbers its seq after the events and stops the container", async () => {
@@ -588,22 +860,105 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     const res = await t.call("POST", "/suspend", {
       sessionId: "sess-1",
       kind: "grant",
-      title: "Use prod",
-      body: "Needs AWS",
       connectionId: AWS,
+      reason: "Needs AWS",
     });
     expect(res).toEqual({ status: 200, body: { seq: 9 } });
     const end = await t.handle.done;
     expect(end.reason).toBe("suspended");
+    // Still live in the hub: its volume isn't up for the 7-day sweep.
+    expect(t.store.markEnded).not.toHaveBeenCalled();
     expect(t.agent.suspend.mutate).toHaveBeenCalledWith({
       runId: RUN,
       seq: 9,
       sessionId: "sess-1",
       kind: "grant",
-      title: "Use prod",
+      title: "Grant prod (aws)",
       body: "Needs AWS",
       connectionId: AWS,
     });
+  });
+
+  it("an approval is worded and hashed from the input it allows", async () => {
+    const t = setup();
+    await t.started();
+    const merge = { command: "gh pr merge 3", description: "List files" };
+    const res = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: merge,
+    });
+    expect(res.status).toBe(200);
+    expect(t.agent.suspend.mutate).toHaveBeenCalledWith({
+      runId: RUN,
+      seq: 8,
+      sessionId: "sess-1",
+      kind: "approval",
+      title: "Approve: Bash: gh pr merge 3",
+      body: "Bash: gh pr merge 3",
+      tool: "Bash",
+      inputHash: inputHash("Bash", merge),
+    });
+  });
+
+  it("an approval that brings its own wording or hash is refused", async () => {
+    // The agent can reach the socket: "Approve: Bash: ls" over a merge's
+    // hash would have the owner allow what they never read.
+    const t = setup();
+    await t.started();
+    const merge = { command: "gh pr merge 3" };
+    const forged = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      title: "Approve: Bash: ls",
+      body: "Bash: ls",
+      tool: "Bash",
+      inputHash: inputHash("Bash", merge),
+    });
+    const worded = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: merge,
+      title: "Approve: Bash: ls",
+    });
+    expect(forged.status).toBe(400);
+    expect(worded.status).toBe(400);
+    expect(t.agent.suspend.mutate).not.toHaveBeenCalled();
+  });
+
+  it("an action cut short in the quote is given in full in the body", async () => {
+    const t = setup();
+    await t.started();
+    const command = `echo ${"x".repeat(600)}; gh pr merge 3`;
+    await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "approval",
+      tool: "Bash",
+      input: { command },
+    });
+    const sent = t.agent.suspend.mutate.mock.calls[0]?.[0] as {
+      title: string;
+      body: string;
+    };
+    expect(sent.title).not.toContain("gh pr merge 3");
+    expect(sent.body).toBe(`Bash: ${command}`);
+  });
+
+  it("a grant of a connection the claim doesn't list is refused", async () => {
+    const t = setup();
+    await t.started();
+    const res = await t.call("POST", "/suspend", {
+      sessionId: "sess-1",
+      kind: "grant",
+      connectionId: "44444444-4444-4444-8444-444444444444",
+      reason: "Needs it",
+    });
+    expect(res.status).toBe(400);
+    expect(t.agent.suspend.mutate).not.toHaveBeenCalled();
+    // Refused, not ended: the run goes on.
+    expect((await t.call("GET", "/run")).status).toBe(200);
   });
 
   it("a container that exits without a report fails the run", async () => {
@@ -631,6 +986,7 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     expect(end.reason).toBe("shutdown");
     expect(t.docker.stop).toHaveBeenCalled();
     expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+    expect(t.store.markEnded).not.toHaveBeenCalled();
 
     const beat = setup();
     await beat.started();
@@ -669,6 +1025,82 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
     expect((await t.handle.done).reason).toBe("worker_error");
     expect(t.agent.fail.mutate).not.toHaveBeenCalled();
     expect(t.docker.stop).toHaveBeenCalled();
+  });
+
+  it("a runner that hangs up during /suspend still ends the run", async () => {
+    const t = setup();
+    await t.started();
+    let release!: () => void;
+    t.agent.suspend.mutate.mockImplementation(
+      () =>
+        new Promise((r) => {
+          release = () => r(answer({}));
+        }),
+    );
+    const req = request({
+      socketPath: t.socketPath(),
+      method: "POST",
+      path: "/suspend",
+      headers: { "content-type": "application/json" },
+    });
+    req.on("error", () => {});
+    req.end(
+      JSON.stringify({
+        sessionId: "sess-1",
+        kind: "approval",
+        tool: "Bash",
+        input: { command: "gh pr merge 1" },
+      }),
+    );
+    await vi.waitFor(() => expect(t.agent.suspend.mutate).toHaveBeenCalled());
+    // Killed mid-report (OOM, a stop): the connection is gone before the answer.
+    req.destroy();
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    const end = await Promise.race([
+      t.handle.done,
+      new Promise((r) => setTimeout(() => r("hung"), 1000)),
+    ]);
+    expect(end).toEqual({ runId: RUN, reason: "suspended" });
+  });
+
+  it("a container that exits during a report ends the run once it's in", async () => {
+    const t = setup();
+    await t.started();
+    let release!: () => void;
+    t.agent.finish.mutate.mockImplementation(
+      () =>
+        new Promise((r) => {
+          release = () => r(answer({}));
+        }),
+    );
+    const res = t
+      .call("POST", "/finish", {
+        report: { summary: "Fixed", links: [], filesChanged: [] },
+      })
+      .catch(() => null);
+    await vi.waitFor(() => expect(t.agent.finish.mutate).toHaveBeenCalled());
+    t.exit(137);
+    await new Promise((r) => setTimeout(r, 20));
+    release();
+    await res;
+    const end = await t.handle.done;
+    expect(end.reason).toBe("finished");
+    expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+  });
+
+  it("done resolves even when ending throws", async () => {
+    const t = setup();
+    await t.started();
+    t.store.markEnded.mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    t.handle.stop("test");
+    const end = await Promise.race([
+      t.handle.done,
+      new Promise((r) => setTimeout(() => r("hung"), 1000)),
+    ]);
+    expect(end).toEqual({ runId: RUN, reason: "test" });
   });
 
   it("refuses a body that doesn't match the route", async () => {

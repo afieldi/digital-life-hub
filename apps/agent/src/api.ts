@@ -36,7 +36,12 @@ export type WorkerApi = {
 export type ApiOptions = {
   fetch?: typeof fetch;
   backoffMs?: (attempt: number) => number;
+  /** How long a worker or run call may take, answer read in full; 30 s by default. */
+  timeoutMs?: number;
 };
+
+/** A call the API doesn't answer in time fails like a network error (D14). */
+const CALL_TIMEOUT_MS = 30_000;
 
 const MAX_BACKOFF_MS = 30_000;
 const defaultBackoff = (attempt: number) =>
@@ -48,13 +53,22 @@ export function createApi(
 ): WorkerApi {
   const doFetch = opts.fetch ?? fetch;
   const backoffMs = opts.backoffMs ?? defaultBackoff;
+  const timeoutMs = opts.timeoutMs ?? CALL_TIMEOUT_MS;
+  /** `fetch` that gives up after `timeoutMs`, while reading the answer too. */
+  const timedFetch: typeof fetch = (input, init) => {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    return doFetch(input, {
+      ...init,
+      signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
+    });
+  };
   const base = config.apiUrl.replace(/\/$/, "");
 
   const worker = createTRPCClient<WorkerRouter>({
     links: [
       httpLink({
         url: `${base}/trpc`,
-        fetch: doFetch,
+        fetch: timedFetch,
         headers: () => ({ Authorization: `Bearer ${config.workerToken}` }),
       }),
     ],
@@ -65,12 +79,12 @@ export function createApi(
       const headers = { Authorization: `Bearer ${token}` };
       const res =
         kind === "mutation"
-          ? await doFetch(`${base}/trpc/${id}`, {
+          ? await timedFetch(`${base}/trpc/${id}`, {
               method: "POST",
               headers: { ...headers, "Content-Type": "application/json" },
               body: JSON.stringify(input ?? {}),
             })
-          : await doFetch(
+          : await timedFetch(
               `${base}/trpc/${id}?input=${encodeURIComponent(JSON.stringify(input ?? {}))}`,
               { headers },
             );

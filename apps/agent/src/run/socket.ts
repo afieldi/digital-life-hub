@@ -30,7 +30,7 @@ export type RunRoutes = {
   /** Long-polls up to `waitSeconds`; `gone` aborts when the runner hangs up. */
   messages(waitSeconds: number, gone: AbortSignal): Promise<Reply>;
   hub(body: HubRequest): Promise<Reply>;
-  credentials(type: string, name: string): Reply;
+  credentials(type: string, name: string): Reply | Promise<Reply>;
   suspend(body: SuspendRequest): Promise<Reply>;
   finish(body: FinishRequest): Promise<Reply>;
   fail(body: FailRequest): Promise<Reply>;
@@ -76,8 +76,14 @@ async function readJson<S extends z.ZodType>(
 }
 
 function send(res: ServerResponse, reply: Reply) {
-  // `close` also fires when the runner hangs up before the answer is out.
-  if (reply.after) res.once("close", reply.after);
+  const { after } = reply;
+  if (after) {
+    // `close` fires once: if the runner hung up while the route worked (it
+    // was killed mid-report), it has fired already and won't again.
+    if (res.destroyed || res.req.socket.destroyed) setImmediate(after);
+    else res.once("close", after);
+  }
+  if (res.destroyed) return;
   res.writeHead(reply.status, { "content-type": "application/json" });
   res.end(JSON.stringify(reply.body));
 }

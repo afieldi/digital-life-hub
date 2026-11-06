@@ -9,14 +9,18 @@ const NOW = new Date("2026-11-05T10:00:00.000Z");
 /** Timers fired by hand, by period. */
 function fakeTimers() {
   const every = new Map<number, () => void>();
+  const after = new Map<number, () => void>();
   const timers: Timers = {
     every(ms, fn) {
       every.set(ms, fn);
       return () => every.delete(ms);
     },
-    after: () => () => {},
+    after(ms, fn) {
+      after.set(ms, fn);
+      return () => after.delete(ms);
+    },
   };
-  return { timers, every };
+  return { timers, every, after };
 }
 
 const claim = (id: string) =>
@@ -26,9 +30,13 @@ function setup(opts: {
   claims?: Array<() => Promise<unknown>>;
   ended?: { runId: string; volume: string }[];
   containers?: string[];
+  /** Each run's containers, as `listRunContainers(runId)` finds them. */
+  runContainers?: Record<string, string[]>;
+  remove?: (container: string) => Promise<void>;
   removeVolume?: (name: string) => Promise<void>;
+  isolated?: () => boolean;
 }) {
-  const { timers, every } = fakeTimers();
+  const { timers, every, after } = fakeTimers();
   let onChange: () => void = () => {};
   const unsubscribe = vi.fn();
   const queue = [...(opts.claims ?? [])];
@@ -37,9 +45,12 @@ function setup(opts: {
     return { result: next ? await next() : { run: null }, undo: null };
   });
   const docker = {
-    listRunContainers: vi.fn(async () => opts.containers ?? []),
-    remove: vi.fn(async () => {}),
+    listRunContainers: vi.fn(async (runId?: string) =>
+      runId ? (opts.runContainers?.[runId] ?? []) : (opts.containers ?? []),
+    ),
+    remove: vi.fn(opts.remove ?? (async () => {})),
     removeVolume: vi.fn(opts.removeVolume ?? (async () => {})),
+    networkIsolated: vi.fn(async () => opts.isolated?.() ?? true),
   } as unknown as Docker;
   const store = {
     secretOf: vi.fn(),
@@ -98,6 +109,7 @@ function setup(opts: {
     handles,
     logs,
     every,
+    after,
     unsubscribe,
     startRun,
     change: () => onChange(),
@@ -191,6 +203,116 @@ describe("claim loop", () => {
     await s.loop.stop();
   });
 
+  it("a run claimed again starts once its last container has ended", async () => {
+    // Suspended, then answered at once: the claim comes while the first
+    // supervisor is still stopping its container, whose name the next takes.
+    const s = setup({
+      claims: [
+        async () => claim("r1"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+      ],
+    });
+    await s.loop.start();
+    await s.idle();
+    expect(s.started).toEqual(["r1"]);
+    s.change();
+    await s.idle();
+    expect(s.started).toEqual(["r1"]);
+    s.handles[0]?.end();
+    await s.idle();
+    await s.idle();
+    expect(s.started).toEqual(["r1", "r1"]);
+    // The first one's end didn't drop the second from the live runs.
+    await s.loop.stop();
+    expect(s.handles[1]?.stop).toHaveBeenCalledWith("shutdown");
+  });
+
+  it("a run whose last supervisor never ends starts once its old container is gone", async () => {
+    const s = setup({
+      claims: [
+        async () => claim("r1"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+        async () => claim("r2"),
+        async () => ({ run: null }),
+      ],
+      runContainers: { r1: ["0ld1d"] },
+    });
+    await s.loop.start();
+    await s.idle();
+    s.change();
+    await s.idle();
+    // r1's first supervisor hangs: after a minute the pass gives up on it.
+    expect(s.started).toEqual(["r1"]);
+    s.after.get(60_000)?.();
+    await vi.waitFor(() => expect(s.started).toEqual(["r1", "r1", "r2"]));
+    expect(s.logs.some((l) => l.includes("r1"))).toBe(true);
+    // Its container, still there, would hold the name the new one takes.
+    expect(s.handles[0]?.stop).toHaveBeenCalledWith("dropped");
+    expect(s.docker.listRunContainers).toHaveBeenCalledWith("r1");
+    expect(s.docker.remove).toHaveBeenCalledWith("0ld1d");
+    const removed = vi.mocked(s.docker.remove).mock.invocationCallOrder[0] ?? 0;
+    const restarted = s.startRun.mock.invocationCallOrder[1] ?? 0;
+    expect(removed).toBeGreaterThan(0);
+    expect(restarted).toBeGreaterThan(removed);
+    s.handles[0]?.end();
+    await s.loop.stop();
+  });
+
+  it("a run whose old container can't be removed waits for the next claim", async () => {
+    let fail = true;
+    const s = setup({
+      claims: [
+        async () => claim("r1"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+        async () => claim("r2"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+      ],
+      runContainers: { r1: ["0ld1d"] },
+      remove: async () => {
+        if (fail) throw new Error("docker hung up");
+      },
+    });
+    await s.loop.start();
+    await s.idle();
+    s.change();
+    await s.idle();
+    // Hung for good: told to stop, it still doesn't end.
+    if (s.handles[0]) vi.mocked(s.handles[0].stop).mockImplementation(() => {});
+    s.after.get(60_000)?.();
+    await vi.waitFor(() => expect(s.started).toEqual(["r1", "r2"]));
+    expect(s.logs.join("\n")).toContain("docker hung up");
+    // Requeued by the stale sweep and claimed again: removed this time.
+    fail = false;
+    s.change();
+    await vi.waitFor(() => expect(s.started).toEqual(["r1", "r2", "r1"]));
+    s.handles[0]?.end();
+    await s.loop.stop();
+  });
+
+  it("no run is claimed while the run network isn't isolated", async () => {
+    let isolated = false;
+    const s = setup({
+      claims: [async () => claim("r1")],
+      isolated: () => isolated,
+    });
+    await s.loop.start();
+    await s.idle();
+    s.change();
+    await s.idle();
+    expect(s.claimFn).not.toHaveBeenCalled();
+    // Said once, not on every pass.
+    expect(s.logs.filter((l) => l.includes("dlh-runs"))).toHaveLength(1);
+    isolated = true;
+    s.change();
+    await s.idle();
+    expect(s.started).toEqual(["r1"]);
+    await s.loop.stop();
+  });
+
   it("old volumes are removed and forgotten", async () => {
     const s = setup({
       ended: [
@@ -200,6 +322,11 @@ describe("claim loop", () => {
       ],
       removeVolume: async (name) => {
         if (name === "dlh-ws-b") throw new Error("in use\nmore");
+        if (name === "dlh-ws-c") {
+          throw new Error(
+            "Error response from daemon: get dlh-ws-c: no such volume",
+          );
+        }
       },
     });
     await s.loop.start();

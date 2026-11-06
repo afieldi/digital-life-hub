@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export {
+  type ApprovalAsk,
+  approvalAsk,
+  describeAction,
+  inputHash,
+} from "./approval";
+
 /**
  * The routes the host worker serves on each run's Unix socket, for the runner
  * inside the container. Every route is JSON over HTTP except `/model/*`, which
@@ -20,11 +27,18 @@ export const eventKind = z.enum([
   "status",
 ]);
 
-/** Same shape as the agent module's `decision`: the person's answer to a suspended run. */
+/**
+ * The agent module's `decision`: the person's answer to a suspended run, with
+ * what was asked as the API kept it. An approval allows only this tool and
+ * input hash, never what the run's volume says was asked.
+ */
 export const decision = obj({
   seq: z.number().int(),
   approve: z.boolean(),
   delivered: z.boolean(),
+  connectionId: z.string().optional(),
+  tool: z.string().optional(),
+  inputHash: z.string().optional(),
 });
 export type Decision = z.infer<typeof decision>;
 
@@ -97,16 +111,27 @@ export const credentialsResponse = obj({
 });
 export type CredentialsResponse = z.infer<typeof credentialsResponse>;
 
-/** `POST /suspend`: park the run until the person answers. */
-export const suspendRequest = obj({
-  sessionId: z.string().min(1),
-  kind: z.enum(["approval", "grant"]),
-  title: z.string().min(1),
-  body: z.string(),
-  tool: z.string().optional(),
-  inputHash: z.string().optional(),
-  connectionId: z.string().optional(),
-});
+/**
+ * `POST /suspend`: park the run until the person answers. An approval gives
+ * the tool and its input, never words or a hash: the worker words the ask
+ * and hashes it from that input (`approvalAsk`), so the agent can't show the
+ * owner one action and have another allowed. A grant names the connection;
+ * the worker words it from the claim's connection of that id.
+ */
+export const suspendRequest = z.discriminatedUnion("kind", [
+  obj({
+    sessionId: z.string().min(1),
+    kind: z.literal("approval"),
+    tool: z.string().min(1),
+    input: z.record(z.string(), z.unknown()),
+  }),
+  obj({
+    sessionId: z.string().min(1),
+    kind: z.literal("grant"),
+    connectionId: z.string().min(1),
+    reason: z.string(),
+  }),
+]);
 export type SuspendRequest = z.infer<typeof suspendRequest>;
 
 export const suspendResponse = obj({ seq: z.number().int() });

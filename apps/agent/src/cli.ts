@@ -25,13 +25,14 @@ export type CliDeps = {
 const FIELDS: Record<string, string[]> = {
   github: ["token"],
   aws: ["role_arn", "access_key_id", "secret_access_key"],
-  slack: ["token"],
+  // The Slack MCP server needs the workspace id (`T…`) next to the bot token.
+  slack: ["token", "team_id"],
   linear: ["token"],
   gdrive: ["token"],
   mcp: ["command", "args", "env"],
 };
 /** Fields that are not secret, so are typed with echo. */
-const PLAIN = new Set(["role_arn", "command", "args"]);
+const PLAIN = new Set(["role_arn", "team_id", "command", "args"]);
 
 async function collectSecret(
   type: string,
