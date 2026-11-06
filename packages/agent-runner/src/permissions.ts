@@ -337,9 +337,13 @@ const PUSH_VALUE_OPTIONS = new Set([
   "--exec",
 ]);
 
-const branchOf = (ref: string) => ref.replace(/^refs\/heads\//, "");
+/** `refs/heads/main` and `heads/main` are `main` to git. */
+const branchOf = (ref: string) => ref.replace(/^(refs\/)?heads\//, "");
 
-/** Shell expansion or a glob: the word isn't what git will see. */
+/**
+ * Shell expansion (`$(` and a backtick read as `$(`), or a glob: the word
+ * isn't what git or gh will see.
+ */
 const UNREADABLE = /[$`*?[]/;
 
 /** A `git` command: not a push, a push that asks, or a push cleared as non-main. */
@@ -358,6 +362,8 @@ function gitPush(
     }
     i += GIT_VALUE_OPTIONS.has(opt) ? 2 : 1;
   }
+  // `git $(printf pu; printf sh) …` could be a push.
+  if (UNREADABLE.test(args[i] ?? "")) return "ask";
   if (args[i] !== "push") return "none";
 
   const positional: string[] = [];
@@ -393,7 +399,10 @@ function ghAsks(args: string[]): boolean {
     (a, k) =>
       !a.startsWith("-") && args[k - 1] !== "-R" && args[k - 1] !== "--repo",
   );
-  if (positional[0] === "pr" && positional[1] === "merge") return true;
+  // `gh pr $(…)` could be a merge.
+  const [sub = "", verb = ""] = positional;
+  if (UNREADABLE.test(sub)) return true;
+  if (sub === "pr" && (verb === "merge" || UNREADABLE.test(verb))) return true;
   if (positional[0] !== "api") return false;
   if (args.some((a) => /\/merge\b/.test(a) || /mergePullRequest/.test(a))) {
     return true;

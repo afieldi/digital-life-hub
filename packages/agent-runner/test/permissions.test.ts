@@ -101,6 +101,29 @@ describe("classify", () => {
     expect(bash("gh api repos/o/r/pulls/3")).toBe("alone");
   });
 
+  it("a git subcommand or gh verb the parser can't read asks", () => {
+    for (const c of [
+      "git $(printf pu; printf sh) origin main",
+      'git "$CMD" origin main',
+      "git `echo push` origin main",
+      "git -C /workspace/web $X origin main",
+      "gh pr $(echo bWVyZ2U= | base64 -d) 3",
+      'gh pr "$VERB" 3',
+      "gh $(echo pr) merge 3",
+      "gh -R acme/web pr `echo m`erge 3",
+    ]) {
+      expect(bash(c), c).toBe("ask");
+    }
+    expect(bash("git log --format=%H -n1")).toBe("alone");
+    expect(bash('gh pr view 3 --json title -q ".title"')).toBe("alone");
+  });
+
+  it("heads/main is main", () => {
+    expect(bash("git push origin HEAD:heads/main")).toBe("ask");
+    expect(bash("git push origin feature:heads/master")).toBe("ask");
+    expect(bash("git push origin HEAD:heads/feature")).toBe("alone");
+  });
+
   it("a push whose branch can't be told asks", () => {
     expect(bash("git push", ctx({ currentBranch: () => null }))).toBe("ask");
   });
