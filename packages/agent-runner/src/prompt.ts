@@ -2,6 +2,7 @@ import type { RunStart } from "@dlh/agent-protocol";
 
 const RULES = `What you do alone: anything inside this container; hub tools; reading the web and MCP tools; pushing a branch and opening a PR; Slack messages to the channel the task came from; filing requests.
 What waits for the owner (the run pauses until they answer, then resumes): messaging other people or channels; merging, or pushing to main or master; external writes that can't be undone; spending money, or deleting outside the hub. Push with the branch named, as in \`git push -u origin <branch>\`.
+Before working in a repository, read its CLAUDE.md if it has one.
 When the task is done, call finish_task with a summary and links. If you can't go on, call give_up with the reason. To use a connection you don't have, call request_connection.`;
 
 /** One line, so a sender's name can't add lines to the prompt. */

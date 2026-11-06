@@ -28,6 +28,13 @@ describe("buildPrompt", () => {
     expect(prompt.startsWith("Be brief.\n\nYour task:")).toBe(true);
   });
 
+  it("tells the agent to read a repository's CLAUDE.md", () => {
+    // The SDK loads no settings files, a repo's CLAUDE.md among them.
+    expect(buildPrompt(runStart())).toContain(
+      "Before working in a repository, read its CLAUDE.md if it has one.",
+    );
+  });
+
   it("leaves out the quote when the task came from no request", () => {
     const prompt = buildPrompt(runStart({ request: null }));
     expect(prompt).not.toContain("Message from");
