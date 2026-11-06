@@ -20,7 +20,7 @@ The heavy kind of AI. You mark a task as an AI task and the agent picks it up, w
 - A runner on a second host
 - Workspaces as saved presets of connections. They can be added later on top of connection lists
 - Other harnesses (Codex)
-- The Slack bot. It makes AI tasks through `agent.assign` later
+- The Slack bot. Its [spec](slack-bot.md) adds run audience, a coworker connection set and posting through the hub (its Agent hub changes)
 - Scheduled or recurring AI tasks
 - The light gateway's move from OpenRouter to Vercel AI Gateway (a separate small change)
 
@@ -56,10 +56,10 @@ The heavy kind of AI. You mark a task as an AI task and the agent picks it up, w
 | Does it alone | Asks you through the Queue |
 | --- | --- |
 | Anything inside its container | Messaging people or channels the task didn't come from |
-| Hub operations | Merging, or pushing to `main` |
+| Hub operations (for a run from a coworker's request, only what involves them: see [Slack bot](slack-bot.md#agent-hub-changes)) | Merging, or pushing to `main` |
 | Reading the web and MCP tools | External writes that can't be undone (Linear, Drive…) |
 | Pushing a branch and opening a PR | Spending money, or deleting outside the hub |
-| Slack messages, as the bot or as you, to the people and threads the task came from | |
+| Slack messages, as the bot, to the people and threads the task came from. Never as you | A coworker-audience run's hub calls outside its audience |
 | Filing requests for you | |
 
 ## Packages
