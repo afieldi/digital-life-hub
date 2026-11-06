@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { posix } from "node:path";
 
 /** One run's container. `env` holds only non-secret values (see `runEnv`). */
 export type RunSpec = {
@@ -46,9 +46,10 @@ export const volumeName = (runId: string) => `dlh-ws-${runId}`;
  * it for the socket and mounts that at `/run/dlh`, so a supervisor that ends
  * late (closing its server unlinks its socket's path) can't touch its
  * successor's socket.
+ * The worker runs on a Linux host, so the path is POSIX on every platform.
  */
 export const runDir = (dataDir: string, runId: string) =>
-  join(dataDir, "runs", runId);
+  posix.join(dataDir, "runs", runId);
 export const SOCKET_FILE = "dlh.sock";
 
 /**
