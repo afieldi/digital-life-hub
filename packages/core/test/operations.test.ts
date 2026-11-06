@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   accessOf,
+  askerInput,
   capFor,
   collectModules,
   defineModule,
@@ -328,6 +329,48 @@ describe("describeOperation", () => {
     expect(() =>
       describeOperation({ ...slack, palette: false, ai: false }),
     ).not.toThrow();
+  });
+  describe("audience asker", () => {
+    const asker: OperationDescription = {
+      id: "requests.fromSender",
+      kind: "query",
+      label: "From sender",
+      description: "x",
+      appliesTo: "none",
+      input: z.object({ asker: askerInput }),
+      subject: () => null,
+      effects: [],
+      summary: () => "From sender",
+      access: "slack",
+      palette: false,
+      ai: false,
+      audience: "asker",
+    };
+    test("audience asker needs an asker input", () => {
+      expect(() => describeOperation(asker)).not.toThrow();
+      const withInput = (input: z.ZodObject) =>
+        describeOperation({ ...asker, input });
+      expect(() => withInput(z.object({}))).toThrow(
+        'Operation "requests.fromSender" has audience: "asker"',
+      );
+      expect(() => withInput(z.object({ asker: z.string() }))).toThrow(
+        OperationError,
+      );
+      expect(() =>
+        withInput(
+          z.object({
+            asker: z.object({ slackUserId: z.string().min(1) }),
+          }),
+        ),
+      ).toThrow(OperationError);
+    });
+    test("audience asker needs access slack", () => {
+      const { access: _, ...noAccess } = asker;
+      expect(() => describeOperation(noAccess)).toThrow(OperationError);
+      expect(() => describeOperation({ ...asker, access: "worker" })).toThrow(
+        'access: "slack"',
+      );
+    });
   });
   test("access defaults to everyone with ai and user without", () => {
     const d = describeOperation({

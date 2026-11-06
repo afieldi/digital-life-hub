@@ -301,3 +301,5 @@ export const noTools: RunnerTools = {
   mutate: () => Promise.reject(new Error("this test's runner has no tools")),
   revert: () => Promise.reject(new Error("this test's runner has no tools")),
 };
+
+export { expectAskerScoped } from "./testing/asker";

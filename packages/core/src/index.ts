@@ -93,6 +93,7 @@ export type {
 } from "./operations/describe";
 export {
   accessOf,
+  askerInput,
   describeOperation,
   ITEM_KEYS,
   itemOnScreen,
