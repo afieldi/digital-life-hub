@@ -20,8 +20,10 @@ Task 2 writes each of these back into the spec.
   - It is trustworthy because of who may call it. It must be `access: "slack"` and is called with the sender `apps/slack` reported, or through an operation call from such an operation.
   - Part 2 adds the run-token rule: a coworker-audience run's `asker` input must equal the run's audience.
   - This replaces the spec's `ctx.asker`.
-- **The model interpreter is server-only.** It lives in `modules/slack/src/server/interpret.ts` and calls Core's `completeOnServer`. ⌘K keeps the keyword interpreter, and Core's client registry (`interpreters`) is not changed. Part 2 adds subjects for your command set; the coworker set has no subjects.
-- **One server-side completion helper.** `completeOnServer(deps, { purpose, system, prompt, schema, model? })` calls the configured server provider and logs the call in `ai_requests` with `origin: "slack"` and `action_id` = `purpose`. The interpreter and coworker answers both use it. The gateway's `prepare` is not involved until Part 2.
+- **The model interpreter is server-only.** It lives in `modules/slack/src/server/interpret.ts` and calls Core's `decideOnServer`. ⌘K keeps the keyword interpreter, and Core's client registry (`interpreters`) is not changed. Part 2 adds subjects for your command set; the coworker set has no subjects.
+- **Two server-side model helpers.** Both log the call in `ai_requests` with `origin: "slack"` and `action_id` = `purpose`. The gateway's `prepare` is not involved until Part 2.
+  - `completeOnServer(deps, { purpose, system, prompt, schema, model?, timeoutMs? })` returns `{ value, requestId }`. It generates text (coworker answers) through chat completions.
+  - `decideOnServer(deps, { purpose, question, choices: { value, description }[], input, model, timeoutMs })` returns `{ choice, confidence, probabilities, requestId }`. The interpreter uses it, through `/v1/decisions` on the Vercel provider (its `decide()` method), because decision models (Jev, Luna) are not reachable through chat completions. It reads `confidence`, not the top probability. The interpreter's alternatives are the next most probable choices.
 - **Vercel AI Gateway is a second server provider, not a rename.**
   - `aiProviderId` gains `"vercel"`, and `createOpenAiCompatible` serves both `createOpenRouter` and `createVercelGateway`.
   - The server uses `vercel` when `AI_GATEWAY_API_KEY` is set, else `openrouter`.

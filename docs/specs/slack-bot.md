@@ -199,17 +199,22 @@ Give to agent on any request in the queue works as it does today.
 
 **Running as you from module code.** `runAsOwner(deps, fn)`, exported from `@dlh/server` for module server code, runs gateway steps (interpret, prepare, complete, apply an option, undo) and top-level operations as you, with your writer, Undo tokens and request log, exactly as the desktop app's calls would. It is the only way a non-user principal reaches the gateway or `ops.undo`. It checks that the calling procedure's principal is `slack`. Requests it starts are logged with a new `ai_requests.origin` column (`app` by default, `slack` here), and `slack.handleAction`'s undo and apply refuse any AI request whose origin isn't `slack`.
 
-**Model interpreter.** `interpreterId` gains `model:<id>`. The server runs it; the desktop keeps the keyword interpreter for ⌘K unless Settings → AI picks the model. `Interpretation` gains `subjectId`. The phrasing suite runs against it, at the same 90% bar.
+**Model interpreter.** It is server-only. It lives in `modules/slack/src/server/interpret.ts` and calls Core's `decideOnServer`. ⌘K keeps the keyword interpreter, and Core's client registry (`interpreters`) is not changed. `Interpretation` gains `subjectId`. The phrasing suite runs against it, at the same 90% bar. Your command set has subjects; the coworker set has none. Its alternatives are the next most probable choices.
 
-**Asker audience.** `OperationDescription.audience?: "asker"` marks an operation whose output is only what involves one person. It runs with `ctx.asker: { slackUserId, githubLogin }` and must filter on it; the coworker context builder and coworker-audience runs may call only these. A test asserts each one returns nothing for an unrelated asker.
+**Server-side model calls.** Core has two helpers for module server code. Both log the call in `ai_requests` with `origin: "slack"` and `action_id` = `purpose`. The gateway's `prepare` is not involved; `runAsOwner` stays for the gateway steps.
 
-**Vercel AI Gateway provider** (prerequisite, the separate change the overview already plans). Jev and the gateway's generative model both go through it on the server.
+- `completeOnServer(deps, { purpose, system, prompt, schema, model?, timeoutMs? })` returns `{ value, requestId }`. It generates text, such as a coworker's answer, through chat completions on the configured server provider.
+- `decideOnServer(deps, { purpose, question, choices: { value, description }[], input, model, timeoutMs })` returns `{ choice, confidence, probabilities, requestId }`. It is the interpreter's call, through `/v1/decisions` on the Vercel provider (its `decide()` method). Decision models (Jev, Luna) are not reachable through chat completions. It reads `confidence`, not the top probability.
+
+**Asker audience.** `OperationDescription.audience?: "asker"` marks an operation whose output is only what involves one person. It takes `asker: { slackUserId: string; githubLogin: string | null }` as input and must filter on it. Operations never see their caller, so the API vouches for the asker: the operation must be `access: "slack"`, and it is called with the sender `apps/slack` reported, or through an operation call from such an operation. A coworker-audience run's `asker` input must equal the run's audience; the coworker context builder and coworker-audience runs may call only these. A test asserts each one returns nothing for an unrelated asker.
+
+**Vercel AI Gateway provider** (prerequisite, the separate change the overview already plans). It is a second server provider, not a rename. `aiProviderId` gains `"vercel"`, and `createOpenAiCompatible` serves both `createOpenRouter` and `createVercelGateway`. The server uses `vercel` when `AI_GATEWAY_API_KEY` is set, else `openrouter`. `ai_settings.openrouter_model` still applies only to OpenRouter. Jev and the generative model both go through the Vercel provider.
 
 ## Queue changes
 
 - `requests.appended_ids` text[], default `{}`.
 - `requests.append({ id, key, text, at })`: adds a blank line and the text to the body, records `key` (the message's `<channel>:<ts>`) in `appended_ids`, bumps the version. A key already in `appended_ids` changes nothing. A resolved request is `CONFLICT` "Already resolved". `palette: false`, `ai: false`; called by `slack.handleMessage`.
-- `requests.fromSender({ openOnly? })`: a query, `audience: "asker"`, the Slack requests whose `source_handle` is `ctx.asker.slackUserId`, with their status and resolved time. The sender comes from the context, never the input.
+- `requests.fromSender({ openOnly? })`: a query, `audience: "asker"`, the Slack requests whose `source_handle` is the `asker.slackUserId` input, with their status and resolved time. `fromSender` takes `asker` as input like every asker operation.
 
 ## Agent hub changes
 
