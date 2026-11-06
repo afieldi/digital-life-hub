@@ -22,13 +22,14 @@ function fakeExec(answer: { stdout?: string; stderr?: string; fail?: true }) {
 describe("cliDocker", () => {
   it("run uses exactly the isolation flags and no secret", async () => {
     const { exec, calls } = fakeExec({ stdout: "abc123\n" });
-    const docker = cliDocker(exec, { dataDir: "/var/lib/dlh-agent" });
+    const docker = cliDocker(exec);
     const env = runEnv(RUN);
 
     const out = await docker.run({
       runId: RUN,
       image: "dlh-agent-runner",
       env,
+      socketDir: `/var/lib/dlh-agent/runs/${RUN}/s-Ab12Cd`,
     });
 
     expect(out).toEqual({ containerId: "abc123" });
@@ -66,7 +67,7 @@ describe("cliDocker", () => {
         "-v",
         `dlh-ws-${RUN}:/workspace`,
         "-v",
-        `/var/lib/dlh-agent/runs/${RUN}:/run/dlh`,
+        `/var/lib/dlh-agent/runs/${RUN}/s-Ab12Cd:/run/dlh`,
         "-e",
         `RUN_ID=${RUN}`,
         "-e",
@@ -93,9 +94,9 @@ describe("cliDocker", () => {
       fail: true,
       stderr: "Unable to find image 'nope:latest' locally\nmore detail\n",
     });
-    const docker = cliDocker(exec, { dataDir: "/d" });
+    const docker = cliDocker(exec);
     await expect(
-      docker.run({ runId: RUN, image: "nope", env: {} }),
+      docker.run({ runId: RUN, image: "nope", env: {}, socketDir: "/d" }),
     ).rejects.toThrow(
       "Unable to find image 'nope:latest' locally\nmore detail",
     );
@@ -103,33 +104,42 @@ describe("cliDocker", () => {
 
   it("wait reads the exit code", async () => {
     const { exec, calls } = fakeExec({ stdout: "137\n" });
-    const docker = cliDocker(exec, { dataDir: "/d" });
+    const docker = cliDocker(exec);
     expect(await docker.wait(`dlh-run-${RUN}`)).toEqual({ exitCode: 137 });
     expect(calls[0]).toEqual(["docker", "wait", `dlh-run-${RUN}`]);
   });
 
-  it("lists run containers by their label", async () => {
-    const { exec, calls } = fakeExec({ stdout: "dlh-run-a\ndlh-run-b\n" });
-    const docker = cliDocker(exec, { dataDir: "/d" });
-    expect(await docker.listRunContainers()).toEqual([
-      "dlh-run-a",
-      "dlh-run-b",
-    ]);
-    expect(calls[0]).toEqual([
-      "docker",
-      "ps",
-      "-a",
-      "--filter",
-      "label=dlh.run",
-      "--format",
-      "{{.Names}}",
+  it("lists run containers' ids by their label, all or one run's", async () => {
+    const { exec, calls } = fakeExec({ stdout: "0a1b2c\n3d4e5f\n" });
+    const docker = cliDocker(exec);
+    expect(await docker.listRunContainers()).toEqual(["0a1b2c", "3d4e5f"]);
+    await docker.listRunContainers(RUN);
+    expect(calls).toEqual([
+      [
+        "docker",
+        "ps",
+        "-a",
+        "--filter",
+        "label=dlh.run",
+        "--format",
+        "{{.ID}}",
+      ],
+      [
+        "docker",
+        "ps",
+        "-a",
+        "--filter",
+        `label=dlh.run=${RUN}`,
+        "--format",
+        "{{.ID}}",
+      ],
     ]);
   });
 
   it("reads an image's digest", async () => {
     const id = `sha256:${"a".repeat(64)}`;
     const { exec, calls } = fakeExec({ stdout: `${id}\n` });
-    const docker = cliDocker(exec, { dataDir: "/d" });
+    const docker = cliDocker(exec);
     expect(await docker.imageDigest("dlh-agent-runner")).toBe(id);
     expect(calls[0]).toEqual([
       "docker",
@@ -141,9 +151,9 @@ describe("cliDocker", () => {
     ]);
   });
 
-  it("stops, removes and removes volumes by name", async () => {
+  it("stops and removes containers, and removes volumes", async () => {
     const { exec, calls } = fakeExec({});
-    const docker = cliDocker(exec, { dataDir: "/d" });
+    const docker = cliDocker(exec);
     await docker.stop("dlh-run-a");
     await docker.remove("dlh-run-a");
     await docker.removeVolume("dlh-ws-a");
@@ -156,7 +166,7 @@ describe("cliDocker", () => {
 
   it("the run network counts as isolated only as the firewall makes it", async () => {
     const isolated = (stdout: string) =>
-      cliDocker(fakeExec({ stdout }).exec, { dataDir: "/d" }).networkIsolated();
+      cliDocker(fakeExec({ stdout }).exec).networkIsolated();
     expect(await isolated("false dlh-runs0 false\n")).toBe(true);
     // Runs could reach each other, or the firewall keys on another bridge.
     expect(await isolated("true dlh-runs0 false\n")).toBe(false);
@@ -164,9 +174,7 @@ describe("cliDocker", () => {
     expect(await isolated("false  false\n")).toBe(false);
     expect(await isolated("false dlh-runs0 true\n")).toBe(false);
     const { exec, calls } = fakeExec({ fail: true, stderr: "No such network" });
-    expect(await cliDocker(exec, { dataDir: "/d" }).networkIsolated()).toBe(
-      false,
-    );
+    expect(await cliDocker(exec).networkIsolated()).toBe(false);
     expect(calls[0]?.slice(0, 4)).toEqual([
       "docker",
       "network",

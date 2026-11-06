@@ -5,19 +5,25 @@ export type RunSpec = {
   runId: string;
   image: string;
   env: Record<string, string>;
+  /** The host directory mounted at `/run/dlh`: this start's own (see `runDir`). */
+  socketDir: string;
 };
 
 /** Docker as the worker drives it; `cliDocker` runs the CLI, tests use a fake. */
 export interface Docker {
-  /** Starts the run's container detached. */
+  /**
+   * Starts the run's container detached, named `containerName(runId)`. The
+   * supervisor then acts on it by the id this returns: a later start of the
+   * same run takes the name.
+   */
   run(spec: RunSpec): Promise<{ containerId: string }>;
-  stop(name: string): Promise<void>;
+  stop(container: string): Promise<void>;
   /** Removes a container, running or not; its volume stays. */
-  remove(name: string): Promise<void>;
+  remove(container: string): Promise<void>;
   /** Resolves when the container exits. */
-  wait(name: string): Promise<{ exitCode: number }>;
-  /** Names of every run container, running or not. */
-  listRunContainers(): Promise<string[]>;
+  wait(container: string): Promise<{ exitCode: number }>;
+  /** Ids of every run container, or of one run's, running or not. */
+  listRunContainers(runId?: string): Promise<string[]>;
   removeVolume(name: string): Promise<void>;
   /** The image's `sha256:` id, which the run records. */
   imageDigest(image: string): Promise<string>;
@@ -35,7 +41,12 @@ export const RUN_BRIDGE = "dlh-runs0";
 
 export const containerName = (runId: string) => `dlh-run-${runId}`;
 export const volumeName = (runId: string) => `dlh-ws-${runId}`;
-/** The host directory mounted at `/run/dlh`, holding the run's socket. */
+/**
+ * The run's host directory. Each start of the run makes its own directory in
+ * it for the socket and mounts that at `/run/dlh`, so a supervisor that ends
+ * late (closing its server unlinks its socket's path) can't touch its
+ * successor's socket.
+ */
 export const runDir = (dataDir: string, runId: string) =>
   join(dataDir, "runs", runId);
 export const SOCKET_FILE = "dlh.sock";

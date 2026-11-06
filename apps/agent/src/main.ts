@@ -9,7 +9,7 @@ const config = loadConfig(process.env);
 const store = openStore(config.dataDir, config.secretsKey);
 const loop = createClaimLoop({
   api: createApi(config),
-  docker: cliDocker(execFile, { dataDir: config.dataDir }),
+  docker: cliDocker(execFile),
   store,
   dataDir: config.dataDir,
   image: config.image,

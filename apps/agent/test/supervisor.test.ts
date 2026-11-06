@@ -189,13 +189,17 @@ function setup(
     gateway?: () => Response;
     log?: (line: string) => void;
     assumeRole?: AssumeRole;
+    /** Another run's data directory, to share it. */
+    dataDir?: string;
   } = {},
 ) {
   // Unix socket paths are short (104 bytes on macOS); /tmp keeps them under it.
-  const dataDir = mkdtempSync(
-    join(process.platform === "darwin" ? "/tmp" : tmpdir(), "dlh-"),
-  );
-  dirs.push(dataDir);
+  const dataDir =
+    opts.dataDir ??
+    mkdtempSync(
+      join(process.platform === "darwin" ? "/tmp" : tmpdir(), "dlh-"),
+    );
+  if (!opts.dataDir) dirs.push(dataDir);
   const { timers, fire } = fakeTimers();
   const { docker, specs, exit } = fakeDocker({ runError: opts.runError });
   const { api, agent, hubCalls, answerHub } = fakeApi();
@@ -245,7 +249,12 @@ function setup(
       }),
   });
   handles.push(handle);
-  const socketPath = join(dataDir, "runs", RUN, "dlh.sock");
+  /** The socket in the directory this run's container was given. */
+  const socketPath = () => {
+    const dir = specs[0]?.socketDir;
+    if (!dir) throw new Error("No container started yet");
+    return join(dir, "dlh.sock");
+  };
 
   const call = (
     method: string,
@@ -255,7 +264,7 @@ function setup(
     new Promise((resolve, reject) => {
       const req = request(
         {
-          socketPath,
+          socketPath: socketPath(),
           method,
           path,
           headers: { "content-type": "application/json" },
@@ -459,10 +468,40 @@ describe("startRun", () => {
     t.fire(30_000);
     const end = await t.handle.done;
     expect(end.reason).toBe("stopped");
-    expect(t.docker.stop).toHaveBeenCalledWith(`dlh-run-${RUN}`);
-    expect(t.docker.remove).toHaveBeenCalledWith(`dlh-run-${RUN}`);
+    expect(t.docker.stop).toHaveBeenCalledWith("c1");
+    expect(t.docker.remove).toHaveBeenCalledWith("c1");
     expect(t.store.markEnded).toHaveBeenCalledWith(RUN, expect.any(Date));
-    expect(existsSync(t.socketPath)).toBe(false);
+    expect(existsSync(t.socketPath())).toBe(false);
+  });
+
+  it("acts on its container by the id docker gave it, never by name", async () => {
+    // A successor's container takes the same name.
+    const t = setup();
+    await t.started();
+    t.exit(0);
+    await t.handle.done;
+    expect(t.docker.wait).toHaveBeenCalledWith("c1");
+    expect(t.docker.remove).toHaveBeenCalledWith("c1");
+    const calls = [
+      ...t.docker.stop.mock.calls,
+      ...t.docker.remove.mock.calls,
+      ...t.docker.wait.mock.calls,
+    ];
+    expect(JSON.stringify(calls)).not.toContain("dlh-run-");
+  });
+
+  it("a supervisor that ends after its successor started leaves the successor's socket", async () => {
+    // A supervisor the claim loop stopped waiting for ends late.
+    const first = setup();
+    await first.started();
+    const next = setup({ dataDir: first.dataDir });
+    await next.started();
+    expect(next.specs[0]?.socketDir).not.toBe(first.specs[0]?.socketDir);
+
+    first.handle.stop("test");
+    await first.handle.done;
+    expect(existsSync(first.socketPath())).toBe(false);
+    expect((await next.call("GET", "/run")).status).toBe(200);
   });
 
   it("a heartbeat error twice stops the container", async () => {
@@ -725,7 +764,7 @@ describe("startRun", () => {
     });
     expect(end.reason).toBe("failed");
     expect(t.store.markEnded).toHaveBeenCalled();
-    expect(existsSync(t.socketPath)).toBe(false);
+    expect(existsSync(t.socketPath())).toBe(false);
   });
 
   it("messages reach a waiting GET /messages", async () => {
@@ -973,7 +1012,7 @@ describe("startRun", () => {
         }),
     );
     const req = request({
-      socketPath: t.socketPath,
+      socketPath: t.socketPath(),
       method: "POST",
       path: "/suspend",
       headers: { "content-type": "application/json" },

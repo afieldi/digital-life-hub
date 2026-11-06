@@ -5,7 +5,6 @@ import {
   type Docker,
   RUN_BRIDGE,
   RUN_NETWORK,
-  runDir,
   volumeName,
 } from "./docker";
 
@@ -47,7 +46,7 @@ const ISOLATION = [
 ];
 
 /** Docker through its CLI. A failed command throws docker's own stderr. */
-export function cliDocker(exec: ExecFile, opts: { dataDir: string }): Docker {
+export function cliDocker(exec: ExecFile): Docker {
   const docker = async (...args: string[]) => {
     try {
       return (await exec("docker", args)).stdout.trim();
@@ -62,7 +61,7 @@ export function cliDocker(exec: ExecFile, opts: { dataDir: string }): Docker {
   };
 
   return {
-    async run({ runId, image, env }) {
+    async run({ runId, image, env, socketDir }) {
       const containerId = await docker(
         "run",
         "-d",
@@ -74,29 +73,29 @@ export function cliDocker(exec: ExecFile, opts: { dataDir: string }): Docker {
         "-v",
         `${volumeName(runId)}:/workspace`,
         "-v",
-        `${runDir(opts.dataDir, runId)}:/run/dlh`,
+        `${socketDir}:/run/dlh`,
         ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
         image,
       );
       return { containerId };
     },
-    async stop(name) {
-      await docker("stop", name);
+    async stop(container) {
+      await docker("stop", container);
     },
-    async remove(name) {
-      await docker("rm", "-f", name);
+    async remove(container) {
+      await docker("rm", "-f", container);
     },
-    async wait(name) {
-      return { exitCode: Number(await docker("wait", name)) };
+    async wait(container) {
+      return { exitCode: Number(await docker("wait", container)) };
     },
-    async listRunContainers() {
+    async listRunContainers(runId) {
       const out = await docker(
         "ps",
         "-a",
         "--filter",
-        "label=dlh.run",
+        runId ? `label=dlh.run=${runId}` : "label=dlh.run",
         "--format",
-        "{{.Names}}",
+        "{{.ID}}",
       );
       return out.split("\n").filter(Boolean);
     },

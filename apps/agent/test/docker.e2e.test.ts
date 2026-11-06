@@ -156,17 +156,17 @@ async function harness(script: ScriptedTurn[]) {
 
   /** Each container's output and its `docker inspect`, kept before it's removed. */
   const containers: { name: string; logs: string; inspect: string }[] = [];
-  const cli = cliDocker(execFile, { dataDir });
+  const cli = cliDocker(execFile);
   const keptDocker: Docker = {
     ...cli,
-    async remove(name) {
-      const logs = await sh("docker", ["logs", name]).then(
+    async remove(container) {
+      const logs = await sh("docker", ["logs", container]).then(
         (o) => o.stdout + o.stderr,
         () => "",
       );
-      const inspect = await docker("inspect", name).catch(() => "");
-      if (inspect) containers.push({ name, logs, inspect });
-      return cli.remove(name);
+      const inspect = await docker("inspect", container).catch(() => "");
+      if (inspect) containers.push({ name: container, logs, inspect });
+      return cli.remove(container);
     },
   };
 
@@ -296,9 +296,7 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
     // runs-firewall.sh makes it on a server; here the same network without
     // the rules, remade if an older one differs: the worker claims no run
     // on a network made another way.
-    if (
-      !(await cliDocker(execFile, { dataDir: DATA_ROOT }).networkIsolated())
-    ) {
+    if (!(await cliDocker(execFile).networkIsolated())) {
       await docker("network", "rm", "dlh-runs").catch(() => {});
       await docker(
         "network",

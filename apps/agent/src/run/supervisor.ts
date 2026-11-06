@@ -1,4 +1,4 @@
-import { chmodSync, chownSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, chownSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import type { Server } from "node:http";
 import { join } from "node:path";
 import { approvalAsk, type RunStart } from "@dlh/agent-protocol";
@@ -7,7 +7,6 @@ import { accessOf, type OperationDescription } from "@dlh/core";
 import type { ClaimResult } from "@dlh/module-agent/server";
 import { HubError, type WorkerApi } from "../api";
 import {
-  containerName,
   type Docker,
   runDir,
   runEnv,
@@ -145,9 +144,11 @@ function runStartOf(claimed: Claimed): RunStart {
  */
 export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   const runId = claimed.run.id;
-  const name = containerName(runId);
   const dir = runDir(deps.dataDir, runId);
-  const socketPath = join(dir, SOCKET_FILE);
+  /** This start's socket directory, made in `boot`; never another start's. */
+  let socketDir: string | undefined;
+  /** The container `docker run` started; never acted on by name. */
+  let containerId: string | undefined;
   const timers = deps.timers ?? realTimers;
   const now = deps.now ?? (() => new Date());
   const log = (line: string) =>
@@ -174,7 +175,6 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   let sessionId: string | undefined;
   let digest: string | undefined;
   let imageSent = false;
-  let started = false;
   let ending = false;
   /** A finish, fail or suspend is under way; a second one is refused. */
   let reporting = false;
@@ -198,10 +198,13 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       for (const c of cancels.splice(0)) c();
       inbox.close();
       await flush();
-      if (started && !exited) {
-        await deps.docker.stop(name).catch((e) => log(`stop: ${firstLine(e)}`));
+      if (containerId) {
+        const id = containerId;
+        if (!exited) {
+          await deps.docker.stop(id).catch((e) => log(`stop: ${firstLine(e)}`));
+        }
+        await deps.docker.remove(id).catch(() => {});
       }
-      await deps.docker.remove(name).catch(() => {});
       if (server) {
         const s = server;
         await new Promise<void>((r) => {
@@ -209,7 +212,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
           s.closeAllConnections();
         });
       }
-      rmSync(socketPath, { force: true });
+      if (socketDir) rmSync(socketDir, { recursive: true, force: true });
       if (TERMINAL.has(reason)) deps.store.markEnded(runId, now());
     } catch (e) {
       log(`end: ${firstLine(e)}`);
@@ -490,7 +493,10 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
   async function boot() {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     lockDown(dir, 0o700);
-    rmSync(socketPath, { force: true });
+    const ownDir = mkdtempSync(join(dir, "s-"));
+    socketDir = ownDir;
+    lockDown(ownDir, 0o700);
+    const socketPath = join(ownDir, SOCKET_FILE);
     await new Promise<void>((resolve, reject) => {
       server?.once("error", reject);
       server?.listen(socketPath, () => {
@@ -502,7 +508,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     if (ending) {
       // Stopped while the socket was opening, after `end` closed it.
       server?.close();
-      rmSync(socketPath, { force: true });
+      rmSync(ownDir, { recursive: true, force: true });
       return;
     }
 
@@ -512,26 +518,32 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
       timers.every(FLUSH_MS, () => void flush()),
     );
     deps.store.markStarted(runId, volumeName(runId));
+    let id: string;
     try {
-      await deps.docker.run({ runId, image: deps.image, env: runEnv(runId) });
+      ({ containerId: id } = await deps.docker.run({
+        runId,
+        image: deps.image,
+        env: runEnv(runId),
+        socketDir: ownDir,
+      }));
     } catch (e) {
       await failRun("docker", `Container didn't start: ${firstLine(e)}`);
       return;
     }
-    started = true;
     if (ending) {
-      // Stopped while the container was starting.
-      await deps.docker.stop(name).catch(() => {});
-      await deps.docker.remove(name).catch(() => {});
+      // Stopped while the container was starting: `end` didn't know it.
+      await deps.docker.stop(id).catch(() => {});
+      await deps.docker.remove(id).catch(() => {});
       return;
     }
+    containerId = id;
     deps.docker.imageDigest(deps.image).then(
       (d) => {
         digest = d;
       },
       (e) => log(`image digest: ${firstLine(e)}`),
     );
-    deps.docker.wait(name).then(
+    deps.docker.wait(id).then(
       ({ exitCode }) => {
         exited = true;
         // Every stop the worker causes sets `ending` first, so this exit is
