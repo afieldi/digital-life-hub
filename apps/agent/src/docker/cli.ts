@@ -29,6 +29,11 @@ const ISOLATION = [
   "no-new-privileges",
   "--network",
   "dlh-runs",
+  // Public resolvers: the host's upstream may sit in a range the firewall blocks.
+  "--dns",
+  "1.1.1.1",
+  "--dns",
+  "9.9.9.9",
 ];
 
 /** Docker through its CLI. A failed command throws docker's own stderr. */
