@@ -10,7 +10,7 @@ const modules = [tasksServer, requestsServer, slackServer] as const;
 /** A database with Slack, Requests and Tasks, a caller signed in as you, and one that holds a slack token. */
 export async function setup() {
   const t = await freshModuleDb(modules);
-  const { caller } = testServer(t.db, modules);
+  const { caller, deps } = testServer(t.db, modules);
   const slackPrincipal = await findServiceToken(
     t.db,
     await mintSlackToken(t.db),
@@ -19,5 +19,5 @@ export async function setup() {
   const asSlack = (p: Principal = slackPrincipal) =>
     testServer(t.db, modules, { principal: p });
   const { caller: slack, deps: slackDeps } = asSlack();
-  return { ...t, caller, slack, slackDeps };
+  return { ...t, caller, deps, slack, slackDeps };
 }

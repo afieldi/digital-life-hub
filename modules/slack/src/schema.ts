@@ -42,6 +42,15 @@ export const turn = z.object({
   text: z.string(),
 });
 
+/** The commands an escalation's buttons can run: every one but `escalate`. */
+export const escalatable = z.enum([
+  "leaveRequest",
+  "addToRequest",
+  "requestStatus",
+  "withdraw",
+  "askAbout",
+]);
+
 /** One Slack message to handle, who sent it, and what came before it. */
 export const handleMessageInput = z.object({
   event: z.object({

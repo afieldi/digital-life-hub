@@ -10,7 +10,7 @@ import {
   escalate,
   keyOf,
   leaveRequest,
-  type SenderRequest,
+  recentIn,
   sendersRequests,
   withdraw,
 } from "./coworker";
@@ -19,41 +19,6 @@ import { readSettings } from "./settings";
 
 /** How long Jev has before the message is handled by rule. */
 const JEV_TIMEOUT_MS = 3000;
-
-/** The thread a request was filed in: Slack puts `thread_ts` on a thread reply's permalink. */
-function threadOf(r: SenderRequest): string | null {
-  if (!r.sourceUrl) return null;
-  try {
-    return new URL(r.sourceUrl).searchParams.get("thread_ts");
-  } catch {
-    return null;
-  }
-}
-
-/** The open request this message follows on from: same DM or thread, and recent enough. */
-function recentIn(
-  open: SenderRequest[],
-  event: CoworkerMessage["event"],
-  now: Date,
-  minutes: number,
-): SenderRequest | undefined {
-  const since = now.getTime() - minutes * 60_000;
-  return open.find((r) => {
-    const at = r.externalId?.indexOf(":") ?? -1;
-    if (!r.externalId || at < 0) return false;
-    const channel = r.externalId.slice(0, at);
-    const ts = r.externalId.slice(at + 1);
-    // A request filed from the thread's root message is in that thread too.
-    const sameThread =
-      threadOf(r) === (event.threadTs ?? null) ||
-      (event.threadTs !== undefined && ts === event.threadTs);
-    return (
-      channel === event.channel &&
-      sameThread &&
-      new Date(r.receivedAt).getTime() > since
-    );
-  });
-}
 
 export const handleMessage = implementOperation(slackOps.handleMessage, {
   async run(w, input, deps) {
@@ -93,6 +58,8 @@ export const handleMessage = implementOperation(slackOps.handleMessage, {
     const byRule: CoworkerCommand = followsOn ? "addToRequest" : "leaveRequest";
 
     let command: CoworkerCommand = byRule;
+    // What Jev thought it might be, best first: the buttons on an escalation.
+    let candidates: CoworkerCommand[] = [];
     if (settings.coworkerAi) {
       try {
         const picked = await interpretMessage(deps, {
@@ -102,6 +69,9 @@ export const handleMessage = implementOperation(slackOps.handleMessage, {
           model: settings.interpreter,
           timeoutMs: JEV_TIMEOUT_MS,
         });
+        candidates = [picked.command, ...picked.alternatives].filter((c) =>
+          commands.includes(c),
+        );
         command =
           picked.command === "escalate" ||
           picked.confidence < settings.threshold
@@ -134,10 +104,10 @@ export const handleMessage = implementOperation(slackOps.handleMessage, {
       case "askAbout":
         return done(
           (await answer(w, deps, m)) ??
-            (await escalate(w, m, settings.ackText)),
+            (await escalate(w, m, settings.ackText, candidates)),
         );
       case "escalate":
-        return done(await escalate(w, m, settings.ackText));
+        return done(await escalate(w, m, settings.ackText, candidates));
     }
   },
   async undo() {},

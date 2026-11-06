@@ -1,7 +1,7 @@
 import { describeOperation } from "@dlh/core";
 import { requestOps } from "@dlh/module-requests/operations";
 import { z } from "zod";
-import { handleMessageInput, slackSettings } from "./schema";
+import { escalatable, handleMessageInput, slackSettings } from "./schema";
 
 /** Settings → Slack's calls: yours only, and out of ⌘K and AI. */
 const mine = { access: "user", palette: false, ai: false } as const;
@@ -114,6 +114,44 @@ const handleMessage = describeOperation({
   ...bot,
 });
 
+const requestId = z.uuid();
+
+const runEscalated = describeOperation({
+  id: "slack.runEscalated",
+  kind: "mutation",
+  label: "Run for an escalation",
+  description:
+    "Runs what the bot could have done for an escalated message, as it would have, resolves the request as handled and queues the reply for the thread.",
+  appliesTo: ["request"],
+  input: z.object({ requestId, command: escalatable }),
+  subject: (input) => input.requestId,
+  effects: [],
+  calls: [
+    requestOps.get,
+    requestOps.file,
+    requestOps.append,
+    requestOps.fromSender,
+    requestOps.resolve,
+  ],
+  summary: () => "Run for an escalation",
+  ...mine,
+});
+
+const dismissEscalation = describeOperation({
+  id: "slack.dismissEscalation",
+  kind: "mutation",
+  label: "Neither",
+  description:
+    "Resolves an escalation as not for me, kept for tuning the threshold; nothing is posted.",
+  appliesTo: ["request"],
+  input: z.object({ requestId }),
+  subject: (input) => input.requestId,
+  effects: [],
+  calls: [requestOps.get, requestOps.resolve],
+  summary: () => "Dismiss an escalation",
+  ...mine,
+});
+
 export const slackOps = {
   settings,
   setSettings,
@@ -122,4 +160,6 @@ export const slackOps = {
   botSettings: botSettingsQuery,
   upsertPerson,
   handleMessage,
+  runEscalated,
+  dismissEscalation,
 };

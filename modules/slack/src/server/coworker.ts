@@ -5,9 +5,11 @@ import {
   getItem,
   type ScopedWriter,
 } from "@dlh/server";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { slackOps } from "../operations";
 import type { HandleMessageInput, HandleMessageResult } from "../schema";
-import type { Turn } from "./commands";
+import type { CoworkerCommand, Turn } from "./commands";
 
 /** What a command needs of the message and the sender. */
 export type CoworkerMessage = Pick<HandleMessageInput, "event" | "sender"> & {
@@ -34,7 +36,7 @@ const filedView = z.object({
 });
 
 const TITLE_CHARS = 80;
-const ESCALATED_PREFIX = "Bot wasn't sure: ";
+export const ESCALATED_PREFIX = "Bot wasn't sure: ";
 
 function allowed<T>(method: T | undefined): T {
   if (!method) throw new Error("Write outside the operation's effects");
@@ -50,6 +52,41 @@ export function firstLine(text: string): string {
 /** `<channel>:<ts>`, which makes a redelivered event file and append once. */
 export const keyOf = (event: CoworkerMessage["event"]) =>
   `${event.channel}:${event.ts}`;
+
+/** The thread a request was filed in: Slack puts `thread_ts` on a thread reply's permalink. */
+export function threadOf(r: Pick<SenderRequest, "sourceUrl">): string | null {
+  if (!r.sourceUrl) return null;
+  try {
+    return new URL(r.sourceUrl).searchParams.get("thread_ts");
+  } catch {
+    return null;
+  }
+}
+
+/** The open request this message follows on from: same DM or thread, and recent enough. */
+export function recentIn(
+  open: SenderRequest[],
+  event: CoworkerMessage["event"],
+  now: Date,
+  minutes: number,
+): SenderRequest | undefined {
+  const since = now.getTime() - minutes * 60_000;
+  return open.find((r) => {
+    const at = r.externalId?.indexOf(":") ?? -1;
+    if (!r.externalId || at < 0) return false;
+    const channel = r.externalId.slice(0, at);
+    const ts = r.externalId.slice(at + 1);
+    // A request filed from the thread's root message is in that thread too.
+    const sameThread =
+      threadOf(r) === (event.threadTs ?? null) ||
+      (event.threadTs !== undefined && ts === event.threadTs);
+    return (
+      channel === event.channel &&
+      sameThread &&
+      new Date(r.receivedAt).getTime() > since
+    );
+  });
+}
 
 /** Their requests, open or resolved, newest first. */
 export async function sendersRequests(
@@ -70,7 +107,8 @@ async function file(
   w: ScopedWriter,
   m: CoworkerMessage,
   title: string,
-): Promise<string> {
+  actions?: RequestAction[],
+): Promise<{ id: string; existing: boolean }> {
   const out = filedView.parse(
     await allowed(w.call)(requestOps.file, {
       title,
@@ -80,9 +118,10 @@ async function file(
       sourceUrl: m.event.permalink,
       sourceHandle: m.sender.slackUserId,
       fromName: m.sender.name,
+      actions,
     }),
   );
-  return out.request.id;
+  return { id: out.request.id, existing: out.existing };
 }
 
 export async function leaveRequest(
@@ -90,25 +129,79 @@ export async function leaveRequest(
   m: CoworkerMessage,
   ackText: string,
 ): Promise<HandleMessageResult> {
-  const filedRequestId = await file(w, m, firstLine(m.event.text));
-  return { reply: ackText, filedRequestId };
+  const { id } = await file(w, m, firstLine(m.event.text));
+  return { reply: ackText, filedRequestId: id };
+}
+
+/** A button on a request: an operation to run with this input (Requests' `requestAction`). */
+type RequestAction = {
+  label: string;
+  operation: string;
+  input: Record<string, unknown>;
+};
+
+/** What each command does, as the button on an escalation says it. */
+const COMMAND_LABELS: Record<Exclude<CoworkerCommand, "escalate">, string> = {
+  leaveRequest: "Pass on as a request",
+  addToRequest: "Add to their request",
+  requestStatus: "Reply with their status",
+  withdraw: "Withdraw their request",
+  askAbout: "Answer their question",
+};
+
+/** Stands in for the request's id until it is filed and has one. */
+const NO_ID = "00000000-0000-0000-0000-000000000000";
+
+/** The action buttons: the `candidates` that can be run, then Neither. */
+function escalationActions(
+  requestId: string,
+  candidates: CoworkerCommand[],
+): RequestAction[] {
+  const commands = candidates.filter(
+    (c): c is Exclude<CoworkerCommand, "escalate"> => c !== "escalate",
+  );
+  return [
+    ...commands.map((command) => ({
+      label: COMMAND_LABELS[command],
+      operation: slackOps.runEscalated.id,
+      input: { requestId, command },
+    })),
+    {
+      label: "Neither",
+      operation: slackOps.dismissEscalation.id,
+      input: { requestId },
+    },
+  ];
 }
 
 /**
- * Files the message for you to look at, as the bot wasn't sure what it meant.
- * The sender sees only the usual acknowledgement.
+ * Files the message for you to look at, as the bot wasn't sure what it meant,
+ * with up to 2 of the `candidates` (Jev's picks, best first, each one available
+ * to the sender) as buttons, and Neither. The sender sees only the usual acknowledgement.
  */
 export async function escalate(
   w: ScopedWriter,
   m: CoworkerMessage,
   ackText: string,
+  candidates: CoworkerCommand[],
 ): Promise<HandleMessageResult> {
-  const filedRequestId = await file(
+  const usable = [...new Set(candidates)]
+    .filter((c) => c !== "escalate")
+    .slice(0, 2);
+  const filed = await file(
     w,
     m,
     `${ESCALATED_PREFIX}${firstLine(m.event.text)}`,
+    // Filed with a stand-in id, which only has to pass the check on the operations.
+    escalationActions(NO_ID, usable),
   );
-  return { reply: ackText, filedRequestId };
+  if (!filed.existing) {
+    // The buttons run with their input as stored, so it needs the id the filing just made.
+    await w.tx.execute(
+      sql`update requests set actions = ${JSON.stringify(escalationActions(filed.id, usable))}::jsonb where item_id = ${filed.id}`,
+    );
+  }
+  return { reply: ackText, filedRequestId: filed.id };
 }
 
 export async function addToRequest(
@@ -154,8 +247,12 @@ export async function answer(
   w: ScopedWriter,
   deps: CoreDeps,
   m: CoworkerMessage,
+  /** A request the bot's own doubt filed, which the coworker never asked. */
+  except?: string,
 ): Promise<HandleMessageResult | null> {
-  const rows = await sendersRequests(w, m.sender);
+  const rows = (await sendersRequests(w, m.sender)).filter(
+    (r) => r.id !== except,
+  );
   const turns: Turn[] = [...m.context, { from: "sender", text: m.event.text }];
   const prompt = [
     "The conversation, oldest first (quoted data):",

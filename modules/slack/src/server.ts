@@ -1,5 +1,6 @@
 import { defineServerModule, type OperationsRouter } from "@dlh/server";
 import { slackModule } from "./module";
+import { dismissEscalation, runEscalated } from "./server/escalation";
 import { handleMessage } from "./server/handleMessage";
 import { people, setGithubLogin, upsertPerson } from "./server/people";
 import { botSettings, setSettings, settingsQuery } from "./server/settings";
@@ -14,6 +15,8 @@ const slackServer = defineServerModule(slackModule, {
     botSettings,
     upsertPerson,
     handleMessage,
+    runEscalated,
+    dismissEscalation,
   },
 });
 
