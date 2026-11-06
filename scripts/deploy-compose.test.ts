@@ -13,6 +13,7 @@ type Service = {
   env_file?: string[];
   volumes?: string[];
   networks?: string[];
+  stop_grace_period?: string;
 };
 type Compose = {
   services: Record<string, Service>;
@@ -50,6 +51,9 @@ describe("the VPS compose file", () => {
       "http://api:8787",
     );
     expect(compose.services.api?.environment?.MIGRATE_ON_START).toBe("1");
+    // Long enough for the worker to stop its run containers (10 s each, at
+    // once) and remove them before Docker kills it.
+    expect(compose.services.agent?.stop_grace_period).toBe("30s");
     // Empty is allowed: the runbook starts db and api before the token exists.
     expect(compose.services.agent?.environment?.AGENT_WORKER_TOKEN).toBe(
       "${AGENT_WORKER_TOKEN:-}",

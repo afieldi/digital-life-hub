@@ -115,6 +115,7 @@ function fakeDocker(opts: { runError?: Error } = {}) {
     listRunContainers: vi.fn(async () => []),
     removeVolume: vi.fn(async () => {}),
     imageDigest: vi.fn(async () => DIGEST),
+    networkIsolated: vi.fn(async () => true),
   } satisfies Docker;
   return { docker, specs, exit: (code: number) => exit(code) };
 }

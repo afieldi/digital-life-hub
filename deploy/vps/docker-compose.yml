@@ -48,6 +48,9 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    # Shutdown stops each live run's container (Docker's 10 s each, at once)
+    # before the worker exits; the runs resume on the next start.
+    stop_grace_period: 30s
     environment:
       API_URL: http://api:8787
       AGENT_DATA_DIR: /var/lib/dlh-agent
@@ -69,7 +72,7 @@ volumes:
 
 networks:
   internal: {}
-  # Run containers' network, made (with its firewall) by runs-firewall.sh.
+  # Run containers' network, made by runs-firewall.sh (see README.md).
   dlh-runs:
     external: true
     name: dlh-runs

@@ -293,17 +293,26 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
     await docker("image", "inspect", IMAGE).catch(() => {
       throw new Error(`No ${IMAGE} image: run pnpm agent:image first`);
     });
-    // Task 11's firewall script makes it on a server; a bare network here.
-    await docker("network", "inspect", "dlh-runs").catch(() =>
-      docker(
+    // runs-firewall.sh makes it on a server; here the same network without
+    // the rules, remade if an older one differs: the worker claims no run
+    // on a network made another way.
+    if (
+      !(await cliDocker(execFile, { dataDir: DATA_ROOT }).networkIsolated())
+    ) {
+      await docker("network", "rm", "dlh-runs").catch(() => {});
+      await docker(
         "network",
         "create",
+        "--driver",
+        "bridge",
+        "--opt",
+        "com.docker.network.bridge.name=dlh-runs0",
         "--opt",
         "com.docker.network.bridge.enable_icc=false",
         "--ipv6=false",
         "dlh-runs",
-      ),
-    );
+      );
+    }
   }, 60_000);
 
   it("a scripted run edits a file, asks to merge, waits, resumes approved and finishes", async () => {

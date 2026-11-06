@@ -47,8 +47,23 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
   let stopped = false;
   let passing: Promise<void> | undefined;
   let again = false;
+  /** The run network was found not isolated, and that was logged. */
+  let refused = false;
+
+  /** Runs start only on an isolated network; the first refusal is logged. */
+  async function networkReady(): Promise<boolean> {
+    const ok = await deps.docker.networkIsolated().catch(() => false);
+    if (!ok && !refused) {
+      log(
+        "the dlh-runs network is missing or not isolated (enable_icc=false, bridge dlh-runs0, no IPv6): claiming no runs until deploy/vps/runs-firewall.sh has made it",
+      );
+    }
+    refused = !ok;
+    return ok;
+  }
 
   async function pass() {
+    if (!(await networkReady())) return;
     while (!stopped) {
       let claimed: ClaimResult;
       try {

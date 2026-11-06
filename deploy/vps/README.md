@@ -27,11 +27,20 @@ the CLI steps (run from a checkout of this repo).
    It encrypts the connection secrets in `/var/lib/dlh-agent/agent.db`. Back it
    up: without it those secrets can't be read.
 4. Create the Gateway key (below) into `AI_GATEWAY_API_KEY`.
-5. Create the run network and its firewall, as root:
-   `sudo sh deploy/vps/runs-firewall.sh`. Docker must be running. Also run it at
-   every boot after Docker starts (a systemd unit with `After=docker.service`,
-   `Type=oneshot`, `RemainAfterExit=yes`), because Docker rebuilds its chains
-   on restart; it is safe to run again at any time.
+5. Create the run network and its firewall, as root, with Docker running:
+   `sudo sh deploy/vps/runs-firewall.sh`. Then install it to run at every
+   boot, before Docker starts, so no run ever starts without the rules:
+
+   ```
+   sudo install -m 0755 deploy/vps/runs-firewall.sh /usr/local/sbin/dlh-runs-firewall
+   sudo install -m 0644 deploy/vps/dlh-runs-firewall.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now dlh-runs-firewall
+   ```
+
+   The script is safe to run again at any time. It refuses a `dlh-runs` made
+   another way (see "The run network"), and the worker claims no run unless
+   `dlh-runs` is made as the script makes it.
 6. Create the data dir: `sudo mkdir -p /var/lib/dlh-agent`.
 7. Build the run image: `pnpm agent:image`.
 8. Start the database and API first:
@@ -50,8 +59,14 @@ the CLI steps (run from a checkout of this repo).
     CLI keeps its secrets in the same store as the worker
     (`/var/lib/dlh-agent/agent.db`), encrypted with the same key, so run it with
     the worker's settings and as a user that can write that directory (root,
-    since the worker created it):
-    `sudo API_URL=http://127.0.0.1:8787 AGENT_WORKER_TOKEN=... AGENT_SECRETS_KEY=... pnpm agent connection add slack "<name>"`
+    since the worker created it). Load them from `.env` rather than typing them,
+    so they stay out of the shell history and the process list:
+
+    ```
+    set -a; . deploy/vps/.env; set +a
+    sudo -E env "PATH=$PATH" API_URL=http://127.0.0.1:8787 pnpm agent connection add slack "<name>"
+    ```
+
     then enable the connection in the hub's Settings.
 12. Put a TLS reverse proxy (Caddy, nginx) in front of `127.0.0.1:8787`. The API
     is only published on loopback.
@@ -82,19 +97,26 @@ or swap the pin in `packages/agent-runner/Dockerfile`.
 
 ## The run network
 
-`runs-firewall.sh` adds, for the `dlh-runs` subnet:
+`runs-firewall.sh` adds, for traffic in from the network's bridge, `dlh-runs0`:
 
 - `DOCKER-USER`: drop traffic to `10.0.0.0/8`, `172.16.0.0/12`,
   `192.168.0.0/16`, `169.254.0.0/16` (cloud metadata) and `100.64.0.0/10`;
   accept established/related replies first.
-- `INPUT` on the bridge interface: drop anything new addressed to the host
-  itself. Containers reach the host (the bridge gateway, where the API is
-  published) without being forwarded, so `DOCKER-USER` doesn't see it.
+- `INPUT`: drop anything new addressed to the host itself. Containers reach
+  the host (the bridge gateway, where the API is published) without being
+  forwarded, so `DOCKER-USER` doesn't see it.
 
-The network is created with `enable_icc=false` (runs can't reach each other;
-bridge-local traffic doesn't pass `DOCKER-USER`) and `--ipv6=false`. If you made
-`dlh-runs` yourself earlier without these, `docker network rm dlh-runs` and run
-the script again.
+The rules name the bridge, not the subnet, so they need no Docker: the
+`dlh-runs-firewall` unit (`--rules-only`) installs them at boot before Docker
+starts, and Docker keeps `DOCKER-USER`'s rules when it starts.
+
+The network is created with the bridge name `dlh-runs0` (which the rules
+name), `enable_icc=false` (runs can't reach each other; bridge-local traffic
+doesn't pass `DOCKER-USER`) and `--ipv6=false`. The script checks an existing
+`dlh-runs` for all three and fails if one is off; the worker checks the same
+before each claim and claims no run (logging it once) until it's right. To
+fix one made another way: stop the worker, `docker network rm dlh-runs`, and
+run the script again.
 
 The worker talks to each run over a Unix socket in a bind mount, which is not
 network traffic and is unaffected. DNS is not unaffected: Docker's embedded
@@ -112,5 +134,6 @@ docker compose -f deploy/vps/docker-compose.yml up -d --build
 ```
 
 The API applies new migrations on start. Restarting the worker is safe: a run
-it was holding is claimed again and resumes. `sh deploy/vps/runs-firewall.sh`
-again after any Docker upgrade or `docker network rm dlh-runs`.
+it was holding is claimed again and resumes. Run
+`sudo sh deploy/vps/runs-firewall.sh` again after `docker network rm dlh-runs`,
+and reinstall it to `/usr/local/sbin/dlh-runs-firewall` when it changes.

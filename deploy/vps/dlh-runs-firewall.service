@@ -1,0 +1,15 @@
+# The agent's run firewall (runs-firewall.sh), installed at every boot before
+# Docker starts, so no run container ever starts without it. Its rules name the
+# run network's bridge, so they need no Docker. Install: see README.md.
+[Unit]
+Description=Firewall for the agent's dlh-runs network
+Before=docker.service
+After=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh /usr/local/sbin/dlh-runs-firewall --rules-only
+
+[Install]
+WantedBy=multi-user.target docker.service

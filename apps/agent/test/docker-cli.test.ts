@@ -153,4 +153,25 @@ describe("cliDocker", () => {
       ["docker", "volume", "rm", "dlh-ws-a"],
     ]);
   });
+
+  it("the run network counts as isolated only as the firewall makes it", async () => {
+    const isolated = (stdout: string) =>
+      cliDocker(fakeExec({ stdout }).exec, { dataDir: "/d" }).networkIsolated();
+    expect(await isolated("false dlh-runs0 false\n")).toBe(true);
+    // Runs could reach each other, or the firewall keys on another bridge.
+    expect(await isolated("true dlh-runs0 false\n")).toBe(false);
+    expect(await isolated(" dlh-runs0 false\n")).toBe(false);
+    expect(await isolated("false  false\n")).toBe(false);
+    expect(await isolated("false dlh-runs0 true\n")).toBe(false);
+    const { exec, calls } = fakeExec({ fail: true, stderr: "No such network" });
+    expect(await cliDocker(exec, { dataDir: "/d" }).networkIsolated()).toBe(
+      false,
+    );
+    expect(calls[0]?.slice(0, 4)).toEqual([
+      "docker",
+      "network",
+      "inspect",
+      "dlh-runs",
+    ]);
+  });
 });

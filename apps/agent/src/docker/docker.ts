@@ -21,7 +21,17 @@ export interface Docker {
   removeVolume(name: string): Promise<void>;
   /** The image's `sha256:` id, which the run records. */
   imageDigest(image: string): Promise<string>;
+  /**
+   * Whether `dlh-runs` is as `deploy/vps/runs-firewall.sh` makes it: no
+   * traffic between runs (`enable_icc=false`), no IPv6, and the bridge named
+   * `dlh-runs0`, which the firewall's rules name. False if it's missing.
+   */
+  networkIsolated(): Promise<boolean>;
 }
+
+/** The run containers' network, and its bridge's fixed name. */
+export const RUN_NETWORK = "dlh-runs";
+export const RUN_BRIDGE = "dlh-runs0";
 
 export const containerName = (runId: string) => `dlh-run-${runId}`;
 export const volumeName = (runId: string) => `dlh-ws-${runId}`;

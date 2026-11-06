@@ -1,6 +1,13 @@
 import { execFile as nodeExecFile } from "node:child_process";
 import { promisify } from "node:util";
-import { containerName, type Docker, runDir, volumeName } from "./docker";
+import {
+  containerName,
+  type Docker,
+  RUN_BRIDGE,
+  RUN_NETWORK,
+  runDir,
+  volumeName,
+} from "./docker";
 
 /** `child_process.execFile`, promisified: rejects with `stderr` on a non-zero exit. */
 export type ExecFile = (
@@ -31,7 +38,7 @@ const ISOLATION = [
   "--security-opt",
   "no-new-privileges",
   "--network",
-  "dlh-runs",
+  RUN_NETWORK,
   // Public resolvers: the host's upstream may sit in a range the firewall blocks.
   "--dns",
   "1.1.1.1",
@@ -98,6 +105,20 @@ export function cliDocker(exec: ExecFile, opts: { dataDir: string }): Docker {
     },
     async imageDigest(image) {
       return docker("image", "inspect", "--format", "{{.Id}}", image);
+    },
+    async networkIsolated() {
+      try {
+        const out = await docker(
+          "network",
+          "inspect",
+          RUN_NETWORK,
+          "--format",
+          '{{index .Options "com.docker.network.bridge.enable_icc"}} {{index .Options "com.docker.network.bridge.name"}} {{.EnableIPv6}}',
+        );
+        return out === `false ${RUN_BRIDGE} false`;
+      } catch {
+        return false;
+      }
     },
   };
 }

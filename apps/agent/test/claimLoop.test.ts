@@ -31,6 +31,7 @@ function setup(opts: {
   ended?: { runId: string; volume: string }[];
   containers?: string[];
   removeVolume?: (name: string) => Promise<void>;
+  isolated?: () => boolean;
 }) {
   const { timers, every, after } = fakeTimers();
   let onChange: () => void = () => {};
@@ -44,6 +45,7 @@ function setup(opts: {
     listRunContainers: vi.fn(async () => opts.containers ?? []),
     remove: vi.fn(async () => {}),
     removeVolume: vi.fn(opts.removeVolume ?? (async () => {})),
+    networkIsolated: vi.fn(async () => opts.isolated?.() ?? true),
   } as unknown as Docker;
   const store = {
     secretOf: vi.fn(),
@@ -248,6 +250,26 @@ describe("claim loop", () => {
     await s.idle();
     expect(s.started).toEqual(["r1", "r2", "r1"]);
     s.handles[0]?.end();
+    await s.loop.stop();
+  });
+
+  it("no run is claimed while the run network isn't isolated", async () => {
+    let isolated = false;
+    const s = setup({
+      claims: [async () => claim("r1")],
+      isolated: () => isolated,
+    });
+    await s.loop.start();
+    await s.idle();
+    s.change();
+    await s.idle();
+    expect(s.claimFn).not.toHaveBeenCalled();
+    // Said once, not on every pass.
+    expect(s.logs.filter((l) => l.includes("dlh-runs"))).toHaveLength(1);
+    isolated = true;
+    s.change();
+    await s.idle();
+    expect(s.started).toEqual(["r1"]);
     await s.loop.stop();
   });
 
