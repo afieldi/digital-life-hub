@@ -1,7 +1,9 @@
 # The hub on one VPS: Postgres, the API, the agent worker and the Slack bot. Run from the repo
 # root: `docker compose -f deploy/vps/docker-compose.yml up -d --build`.
 # Settings come from deploy/vps/.env (see README.md and .env.example). Each
-# service gets only its own: the API never sees the Gateway key or secrets key.
+# service gets only its own: the API never sees the secrets key, and its Gateway
+# key (API_AI_GATEWAY_API_KEY, for Jev and coworker answers) is separate from the
+# agent's, so the two can have separate budgets.
 name: dlh
 
 services:
@@ -36,6 +38,8 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in deploy/vps/.env}
       ALLOWED_EMAIL: ${ALLOWED_EMAIL:?set ALLOWED_EMAIL in deploy/vps/.env}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_GATEWAY_API_KEY: ${API_AI_GATEWAY_API_KEY:-}
+      AI_GATEWAY_DEFAULT_MODEL: ${AI_GATEWAY_DEFAULT_MODEL:-}
     # Loopback only: put a TLS reverse proxy in front for outside access.
     ports:
       - "127.0.0.1:8787:8787"

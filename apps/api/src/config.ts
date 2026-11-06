@@ -45,16 +45,19 @@ export function openrouterSection(
   };
 }
 
-/** Vercel AI Gateway's key and default model: both optional, trimmed, empty is none. */
+/**
+ * Vercel AI Gateway's key and default model: both optional, trimmed, empty is
+ * none; but a key needs a model.
+ */
 export function aiGatewaySection(
   env: Env,
 ): Section<{ apiKey: string | null; defaultModel: string | null }> {
+  const apiKey = env.AI_GATEWAY_API_KEY?.trim() || null;
+  const defaultModel = env.AI_GATEWAY_DEFAULT_MODEL?.trim() || null;
   return {
-    value: {
-      apiKey: env.AI_GATEWAY_API_KEY?.trim() || null,
-      defaultModel: env.AI_GATEWAY_DEFAULT_MODEL?.trim() || null,
-    },
-    missing: [],
+    value: { apiKey, defaultModel },
+    // A key with no model can't answer anything; say so rather than "no key".
+    missing: apiKey && !defaultModel ? ["AI_GATEWAY_DEFAULT_MODEL"] : [],
   };
 }
 

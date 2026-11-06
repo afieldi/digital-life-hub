@@ -28,7 +28,7 @@ the CLI steps (run from a checkout of this repo).
 3. Generate the secrets key: `openssl rand -base64 32` into `AGENT_SECRETS_KEY`.
    It encrypts the connection secrets in `/var/lib/dlh-agent/agent.db`. Back it
    up: without it those secrets can't be read.
-4. Create the Gateway key (below) into `AI_GATEWAY_API_KEY`.
+4. Create the Gateway keys (below): one into `AI_GATEWAY_API_KEY` (the agent) and a second into `API_AI_GATEWAY_API_KEY` (the API), plus `AI_GATEWAY_DEFAULT_MODEL`.
 5. Create the run network and its firewall, as root, with Docker running:
    `sudo sh deploy/vps/runs-firewall.sh`. Then install it to run at every
    boot, before Docker starts, so no run ever starts without the rules:
@@ -120,6 +120,12 @@ In the Vercel dashboard, open AI Gateway, create an API key for this host, and
 set a monthly budget on it so a runaway run can't spend without bound
 (`vercel ai-gateway --help` lists the CLI equivalents). When the budget is hit
 the Gateway answers `402` and the run ends with "AI budget reached".
+
+Create a second key, with its own budget, for the API: put it in
+`API_AI_GATEWAY_API_KEY`, and set `AI_GATEWAY_DEFAULT_MODEL` to a Gateway model
+id. The API uses it for Jev and the Slack bot's coworker answers; without it
+those answers are off. Separate keys keep their budgets apart, so chat spend
+can't starve runs or the reverse.
 
 ## Least privilege for the agent's repos
 

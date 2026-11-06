@@ -75,6 +75,16 @@ describe("the VPS compose file", () => {
     expect(compose.networks.internal?.external).toBeUndefined();
   });
 
+  it("the api has its own Gateway key and model, separate from the agent's", () => {
+    const api = compose.services.api?.environment ?? {};
+    expect(api.AI_GATEWAY_API_KEY).toBe("${API_AI_GATEWAY_API_KEY:-}");
+    expect(api.AI_GATEWAY_DEFAULT_MODEL).toBe("${AI_GATEWAY_DEFAULT_MODEL:-}");
+    // Two keys, so each can carry its own budget.
+    expect(compose.services.agent?.environment?.AI_GATEWAY_API_KEY).toBe(
+      "${AI_GATEWAY_API_KEY:?set AI_GATEWAY_API_KEY in deploy/vps/.env}",
+    );
+  });
+
   it("the slack service has no volumes, is on internal only, and is an opt-in profile that needs no Slack settings to validate", () => {
     const slack = compose.services.slack;
     expect(slack?.build?.dockerfile).toBe("apps/slack/Dockerfile");
