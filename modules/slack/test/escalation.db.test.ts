@@ -70,7 +70,7 @@ test("an escalation carries two candidates and Neither", async () => {
   const message = { slackUserId: "U1", externalId: "D1:1700000000.000001" };
   expect(request.actions).toEqual([
     {
-      label: "Pass on as a request",
+      label: "Keep as a request",
       operation: "slack.runEscalated",
       input: { ...message, command: "leaveRequest" },
     },
@@ -155,15 +155,34 @@ test("undo after the reply was sent conflicts and changes nothing", async () => 
   await h.close();
 });
 
-test("passing on as a request replies with the ack", async () => {
+test("keeping as a request files a plain request, resolves the escalation and queues no reply", async () => {
   const h = await harness();
-  const { msg } = await h.escalate("can you look at this", "1700000000.000003");
+  const { id, msg } = await h.escalate(
+    "can you look at this\nmore detail",
+    "1700000000.000003",
+  );
   const out = await h.caller.slack.runEscalated({
     ...msg,
     command: "leaveRequest",
   });
-  expect(out.result).toEqual({ reply: "Got it, I've passed this to Arek." });
-  expect((await h.outbox())[0]?.text).toBe("Got it, I've passed this to Arek.");
+  expect(out.result).toEqual({ reply: null });
+  expect(await h.outbox()).toHaveLength(0);
+  expect((await h.caller.requests.get({ id })).request.outcome).toBe("handled");
+  const [kept] = (await h.caller.requests.open({})).items;
+  expect(kept).toMatchObject({
+    title: "can you look at this",
+    source: "slack",
+    externalId: "D1:1700000000.000003:kept",
+    sourceHandle: "U1",
+    fromName: "Dana",
+  });
+  const { request } = await h.caller.requests.get({ id: kept?.id as string });
+  expect(request.body).toBe("can you look at this\nmore detail");
+  expect(request.outcome).toBeNull();
+  expect(request.actions ?? []).toEqual([]);
+  // Pressed again: nothing more is filed.
+  await h.caller.slack.runEscalated({ ...msg, command: "leaveRequest" });
+  expect((await h.caller.requests.open({})).items).toHaveLength(1);
   await h.close();
 });
 

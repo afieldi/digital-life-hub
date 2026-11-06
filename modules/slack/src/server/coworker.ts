@@ -141,7 +141,7 @@ type RequestAction = {
 
 /** What each command does, as the button on an escalation says it. */
 const COMMAND_LABELS: Record<Exclude<CoworkerCommand, "escalate">, string> = {
-  leaveRequest: "Pass on as a request",
+  leaveRequest: "Keep as a request",
   addToRequest: "Add to their request",
   requestStatus: "Reply with their status",
   withdraw: "Withdraw their request",

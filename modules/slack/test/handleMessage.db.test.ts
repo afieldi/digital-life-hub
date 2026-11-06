@@ -237,7 +237,7 @@ test("low confidence escalates with Bot wasn't sure and the ack", async () => {
   expect(request.title).toBe("Bot wasn't sure: hmm what about the thing");
   expect(request.body).toBe("hmm what about the thing");
   expect(request.actions?.map((a) => a.label)).toEqual([
-    "Pass on as a request",
+    "Keep as a request",
     "Reply with their status",
     "Neither",
   ]);

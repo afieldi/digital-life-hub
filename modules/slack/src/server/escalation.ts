@@ -14,7 +14,8 @@ import {
   addToRequest,
   answer,
   type CoworkerMessage,
-  leaveRequest,
+  ESCALATED_PREFIX,
+  keyOf,
   recentIn,
   type SenderRequest,
   sendersRequests,
@@ -125,6 +126,27 @@ function messageOf(
   };
 }
 
+/**
+ * Files the escalated message again as a plain request (no "Bot wasn't sure",
+ * no buttons), and queues no reply: the sender was acknowledged when it escalated.
+ */
+async function keepRequest(
+  w: ScopedWriter,
+  m: CoworkerMessage,
+  escalated: SenderRequest,
+): Promise<HandleMessageResult> {
+  await allowed(w.call)(requestOps.file, {
+    title: escalated.title.replace(ESCALATED_PREFIX, ""),
+    body: m.event.text,
+    source: "slack",
+    externalId: `${keyOf(m.event)}:kept`,
+    sourceUrl: m.event.permalink,
+    sourceHandle: m.sender.slackUserId,
+    fromName: m.sender.name,
+  });
+  return {};
+}
+
 /** The reply `command` makes, run for the sender as `handleMessage` would. */
 async function runCommand(
   w: ScopedWriter,
@@ -146,8 +168,8 @@ async function runCommand(
   );
   switch (command) {
     case "leaveRequest":
-      // Already filed, as this request; the sender hears the usual acknowledgement.
-      return leaveRequest(w, m, settings.ackText);
+      // The escalation already acknowledged the sender; this files the plain request.
+      return keepRequest(w, m, escalated);
     case "addToRequest": {
       // Recent as of the message, not of the click.
       const target = recentIn(open, m.event, at, settings.appendMinutes);
