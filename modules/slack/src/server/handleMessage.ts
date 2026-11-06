@@ -15,6 +15,7 @@ import {
   withdraw,
 } from "./coworker";
 import { interpretMessage } from "./interpret";
+import { handleOwner } from "./owner";
 import { readSettings } from "./settings";
 
 /** How long Jev has before the message is handled by rule. */
@@ -27,7 +28,7 @@ export const handleMessage = implementOperation(slackOps.handleMessage, {
     if (settings.ownerSlackId === null)
       return done({ reply: "Not set up yet." });
     if (input.sender.isOwner) {
-      return done({ reply: "I can't do that from Slack yet." });
+      return done(await handleOwner(deps, input, settings));
     }
     const m: CoworkerMessage = input;
     const all = await sendersRequests(w, input.sender);

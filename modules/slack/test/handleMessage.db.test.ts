@@ -85,13 +85,14 @@ test("not set up replies Not set up yet. and files nothing", async () => {
   await h.close();
 });
 
-test("the owner gets I can't do that from Slack yet.", async () => {
-  const h = await harness();
+test("the owner's message goes to the owner path, not the coworker one", async () => {
+  const h = await harness([{ choice: "escalate", confidence: 0.9 }]);
   const out = await h.slack.slack.handleMessage(
     h.message("hi", { sender: { slackUserId: "UOWNER", isOwner: true } }),
   );
-  expect(out.result).toEqual({ reply: "I can't do that from Slack yet." });
-  expect(await h.requests()).toHaveLength(0);
+  expect(out.result.reply).toBe(
+    "Not sure what you meant, so I put it in your queue.",
+  );
   await h.close();
 });
 

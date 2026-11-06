@@ -5,6 +5,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -33,6 +34,8 @@ export const slackSettings = pgTable(
     coworkerAi: boolean("coworker_ai").notNull().default(true),
     /** When `slack.syncRuns` last looked at ended runs. */
     runsSyncedAt: at("runs_synced_at"),
+    /** When the bot last heard from you; null until it first does. */
+    seenAt: at("seen_at"),
   },
   (t) => [
     check("slack_settings_single_row_check", sql`${t.id} = 1`),
@@ -107,3 +110,18 @@ export const slackOutbox = pgTable(
     ),
   ],
 );
+
+/**
+ * Undo for operations the bot runs outside the gateway. A button names a row
+ * here, never a raw token; `used_at` makes Undo single use. Nothing keys a row
+ * to an item.
+ */
+export const slackActions = pgTable("slack_actions", {
+  id: uuid("id").primaryKey().default(sql`uuidv7()`),
+  operation: text("operation").notNull(),
+  token: jsonb("token").notNull(),
+  /** The task whose run a handoff started. */
+  runTaskId: uuid("run_task_id"),
+  createdAt: at("created_at").notNull().defaultNow(),
+  usedAt: at("used_at"),
+});

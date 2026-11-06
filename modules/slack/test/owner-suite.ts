@@ -1,7 +1,7 @@
 import type { CoreDeps } from "@dlh/server";
 import { interpretOwner } from "../src/server/owner/interpret";
 import type { OwnerPhrasing, OwnerSubject } from "./owner-phrasings";
-import { setup } from "./setup";
+import type { setup } from "./setup";
 
 type Harness = Awaited<ReturnType<typeof setup>>;
 
