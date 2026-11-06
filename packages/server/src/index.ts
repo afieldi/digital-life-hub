@@ -66,6 +66,7 @@ export {
   type RawSummaryRow,
   summaryFromRaw,
 } from "./items/read";
+export { searchItems } from "./items/search";
 export { type ItemWriter, writeItems } from "./items/writer";
 export { migrationsRoot, moduleMigrations } from "./migrations";
 export {
