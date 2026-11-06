@@ -134,6 +134,27 @@ describe("handleEvent", () => {
     expect(firstSent(api).event.isDm).toBe(false);
   });
 
+  it("a mention's bot tag is removed from the text sent to the hub", async () => {
+    const web = stubWeb();
+    const api = stubApi([{ reply: "ok" }]);
+    await handleEvent(deps(web, api), {
+      channel: "C1",
+      ts: "5.5",
+      user: "UDANA",
+      text: "<@UBOT> please look at the bug <@UBOT>",
+    });
+    expect(firstSent(api).event.text).toBe("please look at the bug");
+    const unknown = stubApi([{ reply: "ok" }]);
+    await handleEvent(
+      {
+        ...deps(web, unknown),
+        settings: async () => ({ ...settings, botUserId: null }),
+      },
+      { channel: "C1", ts: "6.6", user: "UDANA", text: "<@U0ABC> hi <@U9> x" },
+    );
+    expect(firstSent(unknown).event.text).toBe("hi <@U9> x");
+  });
+
   it("a react result adds eyes", async () => {
     const web = stubWeb();
     const api = stubApi([{ react: "eyes" }]);

@@ -52,5 +52,10 @@ app.event("app_mention", async ({ event }) => {
 });
 
 await app.start();
-const ready = await api.botSettings();
-console.log(`Slack bot ready, bot user ${ready.botUserId ?? "unknown"}`);
+try {
+  const ready = await api.botSettings();
+  console.log(`Slack bot ready, bot user ${ready.botUserId ?? "unknown"}`);
+} catch {
+  // Each event reads the settings again, so the service carries on.
+  console.warn("Slack bot started, but the hub could not be reached yet");
+}

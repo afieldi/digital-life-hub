@@ -43,6 +43,14 @@ async function withRetries<T>(
   }
 }
 
+/** The text without the bot's `<@…>` tag and the whitespace around it; with no known bot id, a leading tag. */
+export function withoutBotTag(text: string, botUserId: string | null): string {
+  const tag = botUserId
+    ? new RegExp(`\\s*<@${botUserId}(\\|[^>]*)?>\\s*`, "g")
+    : /^\s*<@U[A-Z0-9]+(\|[^>]*)?>\s*/;
+  return text.replace(tag, " ").trim();
+}
+
 /** Where the answer goes: in the message's thread, but a top-level DM stays top level. */
 function threadOf(event: SlackMessageEvent): string | undefined {
   if (event.thread_ts) return event.thread_ts;
@@ -112,7 +120,7 @@ export async function handleEvent(
           channel: event.channel,
           ts: event.ts,
           ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
-          text: event.text ?? "",
+          text: withoutBotTag(event.text ?? "", settings.botUserId),
           permalink: link,
           isDm: event.channel_type === "im",
         },
