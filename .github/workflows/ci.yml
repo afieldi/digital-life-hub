@@ -93,7 +93,7 @@ jobs:
       - run: pnpm --filter @dlh/desktop test:rust
 
   server:
-    timeout-minutes: 30
+    timeout-minutes: 40
     runs-on: ubuntu-latest
     env:
       TEST_DATABASE_URL: postgres://dlh:dlh@127.0.0.1:54329/dlh_test
@@ -160,3 +160,9 @@ jobs:
           done
           docker logs dlh-api
           exit 1
+
+      # The Docker tests: runs in the runner image with a fake model
+      # (apps/agent/test/docker.e2e.test.ts). As root, like the real worker,
+      # which gives each run's socket to the container's user only then.
+      - run: pnpm agent:image
+      - run: sudo -E env "PATH=$PATH" pnpm --filter @dlh/agent test:docker

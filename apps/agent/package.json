@@ -8,6 +8,8 @@
     "start": "tsx --env-file-if-exists=.env src/main.ts",
     "cli": "tsx --env-file-if-exists=.env src/cli.ts",
     "test": "vitest run --passWithNoTests",
+    "test:docker": "DLH_DOCKER_TESTS=1 vitest run docker.e2e",
+    "test:docker:linux": "sh test/docker/in-linux.sh",
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
@@ -22,6 +24,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@dlh/api": "workspace:*",
     "@types/node": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"
