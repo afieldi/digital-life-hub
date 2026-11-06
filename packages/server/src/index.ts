@@ -17,6 +17,7 @@ export {
   undo,
 } from "./ai/gateway";
 export { listLog } from "./ai/log";
+export { completeOnServer, decideOnServer } from "./ai/server-complete";
 export { operationAiRunner } from "./ai/operation-runner";
 export {
   type AiCompleteRequest,

@@ -18,6 +18,7 @@ const LOG_FIELDS = [
   "actionId",
   "kind",
   "interpretedBy",
+  "origin",
   "provider",
   "model",
   "status",

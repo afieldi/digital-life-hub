@@ -136,8 +136,13 @@ export const aiRequests = pgTable(
     costUsd: numeric("cost_usd"),
     output: jsonb("output"),
     undo: jsonb("undo"),
+    /** Who asked: the app, or the Slack bot's server-side calls. */
+    origin: text("origin").notNull().default("app"),
   },
-  (t) => [index("ai_requests_created_idx").on(t.createdAt.desc())],
+  (t) => [
+    index("ai_requests_created_idx").on(t.createdAt.desc()),
+    check("ai_requests_origin_check", sql`${t.origin} in ('app', 'slack')`),
+  ],
 );
 
 export const aiSettings = pgTable(
