@@ -32,6 +32,11 @@ export const requests = pgTable(
     actions: jsonb("actions"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true, precision: 3 }),
     outcome: text("outcome"),
+    /** Keys of the messages `append` added, so a redelivered one is not added twice. */
+    appendedIds: text("appended_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
   },
   (t) => [
     check(

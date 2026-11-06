@@ -187,6 +187,8 @@ async function snapshot(deps: CoreDeps) {
       itemId: requests.itemId,
       outcome: requests.outcome,
       resolvedAt: requests.resolvedAt,
+      body: requests.body,
+      appendedIds: requests.appendedIds,
     })
     .from(requests)
     .where(
@@ -966,6 +968,11 @@ test("each mutation's undo restores the prior state", async () => {
           expectedUpdatedAt: await v(open),
           priority: "high",
         }),
+    },
+    {
+      op: "append",
+      run: async ({ open }) =>
+        caller.requests.append({ id: open, key: "k", text: "More" }),
     },
     {
       op: "reopen",

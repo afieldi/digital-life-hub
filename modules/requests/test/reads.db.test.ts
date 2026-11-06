@@ -1,6 +1,10 @@
 import { operationList } from "@dlh/core";
 import { type CoreDeps, writeItems } from "@dlh/server";
-import { freshModuleDb, testServer } from "@dlh/server/testing";
+import {
+  expectAskerScoped,
+  freshModuleDb,
+  testServer,
+} from "@dlh/server/testing";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import tasksServer from "../../tasks/src/server";
@@ -219,5 +223,95 @@ test("get on a deleted request is NOT_FOUND", async () => {
   await expect(caller.requests.get({ id: r.id })).rejects.toMatchObject({
     code: "NOT_FOUND",
   });
+  await close();
+});
+
+/** The sender's own Slack requests, read as the Slack service does. */
+async function slackSetup() {
+  const t = await setup();
+  const { caller: slack } = testServer(t.db, [requestsServer, tasksServer], {
+    now: () => NOW,
+    principal: { kind: "slack", tokenId: "t" },
+  });
+  const fileFrom = async (
+    handle: string,
+    title: string,
+    receivedAt: Date,
+    extra: Record<string, unknown> = {},
+  ) =>
+    (
+      await t.caller.requests.file({
+        title,
+        source: "slack",
+        sourceHandle: handle,
+        receivedAt: receivedAt.toISOString(),
+        ...extra,
+      })
+    ).result.request;
+  return { ...t, slack, fileFrom };
+}
+
+const asker = (slackUserId: string) => ({ slackUserId, githubLogin: null });
+
+test("fromSender returns only that sender's slack requests, newest first", async () => {
+  const { slack, fileFrom, file, close } = await slackSetup();
+  const old = await fileFrom("U1", "old", ago(3), {
+    externalId: "a",
+    body: "b",
+  });
+  const recent = await fileFrom("U1", "recent", ago(1));
+  await fileFrom("U2", "theirs", ago(2));
+  await file("manual one");
+  const rows = await slack.requests.fromSender({ asker: asker("U1") });
+  expect(rows.map((r) => r.title)).toEqual(["recent", "old"]);
+  expect(rows[1]).toEqual({
+    id: old.id,
+    title: "old",
+    body: "b",
+    externalId: "a",
+    receivedAt: ago(3).toISOString(),
+    outcome: null,
+    resolvedAt: null,
+  });
+  expect(rows[0]?.id).toBe(recent.id);
+  await close();
+});
+
+test("fromSender returns nothing for another sender", async () => {
+  const { slack, fileFrom, close } = await slackSetup();
+  await expectAskerScoped(
+    (_, input) =>
+      slack.requests.fromSender(
+        input as Parameters<typeof slack.requests.fromSender>[0],
+      ),
+    "requests.fromSender",
+    {},
+    (a) => fileFrom(a.slackUserId, "mine", ago(1)),
+  );
+  await close();
+});
+
+test("fromSender openOnly leaves out resolved requests, since leaves out older", async () => {
+  const { slack, caller, fileFrom, close } = await slackSetup();
+  const done = await fileFrom("U1", "done", ago(2));
+  await fileFrom("U1", "open", ago(1));
+  await caller.requests.resolve({
+    id: done.id,
+    expectedUpdatedAt: done.updatedAt,
+    outcome: "handled",
+  });
+  const all = await slack.requests.fromSender({ asker: asker("U1") });
+  expect(all.map((r) => r.title)).toEqual(["open", "done"]);
+  expect(all[1]?.outcome).toBe("handled");
+  const open = await slack.requests.fromSender({
+    asker: asker("U1"),
+    openOnly: true,
+  });
+  expect(open.map((r) => r.title)).toEqual(["open"]);
+  const since = await slack.requests.fromSender({
+    asker: asker("U1"),
+    since: ago(1.5),
+  });
+  expect(since.map((r) => r.title)).toEqual(["open"]);
   await close();
 });

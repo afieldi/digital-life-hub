@@ -1,0 +1,1 @@
+ALTER TABLE "requests" ADD COLUMN "appended_ids" text[] DEFAULT '{}'::text[] NOT NULL;

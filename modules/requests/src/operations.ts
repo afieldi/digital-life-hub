@@ -1,4 +1,10 @@
-import { describeOperation, fields, itemOnScreen, itemTitle } from "@dlh/core";
+import {
+  askerInput,
+  describeOperation,
+  fields,
+  itemOnScreen,
+  itemTitle,
+} from "@dlh/core";
 import { taskOps } from "@dlh/module-tasks/operations";
 import { z } from "zod";
 import { fileInput, outcome, requestRow, resolveInput } from "./schema";
@@ -204,6 +210,42 @@ const get = describeOperation({
   ai: false,
 });
 
+const append = describeOperation({
+  id: "requests.append",
+  kind: "mutation",
+  label: "Add to request",
+  description:
+    "Adds a later message to a request's details. Reached only through operation calls (the Slack bot's follow-ups); a key already added is ignored.",
+  appliesTo: "none",
+  input: z.object({ id, key: z.string().min(1), text: z.string().min(1) }),
+  subject: (input) => input.id,
+  effects: ["updateItem"],
+  summary: () => "Add to request",
+  palette: false,
+  ai: false,
+});
+
+const fromSender = describeOperation({
+  id: "requests.fromSender",
+  kind: "query",
+  label: "Requests from a sender",
+  description:
+    "One Slack user's own requests, newest first, for answering whether the person saw them.",
+  appliesTo: "none",
+  audience: "asker",
+  access: "slack",
+  input: z.object({
+    asker: askerInput,
+    openOnly: z.boolean().optional(),
+    since: z.coerce.date().optional(),
+  }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Requests from a sender",
+  palette: false,
+  ai: false,
+});
+
 export const requestOps = {
   file,
   resolve,
@@ -212,4 +254,6 @@ export const requestOps = {
   open,
   resolved,
   get,
+  append,
+  fromSender,
 };

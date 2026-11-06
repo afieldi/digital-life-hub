@@ -83,6 +83,7 @@ A request is a Core `items` row (`type = "request"`) plus one row in `requests`,
 | `actions` | jsonb, null | At most 3 `{ label, operation, input }`, shown in place of the outcomes (below) |
 | `resolved_at` | timestamptz, null | Null means open |
 | `outcome` | text, null | Check: `task`, `handled`, `not_for_me`. Set exactly when `resolved_at` is |
+| `appended_ids` | text[], not null, default `{}` | Keys of the messages `append` added, so a redelivered one is not added twice |
 
 Checks: `outcome` and `resolved_at` are both null or both set; `external_id` is null when `source = 'manual'`.
 
@@ -103,6 +104,8 @@ Indexes: unique `(source, external_id)` where `external_id is not null`; `(recei
 | `open` | query | `{}` | none | "waiting on me", "queue" | ✓ |
 | `resolved` | query | `{ outcome?, cursor? }` | none | ✗ | ✗ |
 | `get` | query | `{ id }` | none | ✗ | ✗ |
+| `append` | mutation | `{ id, key, text }` | `updateItem`; `id` | ✗ | ✗ |
+| `fromSender` | query | `{ asker, openOnly?, since? }` | none | ✗ | ✗ |
 
 - `source` defaults to `manual` in ⌘K and `ai` when filed through AI. Later sources call `file` from the server. The [Agent hub](agent-hub.md) files with `agent` and `externalId` `<runId>:<seq>`.
 - **Actions.** A request with `actions` shows them as buttons in place of the three outcomes. Each names an operation of a registered module, checked at `file`, whose job includes resolving this request through an operation call; the screen runs it like any operation, with its Undo. Agent approvals use them (Approve, Decline), and Slack can later (Reply).
@@ -113,6 +116,8 @@ Indexes: unique `(source, external_id)` where `external_id is not null`; `(recei
 - `reopen` clears `outcome` and `resolved_at`, and removes the `relates` link it added. The task stays. On an open request it is `CONFLICT` "Not resolved". It is `resolve`'s Undo, and its own Undo resolves again with the old outcome and task.
 - `open` returns open, unarchived requests, oldest `received_at` first, as `{ heading, items }` for ⌘K and AI. `resolved` covers the last 30 days, newest `resolved_at` first, paged.
 - `get` returns the request and its task, if any. Other links come from Core's `links.forItem`.
+- `append` adds a later message to a request: `body` becomes the old body, a blank line, then `text` (just `text` when there was no body), `key` joins `appended_ids` and the version moves. It is reached only through operation calls (the Slack module's), so it has no ⌘K entry and is not an AI action. A `key` already in `appended_ids` is `{ appended: false }` and writes nothing, not even the version; a resolved request is `CONFLICT` "Already resolved". Its Undo restores the old body and `appended_ids`.
+- `fromSender` is an asker-scoped operation (`access: "slack"`): the Slack bot's, answering one coworker's "did you see my request?". It returns `{ id, title, body, externalId, receivedAt, outcome, resolvedAt }[]`, newest `received_at` first, for requests with `source = 'slack'` and `source_handle = asker.slackUserId`, so one sender never sees another's. `openOnly` leaves out resolved requests; `since` leaves out those received earlier.
 - Delete and restore are Core's `items.delete` / `items.restore`. Queue has no `deleteWith`: deleting a request never deletes its task. Deleting the task leaves the request resolved, and its detail shows "Task deleted".
 - Errors as Core: `CONFLICT`, `NOT_FOUND`, `BAD_REQUEST` (empty title, `externalId` with `source: "manual"`, an outcome and `taskId` that don't match).
 
