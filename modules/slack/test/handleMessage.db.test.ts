@@ -1,6 +1,6 @@
 import { type AiDecisionProvider, AiError } from "@dlh/server";
 import { sql } from "drizzle-orm";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { HandleMessageInput } from "../src/schema";
 import { setup } from "./setup";
 
@@ -289,6 +289,18 @@ test("requestStatus replies with the model's words", async () => {
   );
   expect(row).toHaveLength(1);
   expect(row[0]?.origin).toBe("slack");
+  await h.close();
+});
+
+test("the coworker reply gives the model 15 seconds, inside the hub call's 30", async () => {
+  const h = await harness(
+    [{ choice: "requestStatus", confidence: 0.9 }],
+    ["Still open."],
+  );
+  const timeout = vi.spyOn(AbortSignal, "timeout");
+  await h.slack.slack.handleMessage(h.message("did you see it?"));
+  expect(timeout).toHaveBeenCalledWith(15_000);
+  timeout.mockRestore();
   await h.close();
 });
 

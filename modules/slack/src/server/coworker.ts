@@ -1,5 +1,6 @@
 import { requestOps } from "@dlh/module-requests/operations";
 import {
+  AiError,
   type CoreDeps,
   completeOnServer,
   getItem,
@@ -276,9 +277,13 @@ export async function answer(
       system: SYSTEM,
       prompt,
       schema: reply,
+      // Under the hub call's 30 s, so the answer fails here, not as a client timeout.
+      timeoutMs: 15_000,
     });
     return { reply: value.reply };
-  } catch {
+  } catch (e) {
+    // An AI that can't answer is escalated by the caller; anything else is a bug.
+    if (!(e instanceof AiError)) throw e;
     return null;
   }
 }

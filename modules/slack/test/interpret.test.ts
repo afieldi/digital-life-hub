@@ -115,14 +115,10 @@ test("a timeout throws AiError timeout", async () => {
   respond = async () => {
     throw new AiError("timeout", "too slow");
   };
-  let caught: unknown;
-  try {
-    await run();
-  } catch (e) {
-    caught = e;
-  }
-  console.log("CAUGHT", caught);
-  expect(caught).toBeInstanceOf(AiError);
+  await expect(run()).rejects.toMatchObject({
+    name: "AiError",
+    code: "timeout",
+  });
 });
 
 test("a choice that was not offered is bad_output", async () => {

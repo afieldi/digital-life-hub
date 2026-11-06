@@ -33,6 +33,13 @@ type Draft = {
 
 const orNull = (s: string) => (s.trim() === "" ? null : s.trim());
 
+/** The threshold as a number, or null when blank or not 0 to 1 (a blank field is not 0). */
+function parseThreshold(text: string): number | null {
+  if (text.trim() === "") return null;
+  const n = Number(text);
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+}
+
 function SettingsForm() {
   const api = useModuleApi<SlackRouter>("slack");
   const write = useModuleWrite(WRITE);
@@ -69,6 +76,8 @@ function SettingsForm() {
             className="flex flex-col gap-3"
             onSubmit={(e) => {
               e.preventDefault();
+              const threshold = parseThreshold(draft.threshold);
+              if (threshold === null) return;
               void write({
                 op: "slack.setSettings",
                 summary: "Slack settings saved",
@@ -79,7 +88,7 @@ function SettingsForm() {
                     teamId: orNull(draft.teamId),
                     botUserId: orNull(draft.botUserId),
                     ackText: draft.ackText,
-                    threshold: Number(draft.threshold),
+                    threshold,
                     appendMinutes: Number(draft.appendMinutes),
                     interpreter: draft.interpreter.trim(),
                     coworkerAi: draft.coworkerAi,
@@ -115,6 +124,8 @@ function SettingsForm() {
               inputMode="decimal"
               value={draft.threshold}
               onChange={set("threshold")}
+              isInvalid={parseThreshold(draft.threshold) === null}
+              errorMessage="Enter a number from 0 to 1."
             />
             <TextField
               label="Append window (minutes)"
