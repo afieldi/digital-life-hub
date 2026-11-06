@@ -122,6 +122,13 @@ jobs:
       matrix:
         browser: [chromium, webkit]
     runs-on: ubuntu-latest
+    # Playwright's image ships every browser and its system packages, so nothing
+    # is downloaded from apt (whose mirror has stalled a run for 12 minutes).
+    # Its version must match @playwright/test in pnpm-lock.yaml.
+    container: mcr.microsoft.com/playwright:v1.64.1-noble
+    env:
+      # From inside the job container the service is reached by its name.
+      E2E_DATABASE_URL: postgres://dlh:dlh@postgres:5432/dlh_e2e
     services:
       postgres:
         image: postgres:18
@@ -149,14 +156,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      # --with-deps still installs the system packages; the browser download is
-      # skipped on a cache hit.
-      - run: pnpm --filter @dlh/desktop exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm --filter @dlh/desktop test:e2e --project=${{ matrix.browser }}
 
       # Traces and the HTML report of a red e2e run, to diagnose it without
