@@ -461,6 +461,9 @@ importers:
       '@dlh/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@dlh/module-requests':
+        specifier: workspace:*
+        version: link:../requests
       '@dlh/server':
         specifier: workspace:*
         version: link:../../packages/server

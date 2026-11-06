@@ -35,3 +35,38 @@ export const botSettings = z.object({
   botUserId: z.string().nullable(),
 });
 export type BotSettings = z.infer<typeof botSettings>;
+
+/** One earlier message in the conversation, as `apps/slack` reports it. */
+export const turn = z.object({
+  from: z.enum(["sender", "bot", "owner"]),
+  text: z.string(),
+});
+
+/** One Slack message to handle, who sent it, and what came before it. */
+export const handleMessageInput = z.object({
+  event: z.object({
+    channel: z.string().min(1),
+    ts: z.string().min(1),
+    threadTs: z.string().min(1).optional(),
+    text: z.string(),
+    permalink: z.url({ protocol: /^https?$/ }),
+    isDm: z.boolean(),
+  }),
+  sender: z.object({
+    slackUserId: z.string().min(1),
+    name: z.string(),
+    githubLogin: z.string().nullable(),
+    isOwner: z.boolean(),
+  }),
+  /** The last 10 messages before this one, oldest first. */
+  context: z.array(turn).max(10),
+});
+export type HandleMessageInput = z.infer<typeof handleMessageInput>;
+
+/** What `apps/slack` posts: a reply, or a reaction on the message. */
+export const handleMessageResult = z.object({
+  reply: z.string().optional(),
+  react: z.literal("eyes").optional(),
+  filedRequestId: z.uuid().optional(),
+});
+export type HandleMessageResult = z.infer<typeof handleMessageResult>;

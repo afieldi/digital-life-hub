@@ -1,6 +1,7 @@
 import { describeOperation } from "@dlh/core";
+import { requestOps } from "@dlh/module-requests/operations";
 import { z } from "zod";
-import { slackSettings } from "./schema";
+import { handleMessageInput, slackSettings } from "./schema";
 
 /** Settings → Slack's calls: yours only, and out of ⌘K and AI. */
 const mine = { access: "user", palette: false, ai: false } as const;
@@ -93,6 +94,26 @@ const upsertPerson = describeOperation({
   ...bot,
 });
 
+const handleMessage = describeOperation({
+  id: "slack.handleMessage",
+  kind: "mutation",
+  label: "Handle a Slack message",
+  description:
+    "The entry point for every Slack message: files, appends or answers, and says what to post.",
+  appliesTo: ["none"],
+  input: handleMessageInput,
+  subject: () => null,
+  effects: [],
+  calls: [
+    requestOps.file,
+    requestOps.append,
+    requestOps.fromSender,
+    requestOps.resolve,
+  ],
+  summary: () => "Handle a Slack message",
+  ...bot,
+});
+
 export const slackOps = {
   settings,
   setSettings,
@@ -100,4 +121,5 @@ export const slackOps = {
   setGithubLogin,
   botSettings: botSettingsQuery,
   upsertPerson,
+  handleMessage,
 };

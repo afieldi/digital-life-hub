@@ -16,6 +16,7 @@
   "dependencies": {
     "@dlh/client": "workspace:*",
     "@dlh/core": "workspace:*",
+    "@dlh/module-requests": "workspace:*",
     "@dlh/server": "workspace:*",
     "@dlh/ui": "workspace:*",
     "@tanstack/react-query": "catalog:",
