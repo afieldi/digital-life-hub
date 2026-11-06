@@ -103,7 +103,9 @@ export function sessionFileExists(configDir: string, sessionId: string) {
 /**
  * The first message of a resumed session (D8): the owner's answer to what the
  * run asked, when the claimed decision answers the pending ask, else
- * "Continue.". An approved action is allowed once.
+ * "Continue.". An approved action is allowed once: the tool and input hash
+ * the API kept with the decision, never `pending.json`'s, which the agent can
+ * write and which gives only the wording.
  */
 export function resumeMessage(
   start: RunStart,
@@ -117,15 +119,16 @@ export function resumeMessage(
     pending.seq === null ? d.seq === start.lastSeq : d.seq === pending.seq;
   if (!answers) return "Continue.";
   if (pending.kind === "grant") {
-    const name = pending.connectionName ?? pending.action;
+    const name =
+      start.connections.find((c) => c.id === d.connectionId)?.name ??
+      pending.connectionName ??
+      pending.action;
     return d.approve ? `Granted: ${name}.` : `Not granted: ${name}.`;
   }
   if (!d.approve) {
     return `Declined: ${pending.action}. Don't do it another way.`;
   }
-  if (pending.tool && pending.inputHash) {
-    approvals.allowOnce(pending.tool, pending.inputHash);
-  }
+  if (d.tool && d.inputHash) approvals.allowOnce(d.tool, d.inputHash);
   return `Approved: ${pending.action}. Go ahead.`;
 }
 

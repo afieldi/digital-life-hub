@@ -543,10 +543,15 @@ test("decide approves, resolves the request and queues the run", async () => {
   const { run } = await withRun(s);
   const req = await suspended(s, run.id, 5);
   await s.caller.agent.decide({ runId: run.id, seq: 5, approve: true });
-  expect(await runById(s, run.id)).toMatchObject({
-    status: "queued",
-    pending: null,
-    decision: { seq: 5, approve: true, delivered: false },
+  const queued = await runById(s, run.id);
+  expect(queued).toMatchObject({ status: "queued", pending: null });
+  // The approved action comes from the API's copy, not the run's volume.
+  expect(queued?.decision).toEqual({
+    seq: 5,
+    approve: true,
+    delivered: false,
+    tool: "Bash",
+    inputHash: "abc",
   });
   expect((await requestById(s, req.itemId))?.outcome).toBe("handled");
   await s.close();
@@ -604,9 +609,21 @@ test("an approved grant adds the connection", async () => {
       scopeSummary: "repo",
     })
   ).result;
-  await suspended(s, run.id, 7, { kind: "grant", connectionId: id });
+  await suspended(s, run.id, 7, {
+    kind: "grant",
+    connectionId: id,
+    tool: undefined,
+    inputHash: undefined,
+  });
   await s.caller.agent.decide({ runId: run.id, seq: 7, approve: true });
-  expect((await runById(s, run.id))?.connectionIds).toEqual([id]);
+  const queued = await runById(s, run.id);
+  expect(queued?.connectionIds).toEqual([id]);
+  expect(queued?.decision).toEqual({
+    seq: 7,
+    approve: true,
+    delivered: false,
+    connectionId: id,
+  });
   await s.close();
 });
 

@@ -142,7 +142,13 @@ describe("runSession", () => {
     await runSession(
       runStart({
         sessionId: SESSION,
-        decision: { seq: 7, approve: true, delivered: true },
+        decision: {
+          seq: 7,
+          approve: true,
+          delivered: true,
+          tool: "Bash",
+          inputHash: inputHash("Bash", merge),
+        },
       }),
       deps(host, query),
     );
@@ -154,6 +160,88 @@ describe("runSession", () => {
     expect(decisions).toEqual(["allow"]);
     expect(calls.session).toEqual([SESSION]);
     expect(existsSync(join(workspace, ".dlh", "pending.json"))).toBe(false);
+  });
+
+  it("an edited pending.json can't widen an approval", async () => {
+    writeSessionFile();
+    const ls = { command: "ls" };
+    const forged = { command: "git push --force origin HEAD:main" };
+    // Rewritten by the agent while the run waited: an approval of `ls`
+    // would allow the push if the runner trusted the volume.
+    mkdirSync(join(workspace, ".dlh"));
+    writeFileSync(
+      join(workspace, ".dlh", "pending.json"),
+      JSON.stringify({
+        seq: 7,
+        kind: "approval",
+        tool: "Bash",
+        inputHash: inputHash("Bash", forged),
+        action: "Bash: ls",
+      }),
+    );
+    const { host, calls } = fakeHost({ suspendSeq: 9 });
+    const decisions: string[] = [];
+    const { query } = fakeQuery(async (_m, _i, options) => {
+      const signal = new AbortController().signal;
+      const answer = await options.canUseTool?.("Bash", forged, {
+        signal,
+        toolUseID: "t1",
+        requestId: "r1",
+      });
+      decisions.push(answer?.behavior ?? "none");
+      return [result()];
+    });
+    await runSession(
+      runStart({
+        sessionId: SESSION,
+        decision: {
+          seq: 7,
+          approve: true,
+          delivered: true,
+          tool: "Bash",
+          inputHash: inputHash("Bash", ls),
+        },
+      }),
+      deps(host, query),
+    );
+    expect(decisions).toEqual(["deny"]);
+    expect(calls.suspend).toHaveLength(1);
+  });
+
+  it("an approval without the API's tool and hash allows nothing", async () => {
+    writeSessionFile();
+    const merge = { command: "gh pr merge 3" };
+    mkdirSync(join(workspace, ".dlh"));
+    writeFileSync(
+      join(workspace, ".dlh", "pending.json"),
+      JSON.stringify({
+        seq: 7,
+        kind: "approval",
+        tool: "Bash",
+        inputHash: inputHash("Bash", merge),
+        action: "Bash: gh pr merge 3",
+      }),
+    );
+    const { host } = fakeHost({ suspendSeq: 9 });
+    const decisions: string[] = [];
+    const { query } = fakeQuery(async (_m, _i, options) => {
+      const signal = new AbortController().signal;
+      const answer = await options.canUseTool?.("Bash", merge, {
+        signal,
+        toolUseID: "t1",
+        requestId: "r1",
+      });
+      decisions.push(answer?.behavior ?? "none");
+      return [result()];
+    });
+    await runSession(
+      runStart({
+        sessionId: SESSION,
+        decision: { seq: 7, approve: true, delivered: true },
+      }),
+      deps(host, query),
+    );
+    expect(decisions).toEqual(["deny"]);
   });
 
   it("a declined grant resumes with Not granted", async () => {
@@ -285,8 +373,6 @@ describe("runSession", () => {
     expect(pending).toEqual({
       seq: 12,
       kind: "approval",
-      tool: "Bash",
-      inputHash: inputHash("Bash", push),
       action: "Bash: git push origin HEAD:main",
     });
     // Events sent before the suspend, the permission among them.

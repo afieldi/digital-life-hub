@@ -20,11 +20,18 @@ export const eventKind = z.enum([
   "status",
 ]);
 
-/** Same shape as the agent module's `decision`: the person's answer to a suspended run. */
+/**
+ * The agent module's `decision`: the person's answer to a suspended run, with
+ * what was asked as the API kept it. An approval allows only this tool and
+ * input hash, never what the run's volume says was asked.
+ */
 export const decision = obj({
   seq: z.number().int(),
   approve: z.boolean(),
   delivered: z.boolean(),
+  connectionId: z.string().optional(),
+  tool: z.string().optional(),
+  inputHash: z.string().optional(),
 });
 export type Decision = z.infer<typeof decision>;
 

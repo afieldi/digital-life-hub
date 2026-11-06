@@ -17,15 +17,15 @@ export type Outcome =
   | "host_error";
 
 /**
- * What the runner asked, kept on the volume across the suspend (D8). `seq` is
- * the worker's number for the ask; null only if the runner stopped between
+ * What the runner asked, kept on the volume across the suspend (D8), for the
+ * resumed session's wording only: the agent can write it, so what an
+ * approval allows comes from the API's decision instead. `seq` is the
+ * worker's number for the ask; null only if the runner stopped between
  * writing this and hearing back.
  */
 export const pending = z.object({
   seq: z.number().int().nullable(),
   kind: z.enum(["approval", "grant"]),
-  tool: z.string().optional(),
-  inputHash: z.string().optional(),
   connectionName: z.string().optional(),
   action: z.string(),
 });
@@ -124,8 +124,6 @@ export function createControl(deps: {
         if (!sessionId) throw new Error("No session to resume yet");
         const kept = {
           kind: req.kind,
-          ...(req.tool ? { tool: req.tool } : {}),
-          ...(req.inputHash ? { inputHash: req.inputHash } : {}),
           ...(connectionName ? { connectionName } : {}),
           action,
         };

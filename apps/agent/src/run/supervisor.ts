@@ -98,6 +98,46 @@ function lockDown(path: string, mode: number) {
 }
 
 /**
+ * The runner's start, built field by field: the runner refuses a field it
+ * doesn't know, so one the agent module adds to a claim mustn't pass through.
+ */
+function runStartOf(claimed: Claimed): RunStart {
+  const { task, request: r, decision: d } = claimed;
+  return {
+    runId: claimed.run.id,
+    task: { id: task.id, title: task.title, notes: task.notes },
+    request: r
+      ? {
+          sender: r.sender,
+          body: r.body,
+          source: r.source,
+          sourceUrl: r.sourceUrl,
+        }
+      : null,
+    instructions: claimed.instructions,
+    connections: claimed.connections.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      scopeSummary: c.scopeSummary,
+    })),
+    grantedIds: [...claimed.connectionIds],
+    sessionId: claimed.sessionId,
+    decision: d
+      ? {
+          seq: d.seq,
+          approve: d.approve,
+          delivered: d.delivered,
+          ...(d.connectionId ? { connectionId: d.connectionId } : {}),
+          ...(d.tool ? { tool: d.tool } : {}),
+          ...(d.inputHash ? { inputHash: d.inputHash } : {}),
+        }
+      : null,
+    lastSeq: claimed.lastSeq,
+  };
+}
+
+/**
  * Supervises one claimed run: serves its socket, starts its container, and
  * reports to the API until the run finishes, fails, suspends, exits or is
  * stopped. The container gets no secret; the run token stays here.
@@ -293,17 +333,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
     };
   }
 
-  const start: RunStart = {
-    runId,
-    task: claimed.task,
-    request: claimed.request,
-    instructions: claimed.instructions,
-    connections: claimed.connections,
-    grantedIds: claimed.connectionIds,
-    sessionId: claimed.sessionId,
-    decision: claimed.decision,
-    lastSeq: claimed.lastSeq,
-  };
+  const start = runStartOf(claimed);
 
   server = createRunServer(
     {

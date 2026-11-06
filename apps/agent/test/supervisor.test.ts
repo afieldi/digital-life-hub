@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runStart } from "@dlh/agent-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HubError, type WorkerApi } from "../src/api";
 import type { Docker, RunSpec } from "../src/docker/docker";
@@ -339,6 +340,47 @@ describe("startRun", () => {
       instructions: "Be brief.",
     });
     expect(JSON.stringify(res.body)).not.toContain(RUN_TOKEN);
+  });
+
+  it("GET /run takes only the protocol's fields from the claim", async () => {
+    const decision = {
+      seq: 7,
+      approve: true,
+      delivered: true,
+      tool: "Bash",
+      inputHash: "h1",
+      // A field the agent module may add later.
+      decidedBy: "someone",
+    };
+    const t = setup({
+      claim: {
+        decision,
+        request: {
+          sender: "Ann",
+          body: "Please",
+          source: "slack",
+          sourceUrl: null,
+          extra: 1,
+        } as Claimed["request"],
+      },
+    });
+    await t.started();
+    const res = await t.call("GET", "/run");
+    // The runner's own check, which refuses extra fields.
+    const start = runStart.parse(res.body);
+    expect(start.decision).toEqual({
+      seq: 7,
+      approve: true,
+      delivered: true,
+      tool: "Bash",
+      inputHash: "h1",
+    });
+    expect(start.request).toEqual({
+      sender: "Ann",
+      body: "Please",
+      source: "slack",
+      sourceUrl: null,
+    });
   });
 
   it("events are numbered after lastSeq", async () => {

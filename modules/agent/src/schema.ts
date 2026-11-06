@@ -42,11 +42,18 @@ export const pending = z.object({
 });
 export type Pending = z.infer<typeof pending>;
 
-/** Your answer to `pending`; `delivered` is set by the `claim` that hands it over. */
+/**
+ * Your answer to `pending`; `delivered` is set by the `claim` that hands it
+ * over. It carries what was asked (`tool`, `inputHash`, `connectionId`), so
+ * the runner allows only that, never what its volume says was asked.
+ */
 export const decision = z.object({
   seq: z.number().int(),
   approve: z.boolean(),
   delivered: z.boolean(),
+  connectionId: z.uuid().optional(),
+  tool: z.string().optional(),
+  inputHash: z.string().optional(),
 });
 export type Decision = z.infer<typeof decision>;
 

@@ -424,10 +424,24 @@ function canonical(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
-/** sha256 of the tool's name and its input as canonical JSON. */
+/**
+ * The part of a tool's input that says what it does. A model re-issuing an
+ * approved Bash call words its `description` (and may pick a `timeout`)
+ * anew, so only the command and whether it runs in the background count.
+ */
+function whatItDoes(tool: string, input: unknown): unknown {
+  if (tool !== "Bash" || !input || typeof input !== "object") return input;
+  const { command, run_in_background } = input as Record<string, unknown>;
+  return {
+    command,
+    ...(run_in_background === true ? { run_in_background } : {}),
+  };
+}
+
+/** sha256 of the tool's name and what its input does, as canonical JSON. */
 export function inputHash(tool: string, input: unknown): string {
   return createHash("sha256")
-    .update(`${tool}\n${canonical(input)}`)
+    .update(`${tool}\n${canonical(whatItDoes(tool, input))}`)
     .digest("hex");
 }
 
