@@ -5,7 +5,13 @@ import { expect, test } from "vitest";
 import { requests } from "../../requests/src/db/schema";
 import requestsServer from "../../requests/src/server";
 import tasksServer from "../../tasks/src/server";
-import { agentRunEvents, agentRunMessages, agentRuns } from "../src/db/schema";
+import {
+  agentConnections,
+  agentRunEvents,
+  agentRunMessages,
+  agentRuns,
+  agentSettings,
+} from "../src/db/schema";
 import agentServer from "../src/server";
 import { setup } from "./setup";
 
@@ -299,7 +305,12 @@ test("claim returns the request body for a task given from a request", async () 
   });
   const out = await claimed(s);
   expect(out.run.id).toBe(given.result.run.id);
-  expect(out.request).toEqual({ sender: "Ana", body: "All of them" });
+  expect(out.request).toEqual({
+    sender: "Ana",
+    body: "All of them",
+    source: "ai",
+    sourceUrl: null,
+  });
   await s.close();
 });
 
@@ -426,5 +437,65 @@ test("claim is for the worker only", async () => {
   await expect(s.caller.agent.claim({})).rejects.toMatchObject({
     code: "FORBIDDEN",
   });
+  await s.close();
+});
+
+test("claim returns the instructions and every live connection", async () => {
+  const s = await setup();
+  await s.caller.agent.setSettings({ instructions: "Be brief." });
+  const [live, off] = await s.deps.db
+    .insert(agentConnections)
+    .values([
+      { name: "gh", type: "github", scopeSummary: "repo:dlh" },
+      { name: "old", type: "slack", scopeSummary: "" },
+    ])
+    .returning();
+  if (!live || !off) throw new Error("no connections");
+  await s.deps.db
+    .update(agentConnections)
+    .set({ disabledAt: NOW })
+    .where(eq(agentConnections.id, off.id));
+  await withRun(s, "queued");
+  const out = await claimed(s);
+  expect(out.instructions).toBe("Be brief.");
+  expect(out.connections).toEqual([
+    { id: live.id, name: "gh", type: "github", scopeSummary: "repo:dlh" },
+  ]);
+  // Not only the run's granted ones.
+  expect(out.connectionIds).toEqual([]);
+  await s.close();
+});
+
+test("claim returns the request's source and link", async () => {
+  const s = await setup();
+  const r = await s.file("Update the deps", {
+    source: "slack",
+    sourceUrl: "https://example.slack.com/archives/C1/p1",
+  });
+  await s.caller.agent.assignRequest({
+    id: r.id,
+    expectedUpdatedAt: r.updatedAt,
+  });
+  expect((await claimed(s)).request).toMatchObject({
+    source: "slack",
+    sourceUrl: "https://example.slack.com/archives/C1/p1",
+  });
+  await s.close();
+});
+
+test("claim records when the worker was last seen", async () => {
+  const s = await setup();
+  expect((await s.caller.agent.settings({})).workerSeenAt).toBeNull();
+  // Seen even when there is nothing to hand over.
+  await worker(s).agent.claim({});
+  expect((await s.caller.agent.settings({})).workerSeenAt).toBe(
+    NOW.toISOString(),
+  );
+  await s.deps.db.update(agentSettings).set({ workerSeenAt: null });
+  await withRun(s, "queued");
+  await claimed(s);
+  expect((await s.caller.agent.settings({})).workerSeenAt).toBe(
+    NOW.toISOString(),
+  );
   await s.close();
 });

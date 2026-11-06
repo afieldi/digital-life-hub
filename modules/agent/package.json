@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/manifest.tsx"
+    ".": "./src/manifest.tsx",
+    "./server": "./src/server.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",

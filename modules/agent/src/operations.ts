@@ -409,6 +409,13 @@ const heartbeat = describeOperation({
     inputTokens: z.number().int().min(0),
     outputTokens: z.number().int().min(0),
     costUsd: z.number().min(0),
+    /** The container image's digest; kept from the first heartbeat that sends it. */
+    image: z
+      .string()
+      .regex(/^sha256:[0-9a-f]{64}$/)
+      .optional(),
+    /** The agent session's id, so a restarted run can resume it. */
+    sessionId: z.string().min(1).optional(),
   }),
   subject: () => null,
   // Cancels the run when its task is done, deleted or taken back (resolving

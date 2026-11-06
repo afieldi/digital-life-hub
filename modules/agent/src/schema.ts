@@ -78,6 +78,12 @@ export const settings = z.object({
 });
 export type Settings = z.infer<typeof settings>;
 
+/** What `agent.settings` returns: the settings, and when the worker last claimed. */
+export const settingsView = settings.extend({
+  workerSeenAt: z.iso.datetime().nullable(),
+});
+export type SettingsView = z.infer<typeof settingsView>;
+
 export const runRow = z.object({
   id: z.uuid(),
   taskId: z.uuid(),

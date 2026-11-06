@@ -146,6 +146,8 @@ export const agentSettings = pgTable(
       .default("10"),
     instructions: text("instructions").notNull().default(""),
     timeZone: text("time_zone").notNull().default("UTC"),
+    /** When the host's worker last claimed; the screen shows whether it is up. */
+    workerSeenAt: at("worker_seen_at"),
   },
   (t) => [check("agent_settings_single_row_check", sql`${t.id} = 1`)],
 );

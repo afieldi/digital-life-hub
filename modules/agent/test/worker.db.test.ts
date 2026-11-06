@@ -819,3 +819,41 @@ test("worker operations are for the worker only", async () => {
   ).rejects.toMatchObject({ code: "FORBIDDEN" });
   await s.close();
 });
+
+test("heartbeat stores the image digest once", async () => {
+  const s = await setup();
+  const { run } = await withRun(s);
+  const first = `sha256:${"a".repeat(64)}`;
+  await worker(s).agent.heartbeat({ runId: run.id, ...beat, image: first });
+  expect((await runById(s, run.id))?.image).toBe(first);
+  await worker(s).agent.heartbeat({
+    runId: run.id,
+    ...beat,
+    image: `sha256:${"b".repeat(64)}`,
+  });
+  await worker(s).agent.heartbeat({ runId: run.id, ...beat });
+  expect((await runById(s, run.id))?.image).toBe(first);
+  await s.close();
+});
+
+test("heartbeat stores the session id, and claim returns it after a restart", async () => {
+  const s = await setup();
+  const { run } = await withRun(s);
+  await worker(s).agent.heartbeat({
+    runId: run.id,
+    ...beat,
+    sessionId: "sess-9",
+  });
+  expect((await runById(s, run.id))?.sessionId).toBe("sess-9");
+  // Heartbeats stopped: the sweep requeues it and the next claim resumes.
+  await s.deps.db
+    .update(agentRuns)
+    .set({ heartbeatAt: minutesAgo(10) })
+    .where(eq(agentRuns.id, run.id));
+  const out = await worker(s).agent.claim({});
+  expect(out.result).toMatchObject({
+    run: { id: run.id },
+    sessionId: "sess-9",
+  });
+  await s.close();
+});
