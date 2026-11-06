@@ -431,7 +431,8 @@ describe("startRun", () => {
     expect(t.agent.heartbeat.mutate).toHaveBeenCalledTimes(2);
     expect(end.reason).toBe("worker_error");
     expect(t.docker.stop).toHaveBeenCalled();
-    expect(t.store.markEnded).toHaveBeenCalled();
+    // The stale sweep requeues it: its volume stays.
+    expect(t.store.markEnded).not.toHaveBeenCalled();
     expect(t.agent.fail.mutate).not.toHaveBeenCalled();
   });
 
@@ -634,6 +635,7 @@ describe("startRun", () => {
     expect(res.status).toBe(200);
     const end = await t.handle.done;
     expect(end.reason).toBe("finished");
+    expect(t.store.markEnded).toHaveBeenCalledWith(RUN, expect.any(Date));
     const appendOrder =
       t.agent.appendEvents.mutate.mock.invocationCallOrder[0] ?? 0;
     const finishOrder = t.agent.finish.mutate.mock.invocationCallOrder[0] ?? 0;
@@ -676,6 +678,8 @@ describe("startRun", () => {
     expect(res).toEqual({ status: 200, body: { seq: 9 } });
     const end = await t.handle.done;
     expect(end.reason).toBe("suspended");
+    // Still live in the hub: its volume isn't up for the 7-day sweep.
+    expect(t.store.markEnded).not.toHaveBeenCalled();
     expect(t.agent.suspend.mutate).toHaveBeenCalledWith({
       runId: RUN,
       seq: 9,
@@ -712,6 +716,7 @@ describe("startRun", () => {
     expect(end.reason).toBe("shutdown");
     expect(t.docker.stop).toHaveBeenCalled();
     expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+    expect(t.store.markEnded).not.toHaveBeenCalled();
 
     const beat = setup();
     await beat.started();

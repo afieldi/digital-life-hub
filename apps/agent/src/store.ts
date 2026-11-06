@@ -44,8 +44,9 @@ export type Store = {
   /** Metadata only: never the secrets. */
   listConnections(): ConnectionMeta[];
   markStarted(runId: string, volume: string): void;
+  /** The run ended for good (finished, failed, cancelled); a later start clears it. */
   markEnded(runId: string, at: Date): void;
-  /** Runs that ended before `at`, whose volumes can be removed. */
+  /** Runs that ended for good before `at`, whose volumes can be removed. */
   endedBefore(at: Date): { runId: string; volume: string }[];
   forgetRun(runId: string): void;
   close(): void;

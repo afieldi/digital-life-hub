@@ -52,6 +52,14 @@ export type SupervisorDeps = {
   log?: (line: string) => void;
 };
 
+/**
+ * How a run ends for good in the hub: finished, failed, or stopped by its
+ * heartbeat (cancelled or capped). Its volume is kept 7 days from then; a run
+ * that ends any other way (suspended, shutdown, a worker error) is still live
+ * and keeps it.
+ */
+const TERMINAL = new Set(["finished", "failed", "stopped"]);
+
 const HEARTBEAT_MS = 30_000;
 const MESSAGES_MS = 5_000;
 const FLUSH_MS = 2_000;
@@ -159,7 +167,7 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
         });
       }
       rmSync(socketPath, { force: true });
-      deps.store.markEnded(runId, now());
+      if (TERMINAL.has(reason)) deps.store.markEnded(runId, now());
     } catch (e) {
       log(`end: ${firstLine(e)}`);
     } finally {

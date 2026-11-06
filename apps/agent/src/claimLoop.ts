@@ -11,7 +11,7 @@ const CLAIM_EVERY_MS = 30_000;
 const SWEEP_EVERY_MS = 60 * 60_000;
 /** How long a run claimed again waits for its last supervisor to end. */
 const PREVIOUS_END_MS = 60_000;
-/** A run's volume is kept this long after the run ends. */
+/** A run's volume is kept this long after the run ends for good. */
 const VOLUME_KEPT_MS = 7 * 24 * 60 * 60_000;
 
 export type ClaimLoopDeps = Omit<SupervisorDeps, "store" | "log" | "api"> & {
@@ -31,7 +31,8 @@ const firstLine = (e: unknown) =>
 /**
  * Drives the worker: removes leftover run containers, claims runs on each
  * `/changes` event and every 30 s (one pass at a time), and hourly removes the
- * volumes of runs that ended more than 7 days ago.
+ * volumes of runs that ended for good (finished, failed, cancelled) more than
+ * 7 days ago.
  */
 export function createClaimLoop(deps: ClaimLoopDeps) {
   const timers: Timers = deps.timers ?? realTimers;
@@ -125,10 +126,14 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
     )) {
       try {
         await deps.docker.removeVolume(volume);
-        deps.store.forgetRun(runId);
       } catch (e) {
-        log(`remove volume ${volume}: ${firstLine(e)}`);
+        // Already gone (removed by hand): forget it all the same.
+        if (!/no such volume/i.test(firstLine(e))) {
+          log(`remove volume ${volume}: ${firstLine(e)}`);
+          continue;
+        }
       }
+      deps.store.forgetRun(runId);
     }
   }
 

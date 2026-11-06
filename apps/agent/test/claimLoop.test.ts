@@ -260,6 +260,11 @@ describe("claim loop", () => {
       ],
       removeVolume: async (name) => {
         if (name === "dlh-ws-b") throw new Error("in use\nmore");
+        if (name === "dlh-ws-c") {
+          throw new Error(
+            "Error response from daemon: get dlh-ws-c: no such volume",
+          );
+        }
       },
     });
     await s.loop.start();
