@@ -148,6 +148,8 @@ export const aiLogEntry = z.object({
   actionId: z.string(),
   kind: aiKind,
   interpretedBy: z.string().nullable(),
+  /** "slack" for the bot's server-side requests, "app" otherwise. */
+  origin: z.enum(["app", "slack"]),
   provider: aiProviderId,
   model: z.string().nullable(),
   status: aiRequestStatus,

@@ -1,7 +1,9 @@
-# The hub on one VPS: Postgres, the API and the agent worker. Run from the repo
+# The hub on one VPS: Postgres, the API, the agent worker and the Slack bot. Run from the repo
 # root: `docker compose -f deploy/vps/docker-compose.yml up -d --build`.
 # Settings come from deploy/vps/.env (see README.md and .env.example). Each
-# service gets only its own: the API never sees the Gateway key or secrets key.
+# service gets only its own: the API never sees the secrets key, and its Gateway
+# key (API_AI_GATEWAY_API_KEY, for Jev and coworker answers) is separate from the
+# agent's, so the two can have separate budgets.
 name: dlh
 
 services:
@@ -36,6 +38,8 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in deploy/vps/.env}
       ALLOWED_EMAIL: ${ALLOWED_EMAIL:?set ALLOWED_EMAIL in deploy/vps/.env}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AI_GATEWAY_API_KEY: ${API_AI_GATEWAY_API_KEY:-}
+      AI_GATEWAY_DEFAULT_MODEL: ${AI_GATEWAY_DEFAULT_MODEL:-}
     # Loopback only: put a TLS reverse proxy in front for outside access.
     ports:
       - "127.0.0.1:8787:8787"
@@ -65,6 +69,27 @@ services:
       # The same path inside and out: the worker makes <dir>/runs/<id> and the
       # daemon bind-mounts it into the run container by that host path.
       - /var/lib/dlh-agent:/var/lib/dlh-agent
+    networks: [internal]
+
+  slack:
+    # Opt-in: set COMPOSE_PROFILES=slack in deploy/vps/.env (see README), so the
+    # rest of the stack starts without any Slack settings.
+    profiles: ["slack"]
+    build:
+      context: ../..
+      dockerfile: apps/slack/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    # No volumes and no published port: it dials Slack (Socket Mode) and the API.
+    environment:
+      HUB_API_URL: http://api:8787
+      # Empty until step 6 of "The Slack bot" in the README. The bot names any
+      # missing token or this one and exits at start.
+      HUB_SLACK_TOKEN: ${HUB_SLACK_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_USER_TOKEN: ${SLACK_USER_TOKEN:-}
     networks: [internal]
 
 volumes:

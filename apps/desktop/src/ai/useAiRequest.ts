@@ -5,6 +5,7 @@ import {
   type AiResult,
   aiErrorData,
   deviceTimeZone,
+  isCliProvider,
 } from "@dlh/core";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -116,7 +117,7 @@ export function startAiRequest(
         const { requestId } = res;
         const job = res.run;
         provider = job.provider;
-        if (job.provider === "openrouter") throw new Error("not a CLI run");
+        if (!isCliProvider(job.provider)) throw new Error("not a CLI run");
         const cli = job.provider;
         // Ends the server request: `failed` with `error`, else `cancelled`.
         const abandon = (error?: AiErrorData) =>

@@ -13,6 +13,7 @@ export {
   complete,
   discard,
   prepare,
+  serverProvider,
   undo,
 } from "./ai/gateway";
 export { listLog } from "./ai/log";
@@ -20,8 +21,10 @@ export { operationAiRunner } from "./ai/operation-runner";
 export {
   type AiCompleteRequest,
   type AiCompleteResult,
+  type AiDecisionProvider,
   type AiProvider,
   createOpenRouter,
+  createVercelGateway,
   unwrapCliOutput,
 } from "./ai/providers";
 export {
@@ -33,12 +36,15 @@ export {
   suggestOptions,
 } from "./ai/runners";
 export { type ScopedWriter, scopedWriter } from "./ai/scoped";
+export { completeOnServer, decideOnServer } from "./ai/server-complete";
 export { getSettings } from "./ai/settings";
 export {
   findServiceToken,
   mintRunToken,
+  mintSlackToken,
   mintWorkerToken,
   revokeRunTokens,
+  revokeSlackToken,
   revokeWorkerToken,
 } from "./auth/serviceTokens";
 export { hashToken, newToken } from "./auth/tokens";

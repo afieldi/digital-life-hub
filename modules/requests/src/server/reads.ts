@@ -28,6 +28,7 @@ type RawRow = {
   actions: unknown;
   resolved_at: string | Date | null;
   outcome: string | null;
+  appended_ids: string[];
 };
 
 const iso = (v: string | Date) => new Date(v).toISOString();
@@ -37,7 +38,7 @@ function rowsQuery(where: SQL, tail: SQL): SQL {
   return sql`
     select i.id, i.type, i.title, i.archived_at, i.updated_at,
       r.body, r.from_name, r.source, r.source_handle, r.source_url,
-      r.external_id, r.received_at, r.actions, r.resolved_at, r.outcome
+      r.external_id, r.received_at, r.actions, r.resolved_at, r.outcome, r.appended_ids
     from requests r
     join items i on i.id = r.item_id and i.deleted_at is null
     where ${where}
@@ -67,6 +68,7 @@ function toRow(r: RawRow): RequestRow {
       actions: r.actions,
       resolvedAt: r.resolved_at ? new Date(r.resolved_at) : null,
       outcome: r.outcome,
+      appendedIds: r.appended_ids,
     },
   );
 }
@@ -163,5 +165,34 @@ export const get = implementOperation(requestOps.get, {
         deleted: link.taskDeleted,
       },
     };
+  },
+});
+
+export const fromSender = implementOperation(requestOps.fromSender, {
+  async run(deps, input) {
+    const open = input.openOnly ? sql`and r.resolved_at is null` : sql``;
+    const since = input.since
+      ? sql`and r.received_at >= ${input.since.toISOString()}::timestamptz`
+      : sql``;
+    const raw = await deps.db.execute<RawRow>(
+      rowsQuery(
+        sql`r.source = 'slack' and r.source_handle = ${input.asker.slackUserId} ${open} ${since}`,
+        sql`order by r.received_at desc, r.item_id`,
+      ),
+    );
+    return raw.map((rawRow) => {
+      const r = toRow(rawRow);
+      return {
+        id: r.id,
+        title: r.title,
+        body: r.body,
+        sourceUrl: r.sourceUrl,
+        externalId: r.externalId,
+        receivedAt: r.receivedAt,
+        outcome: r.outcome,
+        resolvedAt: r.resolvedAt,
+        appendedIds: rawRow.appended_ids,
+      };
+    });
   },
 });

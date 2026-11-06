@@ -53,7 +53,58 @@ async function loadPhrasings(files: string[]): Promise<Phrasing[]> {
   return all;
 }
 
+/** `--suite=slack-coworker`: the Slack bot's Jev interpreter, live through the Gateway. */
+async function runSlackCoworkerSuite(): Promise<void> {
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: a secret, not a turbo input
+  const apiKey = process.env.AI_GATEWAY_API_KEY;
+  if (!apiKey) {
+    console.error("The slack-coworker suite needs AI_GATEWAY_API_KEY.");
+    process.exit(2);
+  }
+  const { createVercelGateway } = await import("../packages/server/src/index");
+  const { freshTestDb, testDeps } = await import(
+    "../packages/server/src/testing"
+  );
+  const { DEFAULT_INTERPRETER } = await import("../modules/slack/src/schema");
+  const { coworkerPhrasings } = await import(
+    "../modules/slack/test/coworker-phrasings"
+  );
+  const { runCoworkerSuite } = await import(
+    "../modules/slack/test/coworker-suite"
+  );
+  const model =
+    process.argv
+      .find((a) => a.startsWith("--model="))
+      ?.slice("--model=".length) ?? DEFAULT_INTERPRETER;
+  const { db, close } = await freshTestDb();
+  try {
+    const deps = testDeps(db, {
+      ai: { providers: { vercel: createVercelGateway({ apiKey }) } },
+    });
+    const { accuracy, misses } = await runCoworkerSuite(
+      deps,
+      coworkerPhrasings,
+      model,
+    );
+    console.log(
+      `Suite: slack-coworker; model ${model}; ${coworkerPhrasings.length} phrasings`,
+    );
+    for (const m of misses) {
+      console.log(
+        `  expected ${m.phrasing.expected}, got ${m.got}: "${m.phrasing.text}"`,
+      );
+    }
+    console.log(`Accuracy: ${(accuracy * 100).toFixed(1)}%`);
+    if (accuracy < PASS_THRESHOLD) process.exitCode = 1;
+  } finally {
+    await close();
+  }
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes("--suite=slack-coworker")) {
+    return runSlackCoworkerSuite();
+  }
   const arg = process.argv.find((a) => a.startsWith("--interpreter="));
   const which = interpreterId.safeParse(
     arg?.slice("--interpreter=".length) ?? "keywords",

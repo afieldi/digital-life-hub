@@ -40,7 +40,7 @@ export function aiErrorMessage(
       if (extra.reason === "signed_out") {
         return `${name} isn't signed in. Run \`${AI_PROVIDERS[provider].program ?? provider}\` once in a terminal to sign in.`;
       }
-      return "OpenRouter isn't set up on the server.";
+      return `${name} isn't set up on the server.`;
     case "provider_error":
       return `${name} returned an error: ${extra.firstLine ?? "unknown error"}.`;
     case "stale":

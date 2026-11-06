@@ -127,6 +127,44 @@ test("start-up switches are read once, here", () => {
   ).toBe(false);
 });
 
+test("config reads AI_GATEWAY_API_KEY and AI_GATEWAY_DEFAULT_MODEL, trimmed, empty is none", () => {
+  expect(loadConfig(base).aiGateway).toEqual({
+    apiKey: null,
+    defaultModel: null,
+  });
+  expect(
+    loadConfig({
+      ...base,
+      AI_GATEWAY_API_KEY: "  ",
+      AI_GATEWAY_DEFAULT_MODEL: "",
+    }).aiGateway,
+  ).toEqual({ apiKey: null, defaultModel: null });
+  expect(
+    loadConfig({
+      ...base,
+      AI_GATEWAY_API_KEY: " vk ",
+      AI_GATEWAY_DEFAULT_MODEL: " openai/gpt-5 ",
+    }).aiGateway,
+  ).toEqual({ apiKey: "vk", defaultModel: "openai/gpt-5" });
+});
+
+test("AI_GATEWAY_API_KEY without AI_GATEWAY_DEFAULT_MODEL is a config error naming the model", () => {
+  expect(() => loadConfig({ ...base, AI_GATEWAY_API_KEY: "vk" })).toThrow(
+    /AI_GATEWAY_DEFAULT_MODEL/,
+  );
+  expect(() =>
+    loadConfig({
+      ...base,
+      AI_GATEWAY_API_KEY: "vk",
+      AI_GATEWAY_DEFAULT_MODEL: "  ",
+    }),
+  ).toThrow(/AI_GATEWAY_DEFAULT_MODEL/);
+  // A model alone is harmless.
+  expect(
+    loadConfig({ ...base, AI_GATEWAY_DEFAULT_MODEL: "openai/gpt-5" }).aiGateway,
+  ).toEqual({ apiKey: null, defaultModel: "openai/gpt-5" });
+});
+
 test("a CLI loads only the sections it needs", () => {
   // No Google variables: the database section alone is fine.
   expect(must(databaseSection({})).url).toMatch(/^postgres:\/\//);

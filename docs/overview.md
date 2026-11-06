@@ -52,8 +52,7 @@ Eight modules cover what the designs show, and four more bring in work: a review
 | Slack intake | Find what involves you | Watches DMs, mentions and chosen channels; files requests through Queue; rules first, AI for unclear cases | Queue, server-side AI |
 | Notifications | Tell you eventually | Immediate notices for what matters, a digest for the rest; desktop while the app is open, a Slack DM when it isn't | Queue, Slack intake |
 | Agent hub | AI that does whole tasks on its own | Picks up tasks marked for the agent and runs them to the end, for minutes or hours, each run in its own container; full write access inside the container; asks through the queue only for the few actions that leave it unchecked | Queue, Tasks, its own service |
-| Slack bot | Talk to the hub from Slack | You ask it about tasks and the queue and capture through it; others can leave you requests and get an acknowledgement; a short allowlist of things it does alone, and anything sent as you is drafted into the queue for approval | Queue, AI gateway |
-
+| Slack bot | Talk to the hub from Slack | You ask, capture and hand work to the agent; others leave requests, ask what involves them and ask for reviews, and it answers them alone from what involves them; anything unsure escalates to the queue, and anything sent as you is a draft you send | Queue, AI gateway, Agent hub, GitHub |
 Events, Saved and AI have no full screen yet, so their deep dives start with design work.
 
 ## Shared platform
@@ -83,7 +82,7 @@ We build one module at a time. Each one goes through the same steps, and nothing
 
 This doc stays the map. Each deep dive links back here, and the Modules table gets updated when scope changes.
 
-**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (implemented; Done check pending) · [Agent Hub](specs/agent-hub.md) (agreed) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
+**Deep dives:** [Core + Shell](specs/core-and-shell.md) (draft) · [Items, Links, Search](specs/items-links-search.md) (draft) · [AI Gateway](specs/ai-gateway.md) (draft) · [Tasks](specs/tasks.md) (implemented; Done check pending) · [Queue](specs/requests.md) (implemented; Done check pending) · [Agent Hub](specs/agent-hub.md) (agreed) · [Slack Bot](specs/slack-bot.md) (draft) · [Command Bar — Natural-language Capture](specs/command-bar-capture.md) (deferred, follow-up after Core)
 
 ## Suggested build order
 
@@ -108,7 +107,7 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 | --- | --- | --- |
 | Platform | Desktop app | macOS and Windows. React UI inside a Tauri shell |
 | Data | Server-first | Hosted database behind an API; the desktop app is a client of it |
-| Users | Just you | One account. Others reach the hub only through the Slack bot, and may only leave requests and get a reply; they never read your data |
+| Users | Just you | One account. Others reach the hub only through the Slack bot. They may leave requests and get answers only about what involves them (asker-scoped lookups); they never read the rest of your data |
 | Stack | TypeScript + React | TypeScript on both sides: React UI, Node API |
 | Look | Dusk only | Glass panels over a background, always. Time of day stays; backgrounds become swappable scenes within that look |
 | Calendar | Two-way Google Calendar sync | Events needs Google sign-in and a sync job on the server |
@@ -124,7 +123,7 @@ The hub is a single-user desktop app in TypeScript and React, backed by a hosted
 **Still open**
 
 - [x] Hosting: one always-on VPS for Postgres, the API and the agent (decided in the [Agent Hub](specs/agent-hub.md) spec). Slack intake's always-on process runs there too (Socket Mode avoids a public URL).
-- [ ] Slack at work: admin approval for an app that reads channels and posts as you, and whether work messages may go to a third-party model through OpenRouter.
+- [ ] Slack at work: admin approval for the bot's app (scopes in the [Slack Bot](specs/slack-bot.md) spec), likely. Work messages may go to a model through Vercel AI Gateway (decided).
 - [ ] Server-side AI cost: sorting Slack messages and agent runs happen with the app closed, so they bill through Vercel AI Gateway, not a CLI subscription. Set a budget on the key.
 - [ ] Saved: what it holds. Decide in its deep dive.
 

@@ -1,0 +1,2 @@
+ALTER TABLE "ai_requests" ADD COLUMN "origin" text DEFAULT 'app' NOT NULL;--> statement-breakpoint
+ALTER TABLE "ai_requests" ADD CONSTRAINT "ai_requests_origin_check" CHECK ("ai_requests"."origin" in ('app', 'slack'));

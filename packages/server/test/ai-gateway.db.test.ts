@@ -125,7 +125,7 @@ test("ask returns the answer and writes no item", async () => {
 });
 
 test("suggest stores three options and apply renames once", async () => {
-  const s = await setup({ ai: { defaultModel: null } });
+  const s = await setup({ ai: { defaultModels: {} } });
   await s.db.insert(aiSettings).values({
     defaultProvider: "openrouter",
     openrouterModel: "settings-model",
@@ -689,7 +689,7 @@ test("OpenRouter without a provider or a model is provider_unavailable", async (
   expect(e.message).toBe("OpenRouter isn't set up on the server.");
   expect((await rowOf(s)).errorCode).toBe("provider_unavailable");
 
-  const t = await setup({ ai: { defaultModel: null } });
+  const t = await setup({ ai: { defaultModels: {} } });
   await expectAiError(
     prepare(t.deps, input(t.item.id, "answer", "ask")),
     "provider_unavailable",
@@ -802,5 +802,65 @@ test("a runner that writes outside its effects rolls back and ends failed", asyn
 test("FakeProvider is the default OpenRouter provider in testDeps", async () => {
   const s = await setup();
   expect(s.deps.ai.providers.openrouter).toBeInstanceOf(FakeProvider);
+  await s.close();
+});
+
+const ANSWER = JSON.stringify({ answer: "Two things left", used: [] });
+
+test("a Vercel-only server answers a request whose settings say openrouter, through vercel, with the Gateway default model", async () => {
+  const vercel = new FakeProvider("vercel");
+  const s = await setup({
+    ai: {
+      providers: { vercel },
+      defaultModels: { vercel: "gateway-model", openrouter: "or-model" },
+    },
+  });
+  await s.db.insert(aiSettings).values({
+    defaultProvider: "openrouter",
+    openrouterModel: "settings-model",
+  });
+  vercel.queue(ANSWER);
+  const res = await prepare(s.deps, input(s.item.id, "answer", "ask"));
+  expect(res.status).toBe("answered");
+  const row = await rowOf(s, res.requestId);
+  expect(row.provider).toBe("vercel");
+  expect(row.model).toBe("gateway-model");
+  expect(vercel.calls[0]?.model).toBe("gateway-model");
+  await s.close();
+});
+
+test("with both keys, server requests use vercel", async () => {
+  const vercel = new FakeProvider("vercel");
+  const openrouter = new FakeProvider("openrouter");
+  const s = await setup({ ai: { providers: { openrouter, vercel } } });
+  vercel.queue(ANSWER);
+  const res = await prepare(s.deps, input(s.item.id, "answer", "ask"));
+  expect((await rowOf(s, res.requestId)).provider).toBe("vercel");
+  expect(openrouter.calls).toHaveLength(0);
+  expect(vercel.calls).toHaveLength(1);
+  await s.close();
+});
+
+test("openrouter_model applies only to openrouter", async () => {
+  const s = await setup({
+    ai: {
+      providers: { openrouter: new FakeProvider("openrouter") },
+      defaultModels: { openrouter: "or-default", vercel: "gateway-model" },
+    },
+  });
+  await s.db.insert(aiSettings).values({
+    defaultProvider: "openrouter",
+    openrouterModel: "settings-model",
+  });
+  const or = s.deps.ai.providers.openrouter as FakeProvider;
+  or.queue(ANSWER);
+  const a = await prepare(s.deps, input(s.item.id, "answer", "ask"));
+  expect((await rowOf(s, a.requestId)).model).toBe("settings-model");
+
+  const vercel = new FakeProvider("vercel");
+  s.deps.ai.providers.vercel = vercel;
+  vercel.queue(ANSWER);
+  const b = await prepare(s.deps, input(s.item.id, "answer", "ask"));
+  expect((await rowOf(s, b.requestId)).model).toBe("gateway-model");
   await s.close();
 });

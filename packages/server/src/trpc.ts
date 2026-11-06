@@ -40,12 +40,13 @@ export interface ApiDeps {}
 export type Session = { id: string; email: string };
 
 /**
- * Who a request comes from: you (a session), the agent host's worker, or one
- * agent run, each by its bearer token.
+ * Who a request comes from: you (a session), the agent host's worker, the
+ * Slack bot, or one agent run, each by its bearer token.
  */
 export type Principal =
   | { kind: "user"; session: Session }
   | { kind: "worker"; tokenId: string }
+  | { kind: "slack"; tokenId: string }
   | { kind: "run"; tokenId: string; runId: string };
 
 /** `session` is set only for you; `principal` for any signed-in caller. */

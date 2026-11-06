@@ -50,6 +50,8 @@ export {
   CLI_PROVIDER_IDS,
   capFor,
   isCliProvider,
+  isServerProvider,
+  type ServerProviderId,
 } from "./ai/kinds";
 export type {
   Item,
@@ -73,6 +75,7 @@ export type {
   ModuleDescription,
   ModuleManifest,
   PaletteAction,
+  SettingsSection,
 } from "./module";
 export {
   defineModule,
@@ -91,6 +94,7 @@ export type {
 } from "./operations/describe";
 export {
   accessOf,
+  askerInput,
   describeOperation,
   ITEM_KEYS,
   itemOnScreen,

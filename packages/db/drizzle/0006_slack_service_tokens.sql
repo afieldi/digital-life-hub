@@ -1,0 +1,2 @@
+ALTER TABLE "service_tokens" DROP CONSTRAINT "service_tokens_kind_check";--> statement-breakpoint
+ALTER TABLE "service_tokens" ADD CONSTRAINT "service_tokens_kind_check" CHECK ("service_tokens"."kind" in ('worker', 'slack', 'run'));

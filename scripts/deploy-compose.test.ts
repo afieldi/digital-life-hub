@@ -14,6 +14,9 @@ type Service = {
   volumes?: string[];
   networks?: string[];
   stop_grace_period?: string;
+  restart?: string;
+  depends_on?: string[];
+  profiles?: string[];
 };
 type Compose = {
   services: Record<string, Service>;
@@ -26,11 +29,12 @@ const compose = parse(
 const SOCKET = "/var/run/docker.sock";
 
 describe("the VPS compose file", () => {
-  it("runs db, api and agent, and only agent mounts the Docker socket", () => {
+  it("runs db, api, agent and slack, and only agent mounts the Docker socket", () => {
     expect(Object.keys(compose.services).sort()).toEqual([
       "agent",
       "api",
       "db",
+      "slack",
     ]);
     expect(compose.services.db?.image).toBe("postgres:18");
     expect(compose.services.api?.build?.dockerfile).toBe("apps/api/Dockerfile");
@@ -69,5 +73,37 @@ describe("the VPS compose file", () => {
       name: "dlh-runs",
     });
     expect(compose.networks.internal?.external).toBeUndefined();
+  });
+
+  it("the api has its own Gateway key and model, separate from the agent's", () => {
+    const api = compose.services.api?.environment ?? {};
+    expect(api.AI_GATEWAY_API_KEY).toBe("${API_AI_GATEWAY_API_KEY:-}");
+    expect(api.AI_GATEWAY_DEFAULT_MODEL).toBe("${AI_GATEWAY_DEFAULT_MODEL:-}");
+    // Two keys, so each can carry its own budget.
+    expect(compose.services.agent?.environment?.AI_GATEWAY_API_KEY).toBe(
+      "${AI_GATEWAY_API_KEY:?set AI_GATEWAY_API_KEY in deploy/vps/.env}",
+    );
+  });
+
+  it("the slack service has no volumes, is on internal only, and is an opt-in profile that needs no Slack settings to validate", () => {
+    const slack = compose.services.slack;
+    expect(slack?.build?.dockerfile).toBe("apps/slack/Dockerfile");
+    expect(slack?.volumes).toBeUndefined();
+    expect(slack?.networks).toEqual(["internal"]);
+    expect(slack?.depends_on).toEqual(["api"]);
+    expect(slack?.restart).toBe("unless-stopped");
+    // Opt-in, so the rest of the stack starts with no Slack settings at all.
+    expect(slack?.profiles).toEqual(["slack"]);
+    const env = slack?.environment ?? {};
+    expect(env.HUB_API_URL).toBe("http://api:8787");
+    // Empty is allowed: the runbook starts the API before the token exists.
+    expect(env.HUB_SLACK_TOKEN).toBe("${HUB_SLACK_TOKEN:-}");
+    for (const name of [
+      "SLACK_APP_TOKEN",
+      "SLACK_BOT_TOKEN",
+      "SLACK_USER_TOKEN",
+    ]) {
+      expect(env[name], name).toBe(`\${${name}:-}`);
+    }
   });
 });

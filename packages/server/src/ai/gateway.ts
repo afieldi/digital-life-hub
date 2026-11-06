@@ -8,7 +8,9 @@ import {
   aiProviderId,
   type CliProviderId,
   isCliProvider,
+  isServerProvider,
   kindAllowed,
+  type ServerProviderId,
 } from "@dlh/core";
 import { aiRequests } from "@dlh/db";
 import { z } from "zod";
@@ -41,9 +43,16 @@ export { apply, cancel, discard, undo } from "./followups";
 
 export type AiDeps = {
   runners: Map<string, AiRunner>;
-  providers: Partial<Record<"openrouter", AiProvider>>;
-  defaultModel: string | null;
+  providers: Partial<Record<ServerProviderId, AiProvider>>;
+  /** Each server provider's own default model (its env var). */
+  defaultModels: Partial<Record<ServerProviderId, string>>;
 };
+
+/** The server provider requests use: the Gateway when its key is set, else OpenRouter. */
+export function serverProvider(deps: { ai: AiDeps }): ServerProviderId | null {
+  const { openrouter, vercel } = deps.ai.providers;
+  return vercel ? "vercel" : openrouter ? "openrouter" : null;
+}
 
 /** At most this many options are shown, after titles are resolved. */
 const MAX_OPTIONS = 3;
@@ -138,7 +147,7 @@ async function itemOrNotFound(
 }
 
 /**
- * Validates the request, records it as `pending` and either calls OpenRouter
+ * Validates the request, records it as `pending` and either calls the server provider
  * and finishes, or hands a CLI run back to the app. The typed text, prompt and
  * context are sent to the model only, never stored.
  */
@@ -148,7 +157,13 @@ export async function prepare(
 ): Promise<AiResult> {
   const runner = runnerFor(deps, input.actionId);
   const settings = await getSettings(deps.db);
-  const provider = input.provider ?? settings.defaultProvider;
+  // "openrouter" (the stored default, or asked for) means "a server provider":
+  // the Gateway when it is set up. A request for "vercel" itself stays as is.
+  const requested = input.provider ?? settings.defaultProvider;
+  const provider =
+    requested === "openrouter"
+      ? (serverProvider(deps) ?? requested)
+      : requested;
   const itemId = input.itemId ?? null;
   const item = itemId ? await itemOrNotFound(deps, itemId, provider) : null;
   if (!applies(runner.action, item?.type ?? null)) {
@@ -163,10 +178,11 @@ export async function prepare(
   if (kind !== "ask" && !runner.apply) {
     throw badRequest(`AI action "${runner.action.id}" has no apply`);
   }
-  const model =
-    provider === "openrouter"
-      ? (settings.openrouterModel ?? deps.ai.defaultModel)
-      : null;
+  const model = !isServerProvider(provider)
+    ? null
+    : provider === "openrouter"
+      ? (settings.openrouterModel ?? deps.ai.defaultModels.openrouter ?? null)
+      : (deps.ai.defaultModels[provider] ?? null);
   const ctx = await runner.context(deps, itemId, {
     timeZone: input.timeZone,
   });
@@ -194,7 +210,7 @@ export async function prepare(
     prompt: `${input.timeZone ? `${todayLine(deps.now(), input.timeZone)}\n` : ""}<instruction>\n${input.text}\n</instruction>\n<item>\n${ctx.text}\n</item>`,
     schema: z.toJSONSchema(schema) as object,
   };
-  if (provider !== "openrouter") {
+  if (!isServerProvider(provider)) {
     // The Claude CLI validates --json-schema against draft-07 and rejects
     // zod's draft 2020-12 `$schema` URI; the schema itself is valid in both.
     const { $schema: _, ...cliSchema } = call.schema as Record<string, unknown>;
@@ -205,15 +221,15 @@ export async function prepare(
     };
   }
 
-  const openrouter = deps.ai.providers.openrouter;
-  if (!openrouter || !model) {
+  const server = deps.ai.providers[provider];
+  if (!server || !model) {
     return fail(
       deps,
       row.id,
       "pending",
       new AiError(
         "provider_unavailable",
-        aiErrorMessage("provider_unavailable", "openrouter", {
+        aiErrorMessage("provider_unavailable", provider, {
           reason: "no_key",
         }),
       ),
@@ -222,7 +238,7 @@ export async function prepare(
   }
   let result: Awaited<ReturnType<AiProvider["complete"]>>;
   try {
-    result = await openrouter.complete({
+    result = await server.complete({
       ...call,
       model,
       signal: new AbortController().signal,
@@ -233,7 +249,7 @@ export async function prepare(
         ? e
         : new AiError(
             "provider_error",
-            aiErrorMessage("provider_error", "openrouter", {
+            aiErrorMessage("provider_error", provider, {
               firstLine: firstLine(e instanceof Error ? e.message : String(e)),
             }),
           );

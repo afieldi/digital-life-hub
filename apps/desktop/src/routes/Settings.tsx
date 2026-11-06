@@ -1,4 +1,5 @@
 import { type SceneVariant, Tab, TabList, TabPanel, Tabs } from "@dlh/ui";
+import { useRegistry } from "../modules";
 import { useSceneOverride } from "../shell/sceneOverride";
 import { Ai } from "./settings/Ai";
 import { Devices } from "./settings/Devices";
@@ -22,6 +23,7 @@ const choices: { id: Choice; label: string; description: string }[] = [
 
 export function Settings() {
   const { override, setOverride } = useSceneOverride();
+  const { settingsSections } = useRegistry();
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-8 pt-20">
       <h1 className="font-serif text-[40px] leading-tight text-ink-primary">
@@ -58,6 +60,9 @@ export function Settings() {
       </section>
       <Ai />
       <Devices />
+      {settingsSections.map(({ id, component: Section }) => (
+        <Section key={id} />
+      ))}
     </div>
   );
 }

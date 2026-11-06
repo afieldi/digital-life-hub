@@ -357,3 +357,58 @@ export const reopen = implementOperation(requestOps.reopen, {
   },
   undoRecord: resolveAgainRecord,
 });
+
+/** What `append` changed, to put back: the item at `updatedAt`, with its old text. */
+const appendRecord = z.object({
+  id: z.uuid(),
+  updatedAt: z.string(),
+  body: z.string().nullable(),
+  fromName: z.string().nullable(),
+  appendedIds: z.array(z.string()),
+});
+
+export const append = implementOperation(requestOps.append, {
+  async run(w, input) {
+    const { item, row } = await loadRequest(w.tx, input.id);
+    if (row.outcome !== null) conflict("Already resolved");
+    // A redelivered message: nothing to write, so the version stays.
+    if (row.appendedIds.includes(input.key)) {
+      return { result: { appended: false }, undo: null };
+    }
+    const body = row.body ? `${row.body}\n\n${input.text}` : input.text;
+    const appendedIds = [...row.appendedIds, input.key];
+    const written = await allowed(w.updateItem)({
+      id: input.id,
+      expectedUpdatedAt: item.updatedAt,
+      searchText: searchTextOf(body, row.fromName),
+    });
+    await w.tx
+      .update(requests)
+      .set({ body, appendedIds })
+      .where(eq(requests.itemId, input.id));
+    return {
+      result: { appended: true },
+      undo: {
+        id: input.id,
+        updatedAt: written.updatedAt,
+        body: row.body,
+        fromName: row.fromName,
+        appendedIds: row.appendedIds,
+      },
+    };
+  },
+  async undo(w, r) {
+    if (!r) return;
+    await lockRequest(w.tx, r.id);
+    await allowed(w.updateItem)({
+      id: r.id,
+      expectedUpdatedAt: r.updatedAt,
+      searchText: searchTextOf(r.body, r.fromName),
+    });
+    await w.tx
+      .update(requests)
+      .set({ body: r.body, appendedIds: r.appendedIds })
+      .where(eq(requests.itemId, r.id));
+  },
+  undoRecord: appendRecord.nullable(),
+});

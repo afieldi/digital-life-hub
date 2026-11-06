@@ -106,7 +106,7 @@ export function createTestApi(
     devErrors: devAuth,
     ai: {
       providers: opts.noOpenRouter ? {} : { openrouter: ai },
-      defaultModel: "test-model",
+      defaultModels: { openrouter: "test-model" },
     },
   });
   const deps = {
@@ -123,6 +123,7 @@ export function createTestApi(
       migrateOnStart: false,
       migrationsRoot: null,
       openrouter: { apiKey: null, defaultModel: null },
+      aiGateway: { apiKey: null, defaultModel: null },
       moduleConfig: new Map(),
     },
     store,

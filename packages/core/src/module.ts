@@ -46,6 +46,16 @@ export interface DetailPanel {
   order?: number;
 }
 
+/** A section a module adds to Settings. It runs inside the API and query providers. */
+export interface SettingsSection {
+  /** Unique within its module. */
+  id: string;
+  label: string;
+  component: ComponentType;
+  /** Lower comes first; sections without one follow, in registry order. */
+  order?: number;
+}
+
 export interface ModuleManifest {
   id: string;
   itemType?: {
@@ -72,6 +82,8 @@ export interface ModuleManifest {
   refreshOn?: string[];
   /** Panels for the Home screen, which the Home module lays out in `order`. */
   homeWidgets?: HomeWidget[];
+  /** Sections this module adds to Settings, after the shell's own. */
+  settingsSections?: SettingsSection[];
   /** Panels this module adds to item pages, whichever module owns them. */
   detailPanels?: DetailPanel[];
   routes: (parent: AnyRoute) => AnyRoute[];

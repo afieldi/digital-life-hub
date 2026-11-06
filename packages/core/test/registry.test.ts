@@ -184,3 +184,29 @@ test("modulesShowing: each type's owner and the modules that refresh on it", () 
   // A type no module owns: the caller can't tell, so null.
   expect(modulesShowing(registry, ["task", "ghost"])).toBeNull();
 });
+
+describe("settings sections", () => {
+  const section = (id: string, order?: number) => ({
+    id,
+    label: id,
+    component: Widget,
+    ...(order === undefined ? {} : { order }),
+  });
+  const withSections = (
+    id: string,
+    settingsSections: ReturnType<typeof section>[],
+  ) => defineModule({ id, routes: () => [], settingsSections });
+
+  test("are gathered across modules, ids prefixed, in order", () => {
+    const { settingsSections } = collectModules([
+      withSections("a", [section("x"), section("y", 1)]),
+      withSections("b", [section("x")]),
+    ]);
+    expect(settingsSections.map((s) => s.id)).toEqual(["a.y", "a.x", "b.x"]);
+  });
+
+  test("a duplicate id within a module throws", () =>
+    expect(() =>
+      collectModules([withSections("a", [section("x"), section("x")])]),
+    ).toThrow(ModuleRegistryError));
+});

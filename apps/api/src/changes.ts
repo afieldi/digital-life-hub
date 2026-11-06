@@ -84,11 +84,11 @@ export function changesHandler(
   };
 }
 
-/** A live session's token or a live worker token. */
+/** A live session's token, or a live worker or Slack token. */
 async function mayListen(deps: AppDeps, token: string): Promise<boolean> {
   if (await authenticate(deps.store, token, deps.now())) return true;
   const principal = await deps.store.findServiceToken(token);
-  return principal?.kind === "worker";
+  return principal?.kind === "worker" || principal?.kind === "slack";
 }
 
 /** The item types among `ids`; null when the lookup fails (the client then refreshes all). */

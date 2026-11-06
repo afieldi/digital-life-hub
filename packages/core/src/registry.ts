@@ -4,6 +4,7 @@ import type {
   HomeWidget,
   ModuleManifest,
   PaletteAction,
+  SettingsSection,
 } from "./module";
 import { toAiAction } from "./operations/ai";
 import type { OperationDescription } from "./operations/describe";
@@ -26,6 +27,8 @@ export interface ModuleRegistry {
   homeWidgets: HomeWidget[];
   /** Every module's item-page panels, in `order`; `id` is `<module>.<panel>`. */
   detailPanels: DetailPanel[];
+  /** Every module's Settings sections, in `order`; `id` is `<module>.<section>`. */
+  settingsSections: SettingsSection[];
 }
 
 export interface ReservedShell {
@@ -50,6 +53,7 @@ export function collectModules(
   const operations: OperationDescription[] = [];
   const homeWidgets: HomeWidget[] = [];
   const detailPanels: DetailPanel[] = [];
+  const settingsSections: SettingsSection[] = [];
   const operationOwners = new Map<string, string>();
 
   for (const m of manifests) {
@@ -149,6 +153,17 @@ export function collectModules(
       detailPanels.push({ ...p, id: `${m.id}.${p.id}` });
     }
 
+    const sectionIds = new Set<string>();
+    for (const x of m.settingsSections ?? []) {
+      if (sectionIds.has(x.id)) {
+        throw new ModuleRegistryError(
+          `Duplicate Settings section id "${x.id}" in module "${m.id}"`,
+        );
+      }
+      sectionIds.add(x.id);
+      settingsSections.push({ ...x, id: `${m.id}.${x.id}` });
+    }
+
     for (const o of m.operations ?? []) {
       const owner = operationOwners.get(o.id);
       if (owner) {
@@ -175,6 +190,7 @@ export function collectModules(
   const last = Number.MAX_SAFE_INTEGER;
   homeWidgets.sort((a, b) => (a.order ?? last) - (b.order ?? last));
   detailPanels.sort((a, b) => (a.order ?? last) - (b.order ?? last));
+  settingsSections.sort((a, b) => (a.order ?? last) - (b.order ?? last));
   return {
     modules: manifests,
     nav,
@@ -184,6 +200,7 @@ export function collectModules(
     operations,
     homeWidgets,
     detailPanels,
+    settingsSections,
   };
 }
 

@@ -10,6 +10,7 @@ One personal home for tasks, notes, projects, events and saved things: a single-
 - [Items, Links, Search spec](docs/specs/items-links-search.md): the shared data layer (milestone 3)
 - [Adding a module](docs/modules.md): the module contract, the scaffold, and a checklist
 - [Tasks spec](docs/specs/tasks.md): the first module, and Core operations and module migrations
+- [Slack Bot spec](docs/specs/slack-bot.md): talking to the hub from Slack, coworker requests and escalation (draft)
 - [Command Bar capture spec](docs/specs/command-bar-capture.md): natural-language capture (deferred)
 - [Implementation plans](docs/superpowers/plans/)
 

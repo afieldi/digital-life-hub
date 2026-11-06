@@ -1,7 +1,9 @@
 import {
   findServiceToken,
   mintRunToken,
+  mintSlackToken,
   mintWorkerToken,
+  revokeSlackToken,
   revokeWorkerToken,
 } from "@dlh/server";
 import { Hono } from "hono";
@@ -75,6 +77,28 @@ test("/changes accepts a worker token", async () => {
   const principal = await findServiceToken(t.db, token);
   if (principal?.kind !== "worker") throw new Error("expected a worker");
   expect(await revokeWorkerToken(t.db, principal.tokenId)).toBe(true);
+  await drain(reader);
+  await t.close();
+});
+
+test("/changes accepts a live slack token and closes on revoke", async () => {
+  const t = await freshModuleDb(serverModules);
+  const api = createTestApi({ db: t.db });
+  const token = await mintSlackToken(t.db);
+  const res = await changes(api, token, { heartbeatMs: 20 });
+  expect(res.status).toBe(200);
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes(": ping")) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+  }
+  expect(text).toContain(": ping");
+  const principal = await findServiceToken(t.db, token);
+  if (principal?.kind !== "slack") throw new Error("expected slack");
+  expect(await revokeSlackToken(t.db, principal.tokenId)).toBe(true);
   await drain(reader);
   await t.close();
 });

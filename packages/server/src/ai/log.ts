@@ -45,6 +45,7 @@ export async function listLog(
       actionId: r.actionId,
       kind: aiKind.parse(r.kind),
       interpretedBy: r.interpretedBy,
+      origin: z.enum(["app", "slack"]).parse(r.origin),
       provider: aiProviderId.parse(r.provider),
       model: r.model,
       status: aiRequestStatus.parse(r.status),

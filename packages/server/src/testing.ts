@@ -83,7 +83,7 @@ export function testAiDeps(
   return {
     runners: new Map(coreAiRunners.map((r) => [r.action.id, r])),
     providers: { openrouter: fake },
-    defaultModel: "test-model",
+    defaultModels: { openrouter: "test-model", vercel: "test-model" },
     ...overrides,
   };
 }
@@ -301,3 +301,5 @@ export const noTools: RunnerTools = {
   mutate: () => Promise.reject(new Error("this test's runner has no tools")),
   revert: () => Promise.reject(new Error("this test's runner has no tools")),
 };
+
+export { expectAskerScoped } from "./testing/asker";

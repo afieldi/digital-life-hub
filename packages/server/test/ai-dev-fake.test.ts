@@ -8,7 +8,7 @@ import { implementOperation } from "../src/operations/implement";
 
 test("devFakeAi answers as OpenRouter with the fake model", () => {
   expect(devFakeAi([])).toMatchObject({
-    defaultModel: "fake-model",
+    defaultModels: { openrouter: "fake-model" },
     providers: { openrouter: { id: "openrouter" } },
   });
 });

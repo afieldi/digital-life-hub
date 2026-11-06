@@ -1,11 +1,13 @@
 # VPS deployment
 
-One Linux VPS runs Postgres, the API (`apps/api`) and the agent worker
-(`apps/agent`). The worker starts one `dlh-agent-runner` container per agent
+One Linux VPS runs Postgres, the API (`apps/api`), the agent worker
+(`apps/agent`) and the Slack bot (`apps/slack`). The worker starts one `dlh-agent-runner` container per agent
 run, on its own network, `dlh-runs`, which can't reach private address space.
 
 ```
 internal network:  db  <-  api  <-  agent (worker)
+                              ^
+                              +----  slack (Socket Mode out to Slack)
                                       | /var/run/docker.sock
                                       v
 dlh-runs network:                   dlh-run-<id>-<start> containers (public internet only)
@@ -22,11 +24,11 @@ the CLI steps (run from a checkout of this repo).
 1. Clone the repo and `pnpm install`.
 2. `cp deploy/vps/.env.example deploy/vps/.env` and fill in
    `POSTGRES_PASSWORD`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say.
+   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say. The Slack tokens and `COMPOSE_PROFILES=slack` come from "The Slack bot" below; leave them out until then.
 3. Generate the secrets key: `openssl rand -base64 32` into `AGENT_SECRETS_KEY`.
    It encrypts the connection secrets in `/var/lib/dlh-agent/agent.db`. Back it
    up: without it those secrets can't be read.
-4. Create the Gateway key (below) into `AI_GATEWAY_API_KEY`.
+4. Create the Gateway keys (below): one into `AI_GATEWAY_API_KEY` (the agent) and a second into `API_AI_GATEWAY_API_KEY` (the API), plus `AI_GATEWAY_DEFAULT_MODEL`.
 5. Create the run network and its firewall, as root, with Docker running:
    `sudo sh deploy/vps/runs-firewall.sh`. Then install it to run at every
    boot, before Docker starts, so no run ever starts without the rules:
@@ -68,8 +70,50 @@ the CLI steps (run from a checkout of this repo).
     ```
 
     then enable the connection in the hub's Settings.
-12. Put a TLS reverse proxy (Caddy, nginx) in front of `127.0.0.1:8787`. The API
+12. Set up the Slack bot (next section), then start it.
+13. Put a TLS reverse proxy (Caddy, nginx) in front of `127.0.0.1:8787`. The API
     is only published on loopback.
+
+## The Slack bot
+
+The bot (`apps/slack`) opens a Socket Mode connection out to Slack, so it needs
+no public URL and publishes no port. It reaches the API over the `internal`
+network with its own service token.
+
+1. Create a Slack app (api.slack.com/apps) and turn on **Socket Mode**.
+2. Give it these scopes:
+   - Bot token: `app_mentions:read`, `im:history`, `im:read`, `im:write`,
+     `channels:history`, `groups:history`, `chat:write`, `reactions:write`,
+     `users:read`, `users.profile:read`.
+   - App-level token: `connections:write`.
+   - User token: `chat:write` (it sends as you; the outbox uses it in Part 2).
+3. Subscribe to the bot events `message.im` and `app_mention`. Turn on
+   **Interactivity** (no request URL is needed in Socket Mode; the escalation
+   flow posts buttons in Part 2). Under App Home -> Messages tab, enable
+   "Allow users to send messages to your app": DMs need it.
+4. Have a workspace admin install the app.
+5. Copy the three tokens into `deploy/vps/.env`: the app-level token
+   (`xapp-...`) as `SLACK_APP_TOKEN`, the bot token (`xoxb-...`) as
+   `SLACK_BOT_TOKEN`, the user token (`xoxp-...`) as `SLACK_USER_TOKEN`.
+6. Mint the bot's hub token the way step 9 mints the worker's (the API image
+   holds no CLI, so run it from the checkout against the database; `$DB` is as
+   in step 9):
+   `DATABASE_URL=postgres://dlh:<POSTGRES_PASSWORD>@$DB:5432/dlh pnpm --filter @dlh/api tokens slack create`.
+   It prints `id` and `token` once; put the token in `HUB_SLACK_TOKEN`. Revoke
+   with `tokens slack revoke <id>`.
+7. The bot is an opt-in Compose profile, so the rest of the stack runs without
+   it. Add `COMPOSE_PROFILES=slack` to `deploy/vps/.env`, then start it:
+   `docker compose -f deploy/vps/docker-compose.yml up -d slack` (plain
+   `up -d` now includes it too).
+8. In the hub, open Settings → Slack and set your Slack user id, so the bot
+   knows which DMs are yours. The team and bot ids need no entry: the bot reads
+   them from Slack (`auth.test`) at start and whenever it refreshes the
+   settings, and they win over any value typed there. They are what tells your
+   workspace's people from Slack Connect guests, whom the bot ignores.
+
+To map a coworker to GitHub, the bot reads the user profile field labelled
+"GitHub" (needs `users.profile:read`). Add that field to the workspace's
+profiles and have people fill it in; the bot takes their login from it.
 
 ## AI Gateway key and budget
 
@@ -79,6 +123,12 @@ In the Vercel dashboard, open AI Gateway, create an API key for this host, and
 set a monthly budget on it so a runaway run can't spend without bound
 (`vercel ai-gateway --help` lists the CLI equivalents). When the budget is hit
 the Gateway answers `402` and the run ends with "AI budget reached".
+
+Create a second key, with its own budget, for the API: put it in
+`API_AI_GATEWAY_API_KEY`, and set `AI_GATEWAY_DEFAULT_MODEL` to a Gateway model
+id. The API uses it for Jev and the Slack bot's coworker answers; without it
+those answers are off. Separate keys keep their budgets apart, so chat spend
+can't starve runs or the reverse.
 
 ## Least privilege for the agent's repos
 

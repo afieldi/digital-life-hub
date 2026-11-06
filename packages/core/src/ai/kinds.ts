@@ -3,7 +3,12 @@ import { z } from "zod";
 export const aiKind = z.enum(["ask", "suggest", "do"]);
 export type AiKind = z.infer<typeof aiKind>;
 
-export const aiProviderId = z.enum(["openrouter", "claude-cli", "codex-cli"]);
+export const aiProviderId = z.enum([
+  "openrouter",
+  "vercel",
+  "claude-cli",
+  "codex-cli",
+]);
 export type AiProviderId = z.infer<typeof aiProviderId>;
 
 /**
@@ -12,6 +17,7 @@ export type AiProviderId = z.infer<typeof aiProviderId>;
  */
 export const AI_PROVIDERS = {
   openrouter: { name: "OpenRouter", program: null },
+  vercel: { name: "Vercel AI Gateway", program: null },
   "claude-cli": { name: "Claude Code", program: "claude" },
   "codex-cli": { name: "Codex", program: "codex" },
 } as const satisfies Record<
@@ -29,6 +35,13 @@ export type CliProviderId = {
 export const CLI_PROVIDER_IDS = aiProviderId.options.filter(
   (id): id is CliProviderId => AI_PROVIDERS[id].program !== null,
 );
+
+/** The providers the server calls over HTTP (everything that is not a CLI). */
+export type ServerProviderId = Exclude<AiProviderId, CliProviderId>;
+
+export function isServerProvider(id: AiProviderId): id is ServerProviderId {
+  return !isCliProvider(id);
+}
 
 export function isCliProvider(id: string): id is CliProviderId {
   return (CLI_PROVIDER_IDS as readonly string[]).includes(id);

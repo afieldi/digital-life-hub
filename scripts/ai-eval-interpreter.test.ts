@@ -54,3 +54,19 @@ it("refuses to pass with an empty phrasing list", () => {
   expect(r.status).toBe(1);
   expect(r.stderr).toContain(NO_PHRASINGS_MESSAGE);
 }, 60_000);
+
+it("the slack-coworker suite refuses to run without the Gateway key", () => {
+  const { AI_GATEWAY_API_KEY: _key, ...env } = process.env;
+  const r = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      "scripts/ai-eval-interpreter.ts",
+      "--suite=slack-coworker",
+    ],
+    { encoding: "utf8", env },
+  );
+  expect(r.status).toBe(2);
+  expect(r.stderr).toMatch(/AI_GATEWAY_API_KEY/);
+}, 60_000);

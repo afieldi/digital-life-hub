@@ -1,7 +1,13 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { ACTION_ID, type AiActionDescription } from "../ai/actions";
 import type { AiEffect } from "../ai/kinds";
 import { formFields, OperationError } from "./fields";
+
+/** Who an `audience: "asker"` operation answers for: a Slack user, and their GitHub login if known. */
+export const askerInput = z.object({
+  slackUserId: z.string().min(1),
+  githubLogin: z.string().nullable(),
+});
 
 /** What ⌘K knows when building an operation's input. */
 export type PaletteContext = {
@@ -107,9 +113,15 @@ export type OperationDescription<
   ai?: boolean;
   /**
    * Who may call it: `everyone` (you or an agent run), `user` (only you) or
-   * `worker` (only the agent host's worker token). See `accessOf` for the default.
+   * `worker` (only the agent host's worker token) or `slack` (only the Slack
+   * bot's token). See `accessOf` for the default.
    */
   access?: OperationAccess;
+  /**
+   * `asker`: returns only what involves one person, given as `input.asker`
+   * (`askerInput`). Needs `access: "slack"`, which is what vouches for it.
+   */
+  audience?: "asker";
   /**
    * What the scripted dev and e2e fake answers as AI with (the input without
    * the item keys), when guessing from field names would break a rule the
@@ -123,7 +135,7 @@ export type OperationDescription<
   calls?: OperationDescription[];
 };
 
-export type OperationAccess = "everyone" | "user" | "worker";
+export type OperationAccess = "everyone" | "user" | "worker" | "slack";
 
 /** `access`, or by default `everyone` for an AI action and `user` otherwise. */
 export function accessOf(d: OperationDescription): OperationAccess {
@@ -146,10 +158,31 @@ export function describeOperation<
   if (d.kind === "query" && d.calls?.length) {
     throw new OperationError(`Operation "${d.id}" is a query with calls`);
   }
-  if (d.access === "worker" && (d.palette !== false || d.ai !== false)) {
+  if (
+    (d.access === "worker" || d.access === "slack") &&
+    (d.palette !== false || d.ai !== false)
+  ) {
     throw new OperationError(
-      `Operation "${d.id}" has worker access but is in ⌘K or AI`,
+      `Operation "${d.id}" has access: "${d.access}" but is in ⌘K or AI`,
     );
+  }
+  if (d.audience === "asker") {
+    if (d.access !== "slack") {
+      throw new OperationError(
+        `Operation "${d.id}" has audience: "asker" but not access: "slack"`,
+      );
+    }
+    // Matches `askerInput` if it takes an asker and refuses what it refuses.
+    const asker = d.input.shape.asker;
+    if (
+      !asker?.safeParse({ slackUserId: "U1", githubLogin: null }).success ||
+      asker.safeParse({ slackUserId: "", githubLogin: null }).success ||
+      asker.safeParse({ slackUserId: "U1" }).success
+    ) {
+      throw new OperationError(
+        `Operation "${d.id}" has audience: "asker" but no asker input`,
+      );
+    }
   }
   try {
     if (d.palette === undefined || d.palette === true) {
