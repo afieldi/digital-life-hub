@@ -106,7 +106,10 @@ network with its own service token.
    `docker compose -f deploy/vps/docker-compose.yml up -d slack` (plain
    `up -d` now includes it too).
 8. In the hub, open Settings → Slack and set your Slack user id, so the bot
-   knows which DMs are yours.
+   knows which DMs are yours. The team and bot ids need no entry: the bot reads
+   them from Slack (`auth.test`) at start and whenever it refreshes the
+   settings, and they win over any value typed there. They are what tells your
+   workspace's people from Slack Connect guests, whom the bot ignores.
 
 To map a coworker to GitHub, the bot reads the user profile field labelled
 "GitHub" (needs `users.profile:read`). Add that field to the workspace's

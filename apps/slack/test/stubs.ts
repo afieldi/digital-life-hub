@@ -22,6 +22,8 @@ export function stubWeb(
     realName?: string;
     /** `conversations.history` and `replies` fail, as when the bot isn't in the channel. */
     contextFails?: boolean;
+    /** What `auth.test` answers, or an error; none by default (as an old Slack). */
+    auth?: { team_id?: string; user_id?: string } | Error;
   } = {},
 ) {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
@@ -30,6 +32,14 @@ export function stubWeb(
     return Promise.resolve(out);
   };
   const web: SlackWeb = {
+    auth: {
+      test: () => {
+        calls.push({ method: "auth.test", args: {} });
+        return data.auth instanceof Error
+          ? Promise.reject(data.auth)
+          : Promise.resolve(data.auth ?? {});
+      },
+    },
     chat: {
       postMessage: (a) => rec("chat.postMessage", a, {}),
       getPermalink: (a) =>

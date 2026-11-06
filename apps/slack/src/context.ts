@@ -11,6 +11,9 @@ type Page = { messages?: Message[] };
 
 /** The slice of Slack's Web API this service uses; Bolt's `WebClient` fits it. */
 export type SlackWeb = {
+  auth: {
+    test(): Promise<{ team_id?: string; user_id?: string }>;
+  };
   chat: {
     postMessage(args: {
       channel: string;
