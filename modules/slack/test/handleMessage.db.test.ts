@@ -334,3 +334,74 @@ test("a reply the model can't give escalates instead", async () => {
   expect(request.title).toBe("Bot wasn't sure: status?");
   await h.close();
 });
+
+test("a coworker's reply prompt never contains Bot wasn't sure", async () => {
+  const h = await harness([
+    { choice: "leaveRequest", confidence: 0.2 },
+    { choice: "requestStatus", confidence: 0.9 },
+  ]);
+  await h.slack.slack.handleMessage(h.message("odd thing"));
+  await h.slack.slack.handleMessage(h.message("did you get it?"));
+  const prompt = h.jev.completions[0]?.prompt ?? "";
+  expect(prompt).toContain("odd thing");
+  expect(prompt).not.toContain("Bot wasn't sure");
+  await h.close();
+});
+
+test("a redelivered appended message reacts again and files nothing", async () => {
+  const h = await harness([
+    { choice: "leaveRequest", confidence: 0.9 },
+    { choice: "addToRequest", confidence: 0.9 },
+    { choice: "leaveRequest", confidence: 0.9 },
+  ]);
+  await h.slack.slack.handleMessage(h.message("first"));
+  const second = h.message("second");
+  await h.slack.slack.handleMessage(second);
+  const before = h.jev.decisions.length;
+  const again = await h.slack.slack.handleMessage(second);
+  expect(again.result).toEqual({ react: "eyes" });
+  expect(h.jev.decisions).toHaveLength(before);
+  expect(await h.requests()).toHaveLength(1);
+  await h.close();
+});
+
+test("a top-level mention doesn't append to a request filed inside a thread", async () => {
+  const h = await harness([
+    { choice: "leaveRequest", confidence: 0.9 },
+    { choice: "leaveRequest", confidence: 0.9 },
+  ]);
+  const inThread = h.message("in thread", {
+    event: {
+      channel: "C1",
+      isDm: false,
+      threadTs: "1699999999.000001",
+    },
+  });
+  inThread.event.permalink = `https://example.slack.com/archives/C1/p1?thread_ts=${inThread.event.threadTs}&cid=C1`;
+  await h.slack.slack.handleMessage(inThread);
+  const top = await h.slack.slack.handleMessage(
+    h.message("top level", { event: { channel: "C1", isDm: false } }),
+  );
+  expect(top.result.filedRequestId).toBeDefined();
+  expect(await h.requests()).toHaveLength(2);
+  await h.close();
+});
+
+test("a reply in a thread appends to a request filed from another reply in that thread", async () => {
+  const h = await harness([
+    { choice: "leaveRequest", confidence: 0.9 },
+    { choice: "addToRequest", confidence: 0.9 },
+  ]);
+  const threadTs = "1699999999.000001";
+  const first = h.message("reply one", {
+    event: { channel: "C1", isDm: false, threadTs },
+  });
+  first.event.permalink = `https://example.slack.com/archives/C1/p1?thread_ts=${threadTs}&cid=C1`;
+  await h.slack.slack.handleMessage(first);
+  const second = await h.slack.slack.handleMessage(
+    h.message("reply two", { event: { channel: "C1", isDm: false, threadTs } }),
+  );
+  expect(second.result).toEqual({ react: "eyes" });
+  expect(await h.requests()).toHaveLength(1);
+  await h.close();
+});

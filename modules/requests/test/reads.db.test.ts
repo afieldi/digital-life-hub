@@ -268,10 +268,12 @@ test("fromSender returns only that sender's slack requests, newest first", async
     id: old.id,
     title: "old",
     body: "b",
+    sourceUrl: null,
     externalId: "a",
     receivedAt: ago(3).toISOString(),
     outcome: null,
     resolvedAt: null,
+    appendedIds: [],
   });
   expect(rows[0]?.id).toBe(recent.id);
   await close();

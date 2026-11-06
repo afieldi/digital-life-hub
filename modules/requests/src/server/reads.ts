@@ -180,14 +180,19 @@ export const fromSender = implementOperation(requestOps.fromSender, {
         sql`order by r.received_at desc, r.item_id`,
       ),
     );
-    return raw.map(toRow).map((r) => ({
-      id: r.id,
-      title: r.title,
-      body: r.body,
-      externalId: r.externalId,
-      receivedAt: r.receivedAt,
-      outcome: r.outcome,
-      resolvedAt: r.resolvedAt,
-    }));
+    return raw.map((rawRow) => {
+      const r = toRow(rawRow);
+      return {
+        id: r.id,
+        title: r.title,
+        body: r.body,
+        sourceUrl: r.sourceUrl,
+        externalId: r.externalId,
+        receivedAt: r.receivedAt,
+        outcome: r.outcome,
+        resolvedAt: r.resolvedAt,
+        appendedIds: rawRow.appended_ids,
+      };
+    });
   },
 });

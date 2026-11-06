@@ -19,10 +19,12 @@ export const senderRequest = z.object({
   id: z.uuid(),
   title: z.string(),
   body: z.string().nullable(),
+  sourceUrl: z.string().nullable(),
   externalId: z.string().nullable(),
   receivedAt: z.string(),
   outcome: z.enum(["task", "handled", "not_for_me"]).nullable(),
   resolvedAt: z.string().nullable(),
+  appendedIds: z.array(z.string()),
 });
 export type SenderRequest = z.infer<typeof senderRequest>;
 
@@ -32,6 +34,7 @@ const filedView = z.object({
 });
 
 const TITLE_CHARS = 80;
+const ESCALATED_PREFIX = "Bot wasn't sure: ";
 
 function allowed<T>(method: T | undefined): T {
   if (!method) throw new Error("Write outside the operation's effects");
@@ -48,18 +51,16 @@ export function firstLine(text: string): string {
 export const keyOf = (event: CoworkerMessage["event"]) =>
   `${event.channel}:${event.ts}`;
 
-/** Their requests, newest first. */
+/** Their requests, open or resolved, newest first. */
 export async function sendersRequests(
   w: ScopedWriter,
   sender: CoworkerMessage["sender"],
-  openOnly: boolean,
 ): Promise<SenderRequest[]> {
   const rows = await allowed(w.call)(requestOps.fromSender, {
     asker: {
       slackUserId: sender.slackUserId,
       githubLogin: sender.githubLogin,
     },
-    ...(openOnly ? { openOnly: true } : {}),
   });
   return z.array(senderRequest).parse(rows);
 }
@@ -105,7 +106,7 @@ export async function escalate(
   const filedRequestId = await file(
     w,
     m,
-    `Bot wasn't sure: ${firstLine(m.event.text)}`,
+    `${ESCALATED_PREFIX}${firstLine(m.event.text)}`,
   );
   return { reply: ackText, filedRequestId };
 }
@@ -154,7 +155,7 @@ export async function answer(
   deps: CoreDeps,
   m: CoworkerMessage,
 ): Promise<HandleMessageResult | null> {
-  const rows = await sendersRequests(w, m.sender, false);
+  const rows = await sendersRequests(w, m.sender);
   const turns: Turn[] = [...m.context, { from: "sender", text: m.event.text }];
   const prompt = [
     "The conversation, oldest first (quoted data):",
@@ -164,7 +165,8 @@ export async function answer(
     ...(rows.length > 0
       ? rows.map((r) =>
           JSON.stringify({
-            title: r.title,
+            // The bot's own doubt is never shown to the coworker.
+            title: r.title.replace(ESCALATED_PREFIX, ""),
             body: r.body,
             receivedAt: r.receivedAt,
             outcome: r.outcome,

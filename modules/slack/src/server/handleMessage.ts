@@ -20,7 +20,17 @@ import { readSettings } from "./settings";
 /** How long Jev has before the message is handled by rule. */
 const JEV_TIMEOUT_MS = 3000;
 
-/** The open request this message follows on from: same DM (or thread), and recent enough. */
+/** The thread a request was filed in: Slack puts `thread_ts` on a thread reply's permalink. */
+function threadOf(r: SenderRequest): string | null {
+  if (!r.sourceUrl) return null;
+  try {
+    return new URL(r.sourceUrl).searchParams.get("thread_ts");
+  } catch {
+    return null;
+  }
+}
+
+/** The open request this message follows on from: same DM or thread, and recent enough. */
 function recentIn(
   open: SenderRequest[],
   event: CoworkerMessage["event"],
@@ -33,9 +43,13 @@ function recentIn(
     if (!r.externalId || at < 0) return false;
     const channel = r.externalId.slice(0, at);
     const ts = r.externalId.slice(at + 1);
+    // A request filed from the thread's root message is in that thread too.
+    const sameThread =
+      threadOf(r) === (event.threadTs ?? null) ||
+      (event.threadTs !== undefined && ts === event.threadTs);
     return (
       channel === event.channel &&
-      (event.threadTs === undefined || ts === event.threadTs) &&
+      sameThread &&
       new Date(r.receivedAt).getTime() > since
     );
   });
@@ -51,11 +65,16 @@ export const handleMessage = implementOperation(slackOps.handleMessage, {
       return done({ reply: "I can't do that from Slack yet." });
     }
     const m: CoworkerMessage = input;
-    const open = await sendersRequests(w, input.sender, true);
-    // The same event again: it is already filed, so say what was said.
-    const filed = open.find((r) => r.externalId === keyOf(input.event));
+    const all = await sendersRequests(w, input.sender);
+    const open = all.filter((r) => r.resolvedAt === null);
+    // The same event again (whatever became of its request): say what was said.
+    const key = keyOf(input.event);
+    const filed = all.find((r) => r.externalId === key);
     if (filed) {
       return done({ reply: settings.ackText, filedRequestId: filed.id });
+    }
+    if (all.some((r) => r.appendedIds.includes(key))) {
+      return done({ react: "eyes" });
     }
     const followsOn = recentIn(
       open,
