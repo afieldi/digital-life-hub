@@ -83,7 +83,7 @@ export function testAiDeps(
   return {
     runners: new Map(coreAiRunners.map((r) => [r.action.id, r])),
     providers: { openrouter: fake },
-    defaultModel: "test-model",
+    defaultModels: { openrouter: "test-model", vercel: "test-model" },
     ...overrides,
   };
 }

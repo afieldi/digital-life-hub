@@ -138,10 +138,10 @@ function shapedAnswer(req: AiCompleteRequest): AiCompleteResult {
  */
 export function devFakeAi(runners: Iterable<AiRunner>): {
   providers: { openrouter: AiProvider };
-  defaultModel: string;
+  defaultModels: { openrouter: string };
 } {
   return {
     providers: { openrouter: createScriptedFake(runners) },
-    defaultModel: DEV_FAKE_MODEL,
+    defaultModels: { openrouter: DEV_FAKE_MODEL },
   };
 }

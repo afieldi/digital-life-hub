@@ -66,11 +66,13 @@ export type ProviderStatus = {
 
 /** Which providers the server can use; the CLIs run in the app, so always. */
 export function providerStatus(deps: { ai: AiDeps }): ProviderStatus[] {
-  const hasKey = deps.ai.providers.openrouter !== undefined;
+  const status = (id: "openrouter" | "vercel"): ProviderStatus =>
+    deps.ai.providers[id] !== undefined
+      ? { id, available: true }
+      : { id, available: false, reason: "no_key" };
   return [
-    hasKey
-      ? { id: "openrouter", available: true }
-      : { id: "openrouter", available: false, reason: "no_key" },
+    status("openrouter"),
+    status("vercel"),
     { id: "claude-cli", available: true },
     { id: "codex-cli", available: true },
   ];

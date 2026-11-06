@@ -242,7 +242,10 @@ async function main(): Promise<void> {
     : {};
   const deps = createCoreDeps(composed, {
     db,
-    ai: { providers, defaultModel },
+    ai: {
+      providers,
+      defaultModels: defaultModel ? { openrouter: defaultModel } : {},
+    },
   });
   const cleanup: string[] = [];
   try {

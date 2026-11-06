@@ -68,7 +68,7 @@ export function createCoreDeps(
     db: Db;
     now?: () => Date;
     devErrors?: boolean;
-    ai?: Pick<AiDeps, "providers" | "defaultModel">;
+    ai?: Pick<AiDeps, "providers" | "defaultModels">;
     /** Each module's checked config (`loadModuleConfigs`). */
     moduleConfig?: ReadonlyMap<string, unknown>;
   },
@@ -85,7 +85,7 @@ export function createCoreDeps(
     ai: {
       runners: composed.aiRunners,
       providers: opts.ai?.providers ?? {},
-      defaultModel: opts.ai?.defaultModel ?? null,
+      defaultModels: opts.ai?.defaultModels ?? {},
     },
   };
 }

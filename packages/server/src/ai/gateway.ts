@@ -44,13 +44,14 @@ export { apply, cancel, discard, undo } from "./followups";
 export type AiDeps = {
   runners: Map<string, AiRunner>;
   providers: Partial<Record<ServerProviderId, AiProvider>>;
-  defaultModel: string | null;
+  /** Each server provider's own default model (its env var). */
+  defaultModels: Partial<Record<ServerProviderId, string>>;
 };
 
-/** The server provider the app uses by default: OpenRouter if set up, else Vercel. */
+/** The server provider requests use: the Gateway when its key is set, else OpenRouter. */
 export function serverProvider(deps: { ai: AiDeps }): ServerProviderId | null {
   const { openrouter, vercel } = deps.ai.providers;
-  return openrouter ? "openrouter" : vercel ? "vercel" : null;
+  return vercel ? "vercel" : openrouter ? "openrouter" : null;
 }
 
 /** At most this many options are shown, after titles are resolved. */
@@ -156,7 +157,13 @@ export async function prepare(
 ): Promise<AiResult> {
   const runner = runnerFor(deps, input.actionId);
   const settings = await getSettings(deps.db);
-  const provider = input.provider ?? settings.defaultProvider;
+  // "openrouter" (the stored default, or asked for) means "a server provider":
+  // the Gateway when it is set up. A request for "vercel" itself stays as is.
+  const requested = input.provider ?? settings.defaultProvider;
+  const provider =
+    requested === "openrouter"
+      ? (serverProvider(deps) ?? requested)
+      : requested;
   const itemId = input.itemId ?? null;
   const item = itemId ? await itemOrNotFound(deps, itemId, provider) : null;
   if (!applies(runner.action, item?.type ?? null)) {
@@ -171,12 +178,11 @@ export async function prepare(
   if (kind !== "ask" && !runner.apply) {
     throw badRequest(`AI action "${runner.action.id}" has no apply`);
   }
-  const model =
-    provider === "openrouter"
-      ? (settings.openrouterModel ?? deps.ai.defaultModel)
-      : isServerProvider(provider)
-        ? deps.ai.defaultModel
-        : null;
+  const model = !isServerProvider(provider)
+    ? null
+    : provider === "openrouter"
+      ? (settings.openrouterModel ?? deps.ai.defaultModels.openrouter ?? null)
+      : (deps.ai.defaultModels[provider] ?? null);
   const ctx = await runner.context(deps, itemId, {
     timeZone: input.timeZone,
   });

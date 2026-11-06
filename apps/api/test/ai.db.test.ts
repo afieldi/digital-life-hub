@@ -170,6 +170,7 @@ test("settings round-trip and unknown provider rejected", async () => {
   });
   expect(first.providers).toEqual([
     { id: "openrouter", available: true },
+    { id: "vercel", available: false, reason: "no_key" },
     { id: "claude-cli", available: true },
     { id: "codex-cli", available: true },
   ]);
@@ -194,7 +195,10 @@ test("settings.get reports OpenRouter without a key", async () => {
     available: false,
     reason: "no_key",
   });
-  expect(s.providers.slice(1).every((p) => p.available)).toBe(true);
+  expect(s.providers.filter((p) => p.available).map((p) => p.id)).toEqual([
+    "claude-cli",
+    "codex-cli",
+  ]);
   await close();
 });
 

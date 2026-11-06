@@ -88,10 +88,14 @@ const deps = {
                 }
               : {}),
           },
-          // OpenRouter is the default server provider when both are set up.
-          defaultModel: config.openrouter.apiKey
-            ? config.openrouter.defaultModel
-            : config.aiGateway.defaultModel,
+          defaultModels: {
+            ...(config.openrouter.defaultModel
+              ? { openrouter: config.openrouter.defaultModel }
+              : {}),
+            ...(config.aiGateway.defaultModel
+              ? { vercel: config.aiGateway.defaultModel }
+              : {}),
+          },
         },
   }),
   config,
