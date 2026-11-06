@@ -110,7 +110,7 @@ Socket Mode is an authenticated connection, so the sender's user id is trusted a
 
 ## Interpreting messages
 
-The gateway's interpreter contract (`RequestInterpreter`) gets a second implementation, `model:<id>`, configured to Jev. Jev is a decision model: it is given options and returns a pick with a confidence, and writes no text. It runs on the server, through Vercel AI Gateway.
+The model interpreter lives in `modules/slack/src/server/interpret.ts`. It is server-only: it is not a second implementation of the gateway's `RequestInterpreter`, and the client's `interpreters` registry is unchanged. It calls Core's `decideOnServer`, through Vercel AI Gateway, configured to Jev. Jev is a decision model: it is given options and returns a pick with a confidence, and writes no text.
 
 **What it picks.** One request to Jev answers three questions:
 
@@ -120,7 +120,7 @@ The gateway's interpreter contract (`RequestInterpreter`) gets a second implemen
 | Which kind? | The kinds that action allows |
 | Which subject? | For actions that apply to an item: up to 5 candidates from full-text search on the message, plus "none" |
 
-`Interpretation` gains `subjectId: string | null`. Below `slack_settings.threshold` (0.6) on the action, or a pick of `escalate`, the message escalates. The server re-checks the action, the subject's type and the cap as it does for ⌘K; safety never depends on Jev.
+The interpreter's result has `subjectId: string | null`. In Part 1 only the coworker set is used, and it has no subjects; subjects arrive with your command set in Part 2. Below `slack_settings.threshold` (0.6) on the action, or a pick of `escalate`, the message escalates. The server re-checks the action, the subject's type and the cap as it does for ⌘K; safety never depends on Jev.
 
 **Command sets**
 
@@ -199,7 +199,7 @@ Give to agent on any request in the queue works as it does today.
 
 **Running as you from module code.** `runAsOwner(deps, fn)`, exported from `@dlh/server` for module server code, runs gateway steps (interpret, prepare, complete, apply an option, undo) and top-level operations as you, with your writer, Undo tokens and request log, exactly as the desktop app's calls would. It is the only way a non-user principal reaches the gateway or `ops.undo`. It checks that the calling procedure's principal is `slack`. Requests it starts are logged with a new `ai_requests.origin` column (`app` by default, `slack` here), and `slack.handleAction`'s undo and apply refuse any AI request whose origin isn't `slack`.
 
-**Model interpreter.** It is server-only. It lives in `modules/slack/src/server/interpret.ts` and calls Core's `decideOnServer`. ⌘K keeps the keyword interpreter, and Core's client registry (`interpreters`) is not changed. `Interpretation` gains `subjectId`. The phrasing suite runs against it, at the same 90% bar. Your command set has subjects; the coworker set has none. Its alternatives are the next most probable choices.
+**Model interpreter.** It is server-only. It lives in `modules/slack/src/server/interpret.ts` and calls Core's `decideOnServer`. ⌘K keeps the keyword interpreter, and Core's client registry (`interpreters`) is not changed. Its result has `subjectId`. The phrasing suite runs against it, at the same 90% bar. Your command set has subjects (Part 2); the coworker set has none. Its alternatives are the next most probable choices.
 
 **Server-side model calls.** Core has two helpers for module server code. Both log the call in `ai_requests` with `origin: "slack"` and `action_id` = `purpose`. The gateway's `prepare` is not involved; `runAsOwner` stays for the gateway steps.
 
