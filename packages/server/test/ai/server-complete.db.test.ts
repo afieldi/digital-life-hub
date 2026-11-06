@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   type AiDecisionProvider,
   AiError,
+  type AiProvider,
   completeOnServer,
   decideOnServer,
   prepare,
@@ -166,5 +167,51 @@ test("decideOnServer without the Gateway is provider_unavailable", async () => {
   }).catch((x: unknown) => x);
   expect(e).toBeInstanceOf(AiError);
   expect((e as AiError).code).toBe("provider_unavailable");
+  await s.close();
+});
+
+/** Rejects with a plain error when its signal aborts, like a provider's fetch. */
+const abortable = (signal: AbortSignal) =>
+  new Promise<never>((_, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("aborted")));
+  });
+
+test("completeOnServer maps its own timeout to timeout", async () => {
+  const hang: AiProvider = {
+    id: "vercel",
+    complete: (req) => abortable(req.signal),
+  };
+  const s = await setup({
+    ai: { providers: { vercel: hang }, defaultModels: { vercel: "m" } },
+  });
+  await expect(
+    completeOnServer(s.deps, { ...REQ, timeoutMs: 5 }),
+  ).rejects.toMatchObject({ code: "timeout" });
+  const [row] = await rows(s.db);
+  expect(row?.status).toBe("failed");
+  expect(row?.errorCode).toBe("timeout");
+  await s.close();
+});
+
+test("decideOnServer maps its own timeout to timeout", async () => {
+  const hang: AiDecisionProvider = {
+    id: "vercel",
+    complete: (req) => abortable(req.signal),
+    decide: (req) => abortable(req.signal),
+  };
+  const s = await setup({
+    ai: { providers: { vercel: hang }, defaultModels: {} },
+  });
+  await expect(
+    decideOnServer(s.deps, {
+      purpose: "slack.interpret",
+      question: QUESTION,
+      input: "x",
+      model: "luna",
+      timeoutMs: 5,
+    }),
+  ).rejects.toMatchObject({ code: "timeout" });
+  const [row] = await rows(s.db);
+  expect(row?.errorCode).toBe("timeout");
   await s.close();
 });

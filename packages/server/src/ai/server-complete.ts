@@ -18,13 +18,14 @@ function asAiError(
   signal: AbortSignal,
   timeoutMs: number,
 ): AiError {
-  if (e instanceof AiError) return e;
+  // Our own deadline wins: a provider aborted by it reports `provider_error`.
   if (signal.aborted) {
     return new AiError(
       "timeout",
       aiErrorMessage("timeout", provider, { seconds: timeoutMs / 1000 }),
     );
   }
+  if (e instanceof AiError) return e;
   return new AiError(
     "provider_error",
     aiErrorMessage("provider_error", provider, {
