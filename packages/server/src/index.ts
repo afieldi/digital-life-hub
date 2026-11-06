@@ -17,7 +17,6 @@ export {
   undo,
 } from "./ai/gateway";
 export { listLog } from "./ai/log";
-export { completeOnServer, decideOnServer } from "./ai/server-complete";
 export { operationAiRunner } from "./ai/operation-runner";
 export {
   type AiCompleteRequest,
@@ -37,6 +36,7 @@ export {
   suggestOptions,
 } from "./ai/runners";
 export { type ScopedWriter, scopedWriter } from "./ai/scoped";
+export { completeOnServer, decideOnServer } from "./ai/server-complete";
 export { getSettings } from "./ai/settings";
 export {
   findServiceToken,

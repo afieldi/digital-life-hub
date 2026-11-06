@@ -27,9 +27,9 @@ describe("withIdentity", () => {
   it("keeps the settings when auth.test fails, and remembers the last good answer", async () => {
     const log: string[] = [];
     const bad = stubWeb({ auth: new Error("ratelimited") });
-    expect(
-      await withIdentity(hub(), bad.web, (l) => log.push(l))(),
-    ).toEqual(settings);
+    expect(await withIdentity(hub(), bad.web, (l) => log.push(l))()).toEqual(
+      settings,
+    );
     expect(log.some((l) => l.includes("auth.test"))).toBe(true);
 
     const flaky = stubWeb({ auth: { team_id: "TREAL", user_id: "UREAL" } });
