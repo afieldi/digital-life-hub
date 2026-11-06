@@ -1,5 +1,8 @@
+import { readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { ClaimResult } from "@dlh/module-agent/server";
 import type { WorkerApi } from "./api";
+import { runDir } from "./docker/docker";
 import { realTimers, type Timers } from "./run/events";
 import {
   type RunHandle,
@@ -28,8 +31,28 @@ export type ClaimLoopDeps = Omit<SupervisorDeps, "store" | "log" | "api"> & {
 const firstLine = (e: unknown) =>
   (e instanceof Error ? e.message : String(e)).split("\n")[0] ?? "";
 
+/** The socket directories (`s-*`) in every run's directory; none if there are none. */
+function socketDirs(dataDir: string): string[] {
+  const runs = join(dataDir, "runs");
+  let ids: string[];
+  try {
+    ids = readdirSync(runs);
+  } catch {
+    return [];
+  }
+  return ids.flatMap((id) => {
+    try {
+      return readdirSync(join(runs, id))
+        .filter((n) => n.startsWith("s-"))
+        .map((n) => join(runs, id, n));
+    } catch {
+      return [];
+    }
+  });
+}
+
 /**
- * Drives the worker: removes leftover run containers, claims runs on each
+ * Drives the worker: removes leftover run containers and socket directories, claims runs on each
  * `/changes` event and every 30 s (one pass at a time), and hourly removes the
  * volumes of runs that ended for good (finished, failed, cancelled) more than
  * 7 days ago.
@@ -170,6 +193,7 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
         }
       }
       deps.store.forgetRun(runId);
+      rmSync(runDir(deps.dataDir, runId), { recursive: true, force: true });
     }
   }
 
@@ -185,6 +209,15 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
         }
       } catch (e) {
         log(`list run containers: ${firstLine(e)}`);
+      }
+      // No supervisor runs yet, so every socket directory is a crashed
+      // worker's. The run directories stay: their runs may be live.
+      for (const dir of socketDirs(deps.dataDir)) {
+        try {
+          rmSync(dir, { recursive: true, force: true });
+        } catch (e) {
+          log(`remove ${dir}: ${firstLine(e)}`);
+        }
       }
       cancels.push(deps.api.onChanges(() => trigger()));
       cancels.push(timers.every(CLAIM_EVERY_MS, trigger));
