@@ -41,6 +41,7 @@ describe("cliDocker", () => {
         `dlh-run-${RUN}`,
         "--label",
         `dlh.run=${RUN}`,
+        "--init",
         "--user",
         "1000:1000",
         "--read-only",

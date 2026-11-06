@@ -12,6 +12,9 @@ export const execFile: ExecFile = promisify(nodeExecFile);
 
 /** The isolation every run container gets; nothing here is per run but the names. */
 const ISOLATION = [
+  // An init as PID 1: the runner (node) has no SIGTERM handler, and PID 1
+  // ignores a signal it doesn't handle, so `docker stop` would wait it out.
+  "--init",
   "--user",
   "1000:1000",
   "--read-only",
