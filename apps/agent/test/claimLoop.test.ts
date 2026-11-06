@@ -30,6 +30,9 @@ function setup(opts: {
   claims?: Array<() => Promise<unknown>>;
   ended?: { runId: string; volume: string }[];
   containers?: string[];
+  /** Each run's containers, as `listRunContainers(runId)` finds them. */
+  runContainers?: Record<string, string[]>;
+  remove?: (container: string) => Promise<void>;
   removeVolume?: (name: string) => Promise<void>;
   isolated?: () => boolean;
 }) {
@@ -42,8 +45,10 @@ function setup(opts: {
     return { result: next ? await next() : { run: null }, undo: null };
   });
   const docker = {
-    listRunContainers: vi.fn(async () => opts.containers ?? []),
-    remove: vi.fn(async () => {}),
+    listRunContainers: vi.fn(async (runId?: string) =>
+      runId ? (opts.runContainers?.[runId] ?? []) : (opts.containers ?? []),
+    ),
+    remove: vi.fn(opts.remove ?? (async () => {})),
     removeVolume: vi.fn(opts.removeVolume ?? (async () => {})),
     networkIsolated: vi.fn(async () => opts.isolated?.() ?? true),
   } as unknown as Docker;
@@ -223,7 +228,40 @@ describe("claim loop", () => {
     expect(s.handles[1]?.stop).toHaveBeenCalledWith("shutdown");
   });
 
-  it("a last supervisor that never ends doesn't stop the claims", async () => {
+  it("a run whose last supervisor never ends starts once its old container is gone", async () => {
+    const s = setup({
+      claims: [
+        async () => claim("r1"),
+        async () => ({ run: null }),
+        async () => claim("r1"),
+        async () => claim("r2"),
+        async () => ({ run: null }),
+      ],
+      runContainers: { r1: ["0ld1d"] },
+    });
+    await s.loop.start();
+    await s.idle();
+    s.change();
+    await s.idle();
+    // r1's first supervisor hangs: after a minute the pass gives up on it.
+    expect(s.started).toEqual(["r1"]);
+    s.after.get(60_000)?.();
+    await vi.waitFor(() => expect(s.started).toEqual(["r1", "r1", "r2"]));
+    expect(s.logs.some((l) => l.includes("r1"))).toBe(true);
+    // Its container, still there, would hold the name the new one takes.
+    expect(s.handles[0]?.stop).toHaveBeenCalledWith("dropped");
+    expect(s.docker.listRunContainers).toHaveBeenCalledWith("r1");
+    expect(s.docker.remove).toHaveBeenCalledWith("0ld1d");
+    const removed = vi.mocked(s.docker.remove).mock.invocationCallOrder[0] ?? 0;
+    const restarted = s.startRun.mock.invocationCallOrder[1] ?? 0;
+    expect(removed).toBeGreaterThan(0);
+    expect(restarted).toBeGreaterThan(removed);
+    s.handles[0]?.end();
+    await s.loop.stop();
+  });
+
+  it("a run whose old container can't be removed waits for the next claim", async () => {
+    let fail = true;
     const s = setup({
       claims: [
         async () => claim("r1"),
@@ -233,22 +271,24 @@ describe("claim loop", () => {
         async () => ({ run: null }),
         async () => claim("r1"),
       ],
+      runContainers: { r1: ["0ld1d"] },
+      remove: async () => {
+        if (fail) throw new Error("docker hung up");
+      },
     });
     await s.loop.start();
     await s.idle();
     s.change();
     await s.idle();
-    // r1's first supervisor hangs: after a minute the pass gives up on it.
-    expect(s.started).toEqual(["r1"]);
+    // Hung for good: told to stop, it still doesn't end.
+    if (s.handles[0]) vi.mocked(s.handles[0].stop).mockImplementation(() => {});
     s.after.get(60_000)?.();
-    await s.idle();
-    await s.idle();
-    expect(s.logs.some((l) => l.includes("r1"))).toBe(true);
-    // The claim goes on to other runs, and r1 claimed again starts.
-    expect(s.started).toEqual(["r1", "r2"]);
+    await vi.waitFor(() => expect(s.started).toEqual(["r1", "r2"]));
+    expect(s.logs.join("\n")).toContain("docker hung up");
+    // Requeued by the stale sweep and claimed again: removed this time.
+    fail = false;
     s.change();
-    await s.idle();
-    expect(s.started).toEqual(["r1", "r2", "r1"]);
+    await vi.waitFor(() => expect(s.started).toEqual(["r1", "r2", "r1"]));
     s.handles[0]?.end();
     await s.loop.stop();
   });

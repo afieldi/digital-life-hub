@@ -43,6 +43,8 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
   void _s;
 
   const live = new Map<string, RunHandle>();
+  /** Runs whose last supervisor was given up on: their old container goes before they start. */
+  const dropped = new Set<string>();
   const cancels: Array<() => void> = [];
   let stopped = false;
   let passing: Promise<void> | undefined;
@@ -74,8 +76,8 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
       }
       if (!claimed.run) return;
       // A run answered right after it suspended comes back while its last
-      // supervisor still stops the container, whose name and socket the new
-      // one takes: start once that one has ended.
+      // supervisor still stops the container, whose name the new one takes:
+      // start once that one has ended.
       const previous = live.get(claimed.run.id);
       if (previous) {
         let cancel: () => void = () => {};
@@ -92,12 +94,31 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
         // Stopped meanwhile: the stale sweep requeues the run.
         if (stopped) return;
         if (!ended) {
-          // Never ending: forget it, so the run can start when the stale
-          // sweep requeues it, and claim on.
+          // Never ending: forget it. It acts only on its own container and
+          // socket, but its container may still hold the run's name. Told to
+          // stop, it won't report that container's exit as the run's.
           log(`run ${claimed.run.id}: its last supervisor didn't end`);
+          previous.stop("dropped");
           if (live.get(claimed.run.id) === previous) {
             live.delete(claimed.run.id);
           }
+          dropped.add(claimed.run.id);
+        }
+      }
+      if (dropped.has(claimed.run.id)) {
+        try {
+          for (const id of await deps.docker.listRunContainers(
+            claimed.run.id,
+          )) {
+            await deps.docker.remove(id);
+          }
+          dropped.delete(claimed.run.id);
+        } catch (e) {
+          // Left claimed: the stale sweep requeues it, and the next claim
+          // tries again.
+          log(
+            `run ${claimed.run.id}: removing its old container: ${firstLine(e)}`,
+          );
           continue;
         }
       }
@@ -155,11 +176,11 @@ export function createClaimLoop(deps: ClaimLoopDeps) {
   return {
     async start() {
       try {
-        for (const name of await deps.docker.listRunContainers()) {
+        for (const id of await deps.docker.listRunContainers()) {
           try {
-            await deps.docker.remove(name);
+            await deps.docker.remove(id);
           } catch (e) {
-            log(`remove ${name}: ${firstLine(e)}`);
+            log(`remove ${id}: ${firstLine(e)}`);
           }
         }
       } catch (e) {
