@@ -1,11 +1,13 @@
 # VPS deployment
 
-One Linux VPS runs Postgres, the API (`apps/api`) and the agent worker
-(`apps/agent`). The worker starts one `dlh-agent-runner` container per agent
+One Linux VPS runs Postgres, the API (`apps/api`), the agent worker
+(`apps/agent`) and the Slack bot (`apps/slack`). The worker starts one `dlh-agent-runner` container per agent
 run, on its own network, `dlh-runs`, which can't reach private address space.
 
 ```
 internal network:  db  <-  api  <-  agent (worker)
+                              ^
+                              +----  slack (Socket Mode out to Slack)
                                       | /var/run/docker.sock
                                       v
 dlh-runs network:                   dlh-run-<id> containers (public internet only)
@@ -22,7 +24,7 @@ the CLI steps (run from a checkout of this repo).
 1. Clone the repo and `pnpm install`.
 2. `cp deploy/vps/.env.example deploy/vps/.env` and fill in
    `POSTGRES_PASSWORD`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say.
+   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say. The Slack tokens come from "The Slack bot" below.
 3. Generate the secrets key: `openssl rand -base64 32` into `AGENT_SECRETS_KEY`.
    It encrypts the connection secrets in `/var/lib/dlh-agent/agent.db`. Back it
    up: without it those secrets can't be read.
@@ -68,8 +70,40 @@ the CLI steps (run from a checkout of this repo).
     ```
 
     then enable the connection in the hub's Settings.
-12. Put a TLS reverse proxy (Caddy, nginx) in front of `127.0.0.1:8787`. The API
+12. Set up the Slack bot (next section), then start it.
+13. Put a TLS reverse proxy (Caddy, nginx) in front of `127.0.0.1:8787`. The API
     is only published on loopback.
+
+## The Slack bot
+
+The bot (`apps/slack`) opens a Socket Mode connection out to Slack, so it needs
+no public URL and publishes no port. It reaches the API over the `internal`
+network with its own service token.
+
+1. Create a Slack app (api.slack.com/apps) and turn on **Socket Mode**.
+2. Give it these scopes:
+   - Bot token: `app_mentions:read`, `im:history`, `im:read`, `im:write`,
+     `channels:history`, `groups:history`, `chat:write`, `reactions:write`,
+     `users:read`, `users.profile:read`.
+   - App-level token: `connections:write`.
+   - User token: `chat:write` (it sends as you; the outbox uses it in Part 2).
+3. Subscribe to the bot events `message.im` and `app_mention`.
+4. Have a workspace admin install the app.
+5. Copy the three tokens into `deploy/vps/.env`: the app-level token
+   (`xapp-...`) as `SLACK_APP_TOKEN`, the bot token (`xoxb-...`) as
+   `SLACK_BOT_TOKEN`, the user token (`xoxp-...`) as `SLACK_USER_TOKEN`.
+6. Mint the bot's hub token the way step 9 mints the worker's (the API image
+   holds no CLI, so run it from the checkout against the database):
+   `DATABASE_URL=postgres://dlh:<POSTGRES_PASSWORD>@$DB:5432/dlh pnpm --filter @dlh/api tokens slack create`.
+   It prints `id` and `token` once; put the token in `HUB_SLACK_TOKEN`. Revoke
+   with `tokens slack revoke <id>`.
+7. Start it: `docker compose -f deploy/vps/docker-compose.yml up -d slack`.
+8. In the hub, open Settings → Slack and set your Slack user id, so the bot
+   knows which DMs are yours.
+
+To map a coworker to GitHub, the bot reads the user profile field labelled
+"GitHub" (needs `users.profile:read`). Add that field to the workspace's
+profiles and have people fill it in; the bot takes their login from it.
 
 ## AI Gateway key and budget
 
