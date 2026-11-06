@@ -202,8 +202,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Both images build with buildx and keep their layers in the Actions
-      # cache, so a run that changes no image input rebuilds nothing.
+      # Both images build with buildx from layers in the Actions cache. Only
+      # pushes to main write that cache (uploading it costs more than the build
+      # saves); pull requests read main's.
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/build-push-action@v6
@@ -213,7 +214,7 @@ jobs:
           tags: dlh-api
           load: true
           cache-from: type=gha,scope=dlh-api
-          cache-to: type=gha,mode=max,scope=dlh-api
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=dlh-api' || '' }}
 
       - name: Smoke-test the API image
         run: |
@@ -236,7 +237,7 @@ jobs:
           tags: dlh-agent-runner
           load: true
           cache-from: type=gha,scope=dlh-agent-runner
-          cache-to: type=gha,mode=max,scope=dlh-agent-runner
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=dlh-agent-runner' || '' }}
 
       # The Docker tests: runs in the runner image with a fake model
       # (apps/agent/test/docker.e2e.test.ts). As root, like the real worker,
