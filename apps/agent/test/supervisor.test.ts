@@ -292,7 +292,8 @@ const event = (text: string) => ({
   data: { text },
 });
 
-describe("startRun", () => {
+// The supervisor serves a Unix socket and sets POSIX modes: the worker runs on Linux.
+describe.skipIf(process.platform === "win32")("startRun", () => {
   it("starts the container with only non-secret env and records it", async () => {
     const t = setup();
     await t.started();

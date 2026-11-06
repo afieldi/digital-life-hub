@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { posix } from "node:path";
 
 /** One run's container. `env` holds only non-secret values (see `runEnv`). */
 export type RunSpec = {
@@ -25,9 +25,12 @@ export interface Docker {
 
 export const containerName = (runId: string) => `dlh-run-${runId}`;
 export const volumeName = (runId: string) => `dlh-ws-${runId}`;
-/** The host directory mounted at `/run/dlh`, holding the run's socket. */
+/**
+ * The host directory mounted at `/run/dlh`, holding the run's socket. The
+ * worker runs on a Linux host, so the path is POSIX on every platform.
+ */
 export const runDir = (dataDir: string, runId: string) =>
-  join(dataDir, "runs", runId);
+  posix.join(dataDir, "runs", runId);
 export const SOCKET_FILE = "dlh.sock";
 
 /**
