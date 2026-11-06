@@ -171,7 +171,10 @@ export const serviceTokens = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
   (t) => [
-    check("service_tokens_kind_check", sql`${t.kind} in ('worker', 'run')`),
+    check(
+      "service_tokens_kind_check",
+      sql`${t.kind} in ('worker', 'slack', 'run')`,
+    ),
     check(
       "service_tokens_run_check",
       sql`(${t.kind} = 'run') = (${t.runId} is not null)`,

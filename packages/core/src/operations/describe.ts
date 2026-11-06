@@ -107,7 +107,8 @@ export type OperationDescription<
   ai?: boolean;
   /**
    * Who may call it: `everyone` (you or an agent run), `user` (only you) or
-   * `worker` (only the agent host's worker token). See `accessOf` for the default.
+   * `worker` (only the agent host's worker token) or `slack` (only the Slack
+   * bot's token). See `accessOf` for the default.
    */
   access?: OperationAccess;
   /**
@@ -123,7 +124,7 @@ export type OperationDescription<
   calls?: OperationDescription[];
 };
 
-export type OperationAccess = "everyone" | "user" | "worker";
+export type OperationAccess = "everyone" | "user" | "worker" | "slack";
 
 /** `access`, or by default `everyone` for an AI action and `user` otherwise. */
 export function accessOf(d: OperationDescription): OperationAccess {
@@ -146,9 +147,12 @@ export function describeOperation<
   if (d.kind === "query" && d.calls?.length) {
     throw new OperationError(`Operation "${d.id}" is a query with calls`);
   }
-  if (d.access === "worker" && (d.palette !== false || d.ai !== false)) {
+  if (
+    (d.access === "worker" || d.access === "slack") &&
+    (d.palette !== false || d.ai !== false)
+  ) {
     throw new OperationError(
-      `Operation "${d.id}" has worker access but is in ⌘K or AI`,
+      `Operation "${d.id}" has access: "${d.access}" but is in ⌘K or AI`,
     );
   }
   try {

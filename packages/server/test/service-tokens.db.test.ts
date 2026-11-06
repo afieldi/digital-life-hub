@@ -7,9 +7,11 @@ import {
   hashToken,
   implementOperation,
   mintRunToken,
+  mintSlackToken,
   mintWorkerToken,
   type Principal,
   revokeRunTokens,
+  revokeSlackToken,
 } from "../src";
 import { freshTestDb, testServer } from "../src/testing";
 
@@ -41,6 +43,10 @@ const accessServer = defineServerModule({
     work: implementOperation(
       read("acc.work", { access: "worker", palette: false, ai: false }),
       { run: async () => "work" },
+    ),
+    chat: implementOperation(
+      read("acc.chat", { access: "slack", palette: false, ai: false }),
+      { run: async () => "chat" },
     ),
   },
 });
@@ -145,5 +151,59 @@ test("ops.undo refuses worker and run tokens", async () => {
       }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   }
+  await close();
+});
+
+test("a slack token calls a slack operation", async () => {
+  const { as, principalOf, db, close } = await setup();
+  const slack = await principalOf(await mintSlackToken(db));
+  expect(slack.kind).toBe("slack");
+  expect(await as(slack).chat({})).toBe("chat");
+  await close();
+});
+
+test("a slack token is refused by everyone, user and worker operations", async () => {
+  const { as, principalOf, db, close } = await setup();
+  const slack = await principalOf(await mintSlackToken(db));
+  for (const op of ["open", "mine", "work"] as const) {
+    await expect(as(slack)[op]({})).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  }
+  await close();
+});
+
+test("user, run and worker tokens are refused by a slack operation", async () => {
+  const { as, principalOf, runToken, db, close } = await setup();
+  const worker = await principalOf(await mintWorkerToken(db));
+  const run = await principalOf(await runToken(RUN_ID));
+  for (const principal of [worker, run]) {
+    await expect(as(principal).chat({})).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  }
+  const { caller } = testServer(db, [accessServer]);
+  await expect(caller.acc.chat({})).rejects.toMatchObject({
+    code: "FORBIDDEN",
+  });
+  await close();
+});
+
+test("a revoked slack token is unauthorized", async () => {
+  const { as, principalOf, db, close } = await setup();
+  const token = await mintSlackToken(db);
+  const slack = await principalOf(token);
+  if (slack.kind !== "slack") throw new Error("expected slack");
+  expect(await revokeSlackToken(db, slack.tokenId)).toBe(true);
+  expect(await revokeSlackToken(db, slack.tokenId)).toBe(false);
+  const principal = await findServiceToken(db, token);
+  expect(principal).toBeNull();
+  await expect(as(principal).chat({})).rejects.toMatchObject({
+    code: "UNAUTHORIZED",
+  });
+  // A worker token is no slack token, so it can't be revoked as one.
+  const worker = await principalOf(await mintWorkerToken(db));
+  if (worker.kind !== "worker") throw new Error("expected worker");
+  expect(await revokeSlackToken(db, worker.tokenId)).toBe(false);
   await close();
 });

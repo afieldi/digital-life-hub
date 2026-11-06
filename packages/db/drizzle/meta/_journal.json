@@ -43,6 +43,13 @@
       "when": 1793822323616,
       "tag": "0005_service_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793997263694,
+      "tag": "0006_slack_service_tokens",
+      "breakpoints": true
     }
   ]
 }

@@ -38,6 +38,7 @@ const ALLOWED: Record<OperationAccess, ReadonlySet<Principal["kind"]>> = {
   everyone: new Set(["user", "run"]),
   user: new Set(["user"]),
   worker: new Set(["worker"]),
+  slack: new Set(["slack"]),
 };
 
 /** No principal is UNAUTHORIZED; one `access` doesn't let in is FORBIDDEN. */

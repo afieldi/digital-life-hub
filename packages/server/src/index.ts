@@ -40,8 +40,10 @@ export { getSettings } from "./ai/settings";
 export {
   findServiceToken,
   mintRunToken,
+  mintSlackToken,
   mintWorkerToken,
   revokeRunTokens,
+  revokeSlackToken,
   revokeWorkerToken,
 } from "./auth/serviceTokens";
 export { hashToken, newToken } from "./auth/tokens";

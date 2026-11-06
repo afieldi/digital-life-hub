@@ -297,13 +297,36 @@ describe("describeOperation", () => {
       access: "worker",
     };
     expect(() => describeOperation({ ...worker, ai: false })).toThrow(
-      'Operation "agent.claim" has worker access but is in ⌘K or AI',
+      'Operation "agent.claim" has access: "worker" but is in ⌘K or AI',
     );
     expect(() => describeOperation({ ...worker, palette: false })).toThrow(
       OperationError,
     );
     expect(() =>
       describeOperation({ ...worker, palette: false, ai: false }),
+    ).not.toThrow();
+  });
+  test("access slack needs palette false and ai false", () => {
+    const slack: OperationDescription = {
+      id: "slack.check",
+      kind: "query",
+      label: "Check",
+      description: "x",
+      appliesTo: "none",
+      input: z.object({}),
+      subject: () => null,
+      effects: [],
+      summary: () => "Check",
+      access: "slack",
+    };
+    expect(() => describeOperation({ ...slack, ai: false })).toThrow(
+      'access: "slack"',
+    );
+    expect(() => describeOperation({ ...slack, palette: false })).toThrow(
+      OperationError,
+    );
+    expect(() =>
+      describeOperation({ ...slack, palette: false, ai: false }),
     ).not.toThrow();
   });
   test("access defaults to everyone with ai and user without", () => {
