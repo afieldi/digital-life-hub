@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { createApi } from "../src/api";
+import { createApi, HubError } from "../src/api";
 import type { Config } from "../src/config";
 
 type Seen = { method?: string; url?: string; auth?: string; body: string };
@@ -135,8 +135,39 @@ describe("createApi", () => {
     await expect(api.worker.agent.claim.mutate({})).rejects.toThrow();
     await expect(
       api.asRun("run-tok").call("tasks.create", {}, "mutation"),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "OUTCOME_UNKNOWN" });
   }, 2000);
+
+  it("a run's change with no answer says it may have been made", async () => {
+    // Made, but answered too late: a retry would make it twice.
+    const { url } = await start(() => {});
+    const api = createApi(config(url), { timeoutMs: 50 });
+    const e = await api
+      .asRun("run-tok")
+      .call("tasks.create", { title: "x" }, "mutation")
+      .catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(HubError);
+    expect(e).toMatchObject({ code: "OUTCOME_UNKNOWN" });
+    expect((e as Error).message).toMatch(/may or may not have been made/);
+    expect((e as Error).message).toMatch(/[Cc]heck/);
+  }, 2000);
+
+  it("a run's read with no answer is only unavailable", async () => {
+    const { url } = await start(() => {});
+    const api = createApi(config(url), { timeoutMs: 50 });
+    await expect(
+      api.asRun("run-tok").call("tasks.list", {}, "query"),
+    ).rejects.toMatchObject({ code: "UNAVAILABLE" });
+  }, 2000);
+
+  it("a run's change the API answered with an error is that error", async () => {
+    const { url } = await start((_r, _s, res) =>
+      json(res, { error: { message: "bad", data: { code: "CONFLICT" } } }, 409),
+    );
+    await expect(
+      createApi(config(url)).asRun("t").call("tasks.create", {}, "mutation"),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: "bad" });
+  });
 
   it("onChanges reconnects after the stream drops", async () => {
     let connections = 0;

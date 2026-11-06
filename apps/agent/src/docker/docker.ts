@@ -12,9 +12,10 @@ export type RunSpec = {
 /** Docker as the worker drives it; `cliDocker` runs the CLI, tests use a fake. */
 export interface Docker {
   /**
-   * Starts the run's container detached, named `containerName(runId)`. The
-   * supervisor then acts on it by the id this returns: a later start of the
-   * same run takes the name.
+   * Starts the run's container detached, named `containerName(runId, start)`
+   * with a fresh `start` each time, so a `docker run` that ends late can't
+   * hold a name the run's next start needs. The supervisor acts on it by the
+   * id this returns; the run's containers are found by the `dlh.run` label.
    */
   run(spec: RunSpec): Promise<{ containerId: string }>;
   stop(container: string): Promise<void>;
@@ -39,7 +40,9 @@ export interface Docker {
 export const RUN_NETWORK = "dlh-runs";
 export const RUN_BRIDGE = "dlh-runs0";
 
-export const containerName = (runId: string) => `dlh-run-${runId}`;
+/** One start's container: `start` is new for every start of the run. */
+export const containerName = (runId: string, start: string) =>
+  `dlh-run-${runId}-${start}`;
 export const volumeName = (runId: string) => `dlh-ws-${runId}`;
 /**
  * The run's host directory. Each start of the run makes its own directory in

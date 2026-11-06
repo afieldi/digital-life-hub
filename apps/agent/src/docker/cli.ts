@@ -1,4 +1,5 @@
 import { execFile as nodeExecFile } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
 import {
   containerName,
@@ -66,7 +67,7 @@ export function cliDocker(exec: ExecFile): Docker {
         "run",
         "-d",
         "--name",
-        containerName(runId),
+        containerName(runId, randomBytes(4).toString("hex")),
         "--label",
         `dlh.run=${runId}`,
         ...ISOLATION,

@@ -77,21 +77,42 @@ export function createApi(
   const asRun: WorkerApi["asRun"] = (token) => ({
     async call(id, input, kind) {
       const headers = { Authorization: `Bearer ${token}` };
-      const res =
-        kind === "mutation"
-          ? await timedFetch(`${base}/trpc/${id}`, {
-              method: "POST",
-              headers: { ...headers, "Content-Type": "application/json" },
-              body: JSON.stringify(input ?? {}),
-            })
-          : await timedFetch(
-              `${base}/trpc/${id}?input=${encodeURIComponent(JSON.stringify(input ?? {}))}`,
-              { headers },
-            );
-      const body = (await res.json().catch(() => null)) as {
+      let res: Response;
+      let text: string;
+      try {
+        res =
+          kind === "mutation"
+            ? await timedFetch(`${base}/trpc/${id}`, {
+                method: "POST",
+                headers: { ...headers, "Content-Type": "application/json" },
+                body: JSON.stringify(input ?? {}),
+              })
+            : await timedFetch(
+                `${base}/trpc/${id}?input=${encodeURIComponent(JSON.stringify(input ?? {}))}`,
+                { headers },
+              );
+        text = await res.text();
+      } catch {
+        // No answer in full: refused, cut off, or past the timeout. A change
+        // may have been made all the same, and the agent retrying it would
+        // make it twice, so it's told to look first.
+        if (kind === "mutation") {
+          throw new HubError(
+            "OUTCOME_UNKNOWN",
+            `The hub didn't answer ${id}, so the change may or may not have been made. Check before you try it again.`,
+          );
+        }
+        throw new HubError("UNAVAILABLE", `The hub didn't answer ${id}.`);
+      }
+      let body: {
         result?: { data?: unknown };
         error?: { message?: string; data?: { code?: string } };
-      } | null;
+      } | null = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        // Not tRPC's answer (a proxy's error page): the status says what failed.
+      }
       if (body?.error || !res.ok || !body?.result) {
         throw new HubError(
           body?.error?.data?.code ?? `HTTP_${res.status}`,

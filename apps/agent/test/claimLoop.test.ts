@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClaimLoop } from "../src/claimLoop";
 import type { Docker } from "../src/docker/docker";
 import type { Claimed, RunHandle, Timers } from "../src/run/supervisor";
@@ -35,6 +38,7 @@ function setup(opts: {
   remove?: (container: string) => Promise<void>;
   removeVolume?: (name: string) => Promise<void>;
   isolated?: () => boolean;
+  dataDir?: string;
 }) {
   const { timers, every, after } = fakeTimers();
   let onChange: () => void = () => {};
@@ -91,7 +95,7 @@ function setup(opts: {
     } as never,
     docker,
     store,
-    dataDir: "/data",
+    dataDir: opts.dataDir ?? "/data",
     image: "img",
     relay: {} as never,
     timers,
@@ -117,7 +121,39 @@ function setup(opts: {
   };
 }
 
+const tmp: string[] = [];
+afterEach(() => {
+  for (const d of tmp.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+function dataDir() {
+  const d = mkdtempSync(join(tmpdir(), "dlh-loop-"));
+  tmp.push(d);
+  return d;
+}
+
 describe("claim loop", () => {
+  it("start removes the socket directories a crashed worker left", async () => {
+    const d = dataDir();
+    const left = join(d, "runs", "r1", "s-Ab12Cd");
+    const other = join(d, "runs", "r2", "s-Ef34Gh");
+    mkdirSync(left, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const s = setup({ dataDir: d });
+    await s.loop.start();
+    expect(existsSync(left)).toBe(false);
+    expect(existsSync(other)).toBe(false);
+    // The run directories stay: their runs may still be live.
+    expect(existsSync(join(d, "runs", "r1"))).toBe(true);
+    await s.loop.stop();
+  });
+
+  it("start works with no runs directory yet", async () => {
+    const s = setup({ dataDir: dataDir() });
+    await s.loop.start();
+    expect(s.logs).toEqual([]);
+    await s.loop.stop();
+  });
+
   it("start removes leftover run containers", async () => {
     const s = setup({ containers: ["dlh-run-a", "dlh-run-b"] });
     await s.loop.start();
@@ -314,7 +350,11 @@ describe("claim loop", () => {
   });
 
   it("old volumes are removed and forgotten", async () => {
+    const d = dataDir();
+    mkdirSync(join(d, "runs", "a"), { recursive: true });
+    mkdirSync(join(d, "runs", "b"), { recursive: true });
     const s = setup({
+      dataDir: d,
       ended: [
         { runId: "a", volume: "dlh-ws-a" },
         { runId: "b", volume: "dlh-ws-b" },
@@ -337,6 +377,9 @@ describe("claim loop", () => {
     expect(s.store.forgetRun).toHaveBeenCalledWith("a");
     expect(s.store.forgetRun).toHaveBeenCalledWith("c");
     expect(s.store.forgetRun).not.toHaveBeenCalledWith("b");
+    // A forgotten run's directory goes with it; one kept stays.
+    expect(existsSync(join(d, "runs", "a"))).toBe(false);
+    expect(existsSync(join(d, "runs", "b"))).toBe(true);
     expect(s.logs.some((l) => l.includes("in use"))).toBe(true);
     expect(s.logs.some((l) => l.includes("more"))).toBe(false);
     s.every.get(60 * 60_000)?.();
