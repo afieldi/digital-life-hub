@@ -295,7 +295,14 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
     });
     // Task 11's firewall script makes it on a server; a bare network here.
     await docker("network", "inspect", "dlh-runs").catch(() =>
-      docker("network", "create", "dlh-runs"),
+      docker(
+        "network",
+        "create",
+        "--opt",
+        "com.docker.network.bridge.enable_icc=false",
+        "--ipv6=false",
+        "dlh-runs",
+      ),
     );
   }, 60_000);
 
@@ -541,6 +548,22 @@ describe.skipIf(!enabled)("a run in Docker with a fake model", () => {
           "{{(index .IPAM.Config 0).Gateway}}",
         )
       ).trim();
+      // Name resolution works with the public resolvers cliDocker passes.
+      await sh("docker", [
+        "run",
+        "--rm",
+        "--network",
+        "dlh-runs",
+        "--dns",
+        "1.1.1.1",
+        "--dns",
+        "9.9.9.9",
+        "--entrypoint",
+        "getent",
+        IMAGE,
+        "hosts",
+        "example.com",
+      ]);
       for (const url of [
         "http://169.254.169.254/latest/meta-data/",
         `http://${gateway}:${port}/`,

@@ -13,10 +13,16 @@
 #                port or any host service listens). Containers reach those
 #                without being forwarded, so DOCKER-USER never sees them.
 # Not affected: the worker <-> container channel is a Unix socket in a bind
-# mount (not network), and DNS: containers on a user-defined bridge ask
-# Docker's embedded resolver at 127.0.0.11, inside their own namespace; the
-# daemon forwards from the host, so it never crosses this bridge and works
-# even when the host's resolver is a private address.
+# mount (not network).
+# DNS: Docker's embedded resolver (127.0.0.11) forwards to the host's upstream
+# resolvers *from the container's namespace*, so an upstream in a blocked range
+# (a cloud VPC resolver such as 172.31.0.2, or 169.254.169.254) would be
+# dropped. Run containers therefore use public resolvers: the worker passes
+# `--dns 1.1.1.1 --dns 9.9.9.9` to `docker run` (apps/agent/src/docker/cli.ts).
+# Run-to-run traffic on the bridge is blocked by the network itself
+# (enable_icc=false), since bridge-local frames don't reach DOCKER-USER without
+# br_netfilter. IPv6 is off (--ipv6=false), so there is no v6 path around these
+# rules.
 set -eu
 
 NET=dlh-runs
@@ -25,7 +31,9 @@ BLOCKED="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10"
 
 if ! docker network inspect "$NET" >/dev/null 2>&1; then
   docker network create --driver bridge \
-    --opt "com.docker.network.bridge.name=$BRIDGE" "$NET" >/dev/null
+    --opt "com.docker.network.bridge.name=$BRIDGE" \
+    --opt com.docker.network.bridge.enable_icc=false \
+    --ipv6=false "$NET" >/dev/null
 fi
 
 subnet=$(docker network inspect "$NET" --format '{{(index .IPAM.Config 0).Subnet}}')

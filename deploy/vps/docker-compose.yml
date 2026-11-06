@@ -51,7 +51,8 @@ services:
     environment:
       API_URL: http://api:8787
       AGENT_DATA_DIR: /var/lib/dlh-agent
-      AGENT_WORKER_TOKEN: ${AGENT_WORKER_TOKEN:?set AGENT_WORKER_TOKEN in deploy/vps/.env}
+      # Empty until step 9 of the README; the worker refuses to start without it.
+      AGENT_WORKER_TOKEN: ${AGENT_WORKER_TOKEN:-}
       AGENT_SECRETS_KEY: ${AGENT_SECRETS_KEY:?set AGENT_SECRETS_KEY in deploy/vps/.env}
       AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:?set AI_GATEWAY_API_KEY in deploy/vps/.env}
     volumes:

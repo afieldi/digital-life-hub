@@ -50,6 +50,10 @@ describe("the VPS compose file", () => {
       "http://api:8787",
     );
     expect(compose.services.api?.environment?.MIGRATE_ON_START).toBe("1");
+    // Empty is allowed: the runbook starts db and api before the token exists.
+    expect(compose.services.agent?.environment?.AGENT_WORKER_TOKEN).toBe(
+      "${AGENT_WORKER_TOKEN:-}",
+    );
   });
 
   it("keeps db, api and agent on internal, with dlh-runs external", () => {

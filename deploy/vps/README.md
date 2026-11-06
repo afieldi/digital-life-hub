@@ -22,7 +22,7 @@ the CLI steps (run from a checkout of this repo).
 1. Clone the repo and `pnpm install`.
 2. `cp deploy/vps/.env.example deploy/vps/.env` and fill in
    `POSTGRES_PASSWORD`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `ALLOWED_EMAIL`. Leave the three `AGENT_*` / `AI_GATEWAY_*` values for now.
+   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say.
 3. Generate the secrets key: `openssl rand -base64 32` into `AGENT_SECRETS_KEY`.
    It encrypts the connection secrets in `/var/lib/dlh-agent/agent.db`. Back it
    up: without it those secrets can't be read.
@@ -44,7 +44,7 @@ the CLI steps (run from a checkout of this repo).
    then `DATABASE_URL=postgres://dlh:<POSTGRES_PASSWORD>@$DB:5432/dlh pnpm --filter @dlh/api tokens worker create`.
    It prints `id` and `token` once; put the token in `AGENT_WORKER_TOKEN`.
    (From the host, Docker's bridge IPs are reachable on Linux.)
-   Revoke with `tokens worker revoke <id>`.
+   Then set `AGENT_WORKER_TOKEN` in `.env`. Revoke with `tokens worker revoke <id>`.
 10. Start the worker: `docker compose -f deploy/vps/docker-compose.yml up -d agent`.
 11. Add connections (types: github, aws, slack, linear, gdrive, mcp, env). The
     CLI keeps its secrets in the same store as the worker
@@ -91,12 +91,17 @@ or swap the pin in `packages/agent-runner/Dockerfile`.
   itself. Containers reach the host (the bridge gateway, where the API is
   published) without being forwarded, so `DOCKER-USER` doesn't see it.
 
+The network is created with `enable_icc=false` (runs can't reach each other;
+bridge-local traffic doesn't pass `DOCKER-USER`) and `--ipv6=false`. If you made
+`dlh-runs` yourself earlier without these, `docker network rm dlh-runs` and run
+the script again.
+
 The worker talks to each run over a Unix socket in a bind mount, which is not
-network traffic and is unaffected. DNS is unaffected too: containers on a
-user-defined bridge use Docker's embedded resolver (127.0.0.11), which queries
-upstream from the host and not across the bridge, so a private host resolver
-still works. IPv6 isn't enabled on the network; don't enable it without
-mirroring the rules with `ip6tables`.
+network traffic and is unaffected. DNS is not unaffected: Docker's embedded
+resolver forwards to the host's upstream resolvers from the container's own
+namespace, so an upstream in a blocked range (the AWS VPC resolver
+`172.31.0.2` via systemd-resolved, or `169.254.169.254` on GCP/Oracle) would be
+dropped. So the worker starts runs with `--dns 1.1.1.1 --dns 9.9.9.9`.
 
 ## Upgrading
 
