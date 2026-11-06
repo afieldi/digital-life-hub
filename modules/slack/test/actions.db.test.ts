@@ -122,6 +122,21 @@ test("apply runs the chosen option and offers Undo", async () => {
   await h.close();
 });
 
+test("a Suggest option pressed twice is a no-op reply", async () => {
+  const h = await harness("tasks.create|suggest");
+  h.completions.push(
+    JSON.stringify({ options: [{ label: "Chase Dana", title: "Chase Dana" }] }),
+  );
+  const out = await h.send("maybe add a task about Dana");
+  const pick = buttonInput(out.buttons?.[0]);
+  await h.act(pick);
+  const again = await h.act(pick);
+  expect(again.reply).toContain("already finished or been used");
+  expect(again.buttons).toBeUndefined();
+  expect(await h.taskTitles()).toEqual(["Chase Dana"]);
+  await h.close();
+});
+
 test("discard drops the suggestion", async () => {
   const h = await harness("tasks.create|suggest");
   h.completions.push(

@@ -14,7 +14,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { slackActions } from "./../db/schema";
+import { slackActions } from "../db/schema";
 import { slackOps } from "../operations";
 import {
   type HandleActionInput,
@@ -51,7 +51,14 @@ async function undoAction(deps: CoreDeps, id: string): Promise<Reply> {
       message: `unknown operation: ${row.operation}`,
     });
   }
-  const token = undoToken.parse(row.token);
+  const parsedToken = undoToken.safeParse(row.token);
+  if (!parsedToken.success) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "That action's undo record is unreadable.",
+    });
+  }
+  const token = parsedToken.data;
   try {
     await writeItems(deps, async (w) => {
       // Claiming and reverting share a transaction, so a refused revert leaves the row unused.
