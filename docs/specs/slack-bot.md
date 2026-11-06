@@ -319,6 +319,28 @@ The hub keeps no copy of Slack conversations.
 - **Vercel AI Gateway** with Jev available on the account.
 - **A workspace admin** approving the Slack app with the scopes above.
 
+## Jev check results
+
+Nov 6, 2026. 30 coworker messages (5 that should escalate) against the 8 coworker commands, 3 runs each (90 calls), from a laptop through Vercel AI Gateway.
+
+| Question | `typesafe-ai/jev` | `openai/gpt-6-luna-decisions` |
+| --- | --- | --- |
+| Reachable through chat completions with `response_format`? | No. The Gateway answers 400 `ModelTypeMismatchError`: a decision model, not a language model | No, same error |
+| Reachable through `POST /v1/decisions` with a `choice` question? | Yes | Yes |
+| Choice limited to the supplied options? | Yes: `choice` is one of the supplied `value`s, with `probabilities` per option | Yes |
+| Confidence returned? | Yes, `confidence` on the choice | Yes |
+| Accuracy | 93% (28 of 30) | 80% (24 of 30) |
+| Latency p50 / p95 | 166 ms / 234 ms | 292 ms / 610 ms |
+| Cost per message | $0.000022 | $0.000028 |
+
+What it means for the build:
+
+- **Endpoint.** Decision models are not reachable through `/v1/chat/completions`, so a `response_format` schema doesn't apply. `createVercelGateway` calls `POST https://ai-gateway.vercel.sh/v1/decisions` with `{ model, input, questions: [{ type: "choice", name: "actionId", instructions, choices: [{ value, description }] }] }` and reads `answers[0].choice` and `answers[0].confidence`. A `choice` question is the enum: the answer is always one of the supplied values. Cost is `provider_metadata.gateway.cost`; usage is `usage.input_tokens`.
+- **Default interpreter model id: `typesafe-ai/jev`.** It was the more accurate and the faster. `openai/gpt-6-luna-decisions` is the fallback and works through the same endpoint with the same request, so it is a model id in settings. `typesafe-ai/jev-1.14.0` is the pinned version if the unpinned id moves.
+- **Escalation threshold.** Jev's one wrong answer below 0.6 confidence was `escalate` for a plausible request (0.53), which is the safe direction; its other miss (`requestStatus` for "Which of my requests are still open?", 0.98) is a boundary between two commands that both read the sender's requests. Both models were only given the single message, so Luna's `addToRequest` misses (0.39 to 0.47) may improve once the open request is in the input; re-measure with context in Task 9.
+- **Timeout.** p95 is 234 ms for Jev and 610 ms for Luna, well under 3 s, so the 3 s timeout stands.
+- **Cost.** About $0.02 per 1,000 coworker messages on Jev.
+
 ## Open questions
 
 - [ ] The threshold (0.6) and the append window (15 minutes): tune from escalations marked Not for me.
