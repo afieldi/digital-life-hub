@@ -35,7 +35,7 @@ Talk to the hub from Slack, and let coworkers reach you through it. You DM the b
 2. A coworker's three quick DMs become one request holding all three, and they get one acknowledgement.
 3. "Did Arek see my request?" gets the right status, and "never mind" withdraws it.
 4. "@ArekBot how many open PRs does Arek have for me?" is answered correctly, with nothing in the answer that doesn't involve the asker.
-5. An ambiguous message, yours or a coworker's, lands in the queue as "Bot wasn't sure"; running a suggested action there completes it and replies in Slack.
+5. An ambiguous message, yours or a coworker's, lands in the queue as "Bot wasn't sure"; for a coworker's, running a suggested action there completes it and replies in Slack.
 6. A draft reply goes out under your name only after you press Send.
 7. "Have the agent do X" in your DM starts a run with no further confirm, and its report comes back to that DM.
 8. A coworker's request handed to the agent runs with coworker audience: it can reply in their DM on its own, and asking to read anything else of yours files an approval.
@@ -69,7 +69,7 @@ modules/slack       NEW: slack_settings, slack_people, slack_outbox, slack_actio
 modules/requests    + requests.append, requests.fromSender, appended_ids, from_owner
 modules/agent       + run audience and guard, coworker connection set, agent.recentRuns, agent.runSource, hub-call approvals
 packages/core       + access "slack", audience "asker", run guards, runId checks, the shared approval hash, the model interpreter's contract (subjects)
-packages/server     + slack principal, runAsOwner, the model interpreter, the Vercel AI Gateway provider (prerequisite)
+packages/server     + slack principal, the model interpreter, the Vercel AI Gateway provider (prerequisite)
 packages/agent-runner + out-of-audience hub calls are ask
 apps/api            + slack tokens on tRPC and /changes; pnpm api slack-token
 deploy/vps          + the slack service
@@ -143,12 +143,13 @@ Both are `choice` questions to Jev. The interpreter's result has `subjectId: str
 
 ## Escalation
 
-An escalated message files a request, through `requests.file` called by `slack.handleMessage`, so it may carry actions:
+An escalated message files a request, through `requests.file` called by `slack.handleMessage`:
 
 - `source: "slack"`, `externalId` `<channel>:<ts>`, `sourceUrl` the message's permalink, `fromName` and `sourceHandle` the sender's
 - Title "Bot wasn't sure: \<first line\>", body the message
-- Up to 2 actions from Jev's top candidates in the **sender's** command set, each labelled with what it does. A coworker's are "Keep as a request", "Add to their request", "Reply with their status", "Withdraw their request" and "Answer their question". Yours read like "Create task: Chase Dana · Fri" or "Reply to Dana: PR status". Each runs `slack.runEscalated({ slackUserId, externalId, command })`, which runs the action as you, resolves the request as `handled`, and puts the reply into the outbox for the source thread. The message is named by its sender and `<channel>:<ts>`, which exist before the request does
-- A last action, Neither, runs `slack.dismissEscalation({ slackUserId, externalId })`: it resolves the request as `not_for_me`, kept for tuning the threshold. Actions replace the three outcomes on screen (Queue spec), so this stands in for them
+- **A coworker's** escalation carries up to 2 actions from Jev's top candidates in the coworker command set, each labelled with what it does: "Keep as a request", "Add to their request", "Reply with their status", "Withdraw their request" or "Answer their question". Each runs `slack.runEscalated({ slackUserId, externalId, command })`, which runs the action as you, resolves the request as `handled`, and puts the reply into the outbox for the source thread. The message is named by its sender and `<channel>:<ts>`, which exist before the request does
+- A coworker's last action, Neither, runs `slack.dismissEscalation({ slackUserId, externalId })`: it resolves the request as `not_for_me`, kept for tuning the threshold. Actions replace the three outcomes on screen (Queue spec), so this stands in for them
+- **Your** escalation carries no actions, so Make task, Handled and Not for me stay on the request
 
 In Slack, you get "Not sure what you meant, so I put it in your queue" with a link. A coworker gets the normal acknowledgement and never sees the bot's uncertainty.
 
@@ -158,7 +159,7 @@ In Slack, you get "Not sure what you meant, so I put it in your queue" with a li
 
 1. `slack.handleMessage` interprets and runs. It runs inside a mutation's transaction and writes nothing through `w`: each step that must commit on its own goes through `deps` (see Core changes).
 2. The reply depends on the kind: Ask, the answer; Suggest, the options as buttons; Do, "Done: …" with Undo. Every reply carries its `ai_request_id` in the message's metadata and buttons.
-3. A button calls `slack.handleAction`: apply an option, or undo, as you.
+3. A button calls `slack.handleAction`, as you: apply an option, discard the options ("None of these"), undo, undo a handoff, or Cancel run.
 
 **Coworkers (DM, or @mention)**
 
@@ -178,7 +179,7 @@ In Slack, you get "Not sure what you meant, so I put it in your queue" with a li
 **Handing off to the agent**
 
 1. "Have the agent do X" in your DM: Jev picks `slack.handOff`.
-2. `handOff` files a request for the message (`source: "slack"`, `fromOwner: true`, `sourceUrl` your DM's permalink), then runs `agent.assignRequest` on it. Both run through `runMutation(deps, op, input)`, each in its own transaction, so the request is committed before `assignRequest` reads it. `handOff`'s own Undo token is stored in `slack_actions`.
+2. `handOff` is a step of the owner path, not an operation, so a run can't hand work to the agent. It files a request for the message (`source: "slack"`, `fromOwner: true`, `sourceUrl` your DM's permalink), then runs `agent.assignRequest` on it. Both run through `runMutation(deps, op, input)`, each in its own transaction, so the request is committed before `assignRequest` reads it. `handOff`'s own Undo token is stored in `slack_actions`.
 3. Reply: "Given to the agent: \<task title\>" with Undo (until the worker claims the run) and Cancel run. Cancel runs `agent.cancel` the same way.
 4. When the run ends, its report comes back to that DM (see Agent hub changes).
 
@@ -197,15 +198,15 @@ Give to agent on any request in the queue works as it does today.
 
 **Slack principal.** `Principal` gains `{ kind: "slack"; tokenId }`, a service token of kind `slack`, minted by `pnpm api slack-token` (printed once, stored as its hash). `OperationAccess` gains `"slack"`: callable only by a slack token. `ALLOWED.slack` is `{"slack"}`; `everyone` and `user` don't let it in. `describeOperation` refuses `access: "slack"` unless `palette: false` and `ai: false`. `/changes`' `mayListen` accepts a live slack token.
 
-**Running as you from module code.** `runAsOwner(deps, fn)`, exported from `@dlh/server` for module server code, runs gateway steps (interpret, prepare, complete, apply an option, undo) and top-level operations as you, with your writer, Undo tokens and request log, exactly as the desktop app's calls would. It is the only way a non-user principal reaches the gateway or `ops.undo`. It checks that the calling procedure's principal is `slack`. `prepare(deps, input, opts?: { origin?: "app" | "slack" })` writes the new `ai_requests.origin` column (`app` by default, `slack` here), and `slack.handleAction`'s undo and apply act only on rows with `origin = 'slack'`.
+**Running as you from module code.** The owner path calls the gateway's `prepare(deps, input, { origin: "slack" })`, `apply` and `undo`, and `runMutation(deps, op, input)`, directly, each in its own transaction, with your writer, Undo tokens and request log, exactly as the desktop app's calls would. `prepare` writes the new `ai_requests.origin` column (`app` by default, `slack` here), and `slack.handleAction` acts only on `ai_requests` rows with `origin = 'slack'` and on `slack_actions` rows.
 
-**The owner path.** `handleMessage` runs inside a mutation's transaction, and everything you ask for must commit on its own. So each step runs through `deps`: the gateway's `prepare`, `apply` and `undo` (each opens its own transaction), and `runMutation(deps, op, input)` for `requests.file`, `agent.assignRequest`, `agent.cancel` and `slack.draftReply`. The owner path leaves no write in the outer transaction.
+**The owner path.** `handleMessage` runs inside a mutation's transaction, and everything you ask for must commit on its own. So each step runs through `deps`, as you: the gateway's `prepare`, `apply` and `undo` (each opens its own transaction), and `runMutation(deps, op, input)` for `requests.file`, `agent.assignRequest`, `agent.cancel` and `slack.draftReply`. The owner path leaves no write in the outer transaction.
 
-**Undo for the bot's own operations.** The gateway keeps Undo for what it runs. For operations the bot runs outside it, `slack_actions` holds the token (`agent.assignRequest`'s, from a handoff). A button's value names an `ai_requests` id or a `slack_actions` id, never a raw token. Undo is single use.
+**Undo for the bot's own operations.** The gateway keeps Undo for what it runs. For operations the bot runs outside it, `slack_actions` holds the Undo token (`agent.assignRequest`'s, from a handoff). A button's value is a `handleAction` input naming an `ai_requests` id or a `slack_actions` id, never a raw token. Undo is single use.
 
 **Model interpreter.** It is server-only. It lives in `modules/slack/src/server/interpret.ts` and calls Core's `decideOnServer`. ⌘K keeps the keyword interpreter, and Core's client registry (`interpreters`) is not changed. Its result has `subjectId`. The phrasing suite runs against it, at the same 90% bar. Your command set has subjects (Part 2); the coworker set has none. Its alternatives are the next most probable choices.
 
-**Server-side model calls.** Core has two helpers for module server code. Both log the call in `ai_requests` with `origin: "slack"` and `action_id` = `purpose`. The gateway's `prepare` is not involved; `runAsOwner` stays for the gateway steps.
+**Server-side model calls.** Core has two helpers for module server code. Both log the call in `ai_requests` with `origin: "slack"` and `action_id` = `purpose`. The gateway's `prepare` is not involved; the owner path's gateway steps are unchanged.
 
 - `completeOnServer(deps, { purpose, system, prompt, schema, model?, timeoutMs? })` returns `{ value, requestId }`. It generates text, such as a coworker's answer, through chat completions on the configured server provider.
 - `decideOnServer(deps, { purpose, question, choices: { value, description }[], input, model, timeoutMs })` returns `{ choice, confidence, probabilities, requestId }`. It is the interpreter's call, through `/v1/decisions` on the Vercel provider (its `decide()` method). Decision models (Jev, Luna) are not reachable through chat completions. It reads `confidence`, not the top probability.
@@ -265,7 +266,7 @@ Any other hub call is ask: the run suspends with an approval quoting the call ("
 | `slack_settings` | One row: `team_id`, `bot_user_id`, `owner_slack_id`, `ack_text`, `threshold` (0.6), `append_minutes` (15), `interpreter` (`model:jev`), `coworker_ai` (true), `runs_synced_at`, `seen_at` | Set in Settings → Slack. `seen_at` is set by `pendingSends` on every poll and shown as "Bot last seen". `owner_slack_id` is required before the bot answers anyone; until then it replies "Not set up yet" |
 | `slack_people` | `slack_user_id` (key), `name`, `github_login` null, `github_from` (`profile` or `manual`), `updated_at` | Filled from the Slack profile's GitHub field on first contact, or set by you. A manual login is never overwritten |
 | `slack_outbox` | `id`, `key` unique, `origin` (`draft`, `agent`, `report`, `review_ping`, `escalation`), `as` (`bot` or `me`), `channel_id`, `thread_ts` null, `text`, `status` (`pending`, `approved`, `sent`, `failed`, `discarded`), `request_id` FK `items` null, `run_id` null, `error` null, `sent_ts` null, `created_at`, `approved_at`, `sent_at` | `as: "me"` only for `origin: "draft"` (a check). `key` makes every insert idempotent: `report:<runId>`, `agent:<runId>:<n>`, `draft:<requestId>`… |
-| `slack_actions` | `id`, `undo_token`, `used_at` null, `created_at` | Undo for operations the bot runs outside the gateway. A button's value names a row, never a raw token. Single use |
+| `slack_actions` | `id` uuid, `operation` text (e.g. `agent.assignRequest`), `token` jsonb (an operation Undo token), `run_task_id` uuid null (the task whose run a handoff started), `created_at`, `used_at` null | Undo for operations the bot runs outside the gateway. A button's value names a row, never a raw token. `used_at` makes it single use |
 
 The hub keeps no copy of Slack conversations. `requests.from_owner` and `agent_runs.hub_approvals` are described in Queue changes and Agent hub changes.
 
@@ -274,12 +275,13 @@ The hub keeps no copy of Slack conversations. `requests.from_owner` and `agent_r
 | Operation | Access | Does |
 | --- | --- | --- |
 | `handleMessage({ event, sender, context })` | slack | The entry point for every message. Returns `{ reply?, react? }` for `apps/slack` to post |
-| `handleAction({ action, aiRequestId, option? })` | slack | A Slack button: apply an option, undo, cancel a run. The button's value names an `ai_requests` row or a `slack_actions` row |
+| `handleAction(input)` | slack | A Slack button. `input` is one of `{ do: "apply", aiRequestId, option }`, `{ do: "discard", aiRequestId }`, `{ do: "undo", aiRequestId }`, `{ do: "undoAction", slackActionId }` or `{ do: "cancelRun", taskId }`. Every reply button's value is that input as JSON |
 | `pendingSends()` | slack | A mutation. Records `slack_settings.seen_at`, marks `approved` rows older than 24 hours `failed` with "Too old to send" (so escalation replies queued while no sender existed never go out days late), and returns up to 20 `approved` rows, oldest first |
 | `markSent({ id, ts })` / `markFailed({ id, error })` | slack | Outbox results. A failed draft goes back to `pending` with the error shown |
 | `syncRuns()` | slack | For runs ended since `runs_synced_at` whose request came from your DM, adds a `report` row to the outbox |
-| `handOff`, `draftReply({ requestId, instruction })` | user (AI) | Your commands, run as you. `user`, so a run can't hand work to the agent or draft as you. `draftReply` is also run from a request's detail panel |
-| `sendDraft({ id, expectedUpdatedAt })` / `discardDraft` | user | Request actions on a draft. Send approves; Undo before it is sent |
+| `draftReply({ requestId, instruction })` | user (AI) | Your command, run as you. `user`, so a run can't draft as you. Also run from a request's detail panel |
+| `sendDraft({ draftId })` / `discardDraft({ draftId })` / `editDraft({ draftId, text })` | user | Request actions on a draft. Send approves; Undo before it is sent. `editDraft` works only while the draft is `pending` |
+| `requestInfo({ requestId })` | user (query) | What the request panel shows: thread link, the sender's GitHub login, and a draft's text, status and error |
 | `runEscalated({ slackUserId, externalId, command })` / `dismissEscalation({ slackUserId, externalId })` | user | Request actions on an escalation. The message is named by its sender and `<channel>:<ts>` |
 | `decline({ requestId })` | user | Request action on a coworker's AI-review request |
 | `postToSource({ runId, text })` | everyone, run tokens only | See Agent hub changes |
@@ -297,8 +299,8 @@ The hub keeps no copy of Slack conversations. `requests.from_owner` and `agent_r
 
 - **Settings → Slack.** Connection status ("Bot last seen", from `slack_settings.seen_at`), your Slack user, the acknowledgement text, the threshold, the append window, "Coworker messages use AI" and the people list with GitHub logins.
 - **Settings → Agent** gains the coworker connection set.
-- **Request detail panel.** `RequestDetail` renders `useDetailPanels("request")`, as `TaskDetail` does for tasks. `modules/slack` registers one panel, shown when `source` is `slack`: the Slack thread link, the sender's GitHub login, and for a draft its text (editable while `pending`), status and any send error, with "Draft a reply" (`slack.draftReply`).
-- **Queue rows.** "Bot wasn't sure" requests show their candidates as action buttons, like the agent's approvals.
+- **Request detail panel.** `RequestDetail` renders `useDetailPanels("request")`, as `TaskDetail` does for tasks. `modules/slack` registers one panel, fed by `slack.requestInfo`, shown when `source` is `slack`: the Slack thread link, the sender's GitHub login, and for a draft its text (editable while `pending`, through `slack.editDraft`), status and any send error, with "Draft a reply" (`slack.draftReply`).
+- **Queue rows.** A coworker's "Bot wasn't sure" request shows its candidates as action buttons, like the agent's approvals. Yours shows the usual three outcomes.
 
 ## Errors
 
@@ -328,7 +330,7 @@ The hub keeps no copy of Slack conversations. `requests.from_owner` and `agent_r
 ## Build order
 
 1. Prerequisites: the Vercel AI Gateway provider (its own small change), and a throwaway Jev check: its latency and accuracy on the phrasing suites, through the Gateway.
-2. Core: the slack principal and access, `/changes`, `runAsOwner`, `audience: "asker"`, the model interpreter.
+2. Core: the slack principal and access, `/changes`, `audience: "asker"`, the model interpreter.
 3. Base and coworkers: the Slack app, `apps/slack`, `modules/slack` settings and people, `requests.append` and `fromSender`, the coworker command set, escalation, the compose service.
 4. You: your command set, replies, Undo, escalation of your messages.
 5. Outbox: drafts and Send, `handOff`, reports, and the Agent hub changes (run audience, `postToSource`, hub-call approvals).
