@@ -13,6 +13,7 @@ export {
   complete,
   discard,
   prepare,
+  serverProvider,
   undo,
 } from "./ai/gateway";
 export { listLog } from "./ai/log";
@@ -20,8 +21,10 @@ export { operationAiRunner } from "./ai/operation-runner";
 export {
   type AiCompleteRequest,
   type AiCompleteResult,
+  type AiDecisionProvider,
   type AiProvider,
   createOpenRouter,
+  createVercelGateway,
   unwrapCliOutput,
 } from "./ai/providers";
 export {

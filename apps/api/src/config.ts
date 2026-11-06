@@ -45,6 +45,19 @@ export function openrouterSection(
   };
 }
 
+/** Vercel AI Gateway's key and default model: both optional, trimmed, empty is none. */
+export function aiGatewaySection(
+  env: Env,
+): Section<{ apiKey: string | null; defaultModel: string | null }> {
+  return {
+    value: {
+      apiKey: env.AI_GATEWAY_API_KEY?.trim() || null,
+      defaultModel: env.AI_GATEWAY_DEFAULT_MODEL?.trim() || null,
+    },
+    missing: [],
+  };
+}
+
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
 /** Where and how the API listens and starts. */
@@ -110,6 +123,7 @@ export type Config = ReturnType<typeof serverSection>["value"] &
   ReturnType<typeof authSection>["value"] & {
     databaseUrl: string;
     openrouter: ReturnType<typeof openrouterSection>["value"];
+    aiGateway: ReturnType<typeof aiGatewaySection>["value"];
     /** Each module's own settings (`ServerModule.config`), checked. */
     moduleConfig: ReadonlyMap<string, unknown>;
   };
@@ -123,12 +137,14 @@ export function loadConfig(
   const server = serverSection(env);
   const database = databaseSection(env);
   const openrouter = openrouterSection(env);
+  const aiGateway = aiGatewaySection(env);
   const moduleConfig = loadModuleConfigs(modules, env);
   const missing = [
     ...auth.missing,
     ...server.missing,
     ...database.missing,
     ...openrouter.missing,
+    ...aiGateway.missing,
     ...moduleConfig.missing,
   ];
   if (missing.length > 0) throw new ConfigError(missing);
@@ -137,6 +153,7 @@ export function loadConfig(
     ...auth.value,
     databaseUrl: database.value.url,
     openrouter: openrouter.value,
+    aiGateway: aiGateway.value,
     moduleConfig: moduleConfig.values,
   };
 }

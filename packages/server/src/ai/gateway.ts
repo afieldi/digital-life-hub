@@ -8,7 +8,9 @@ import {
   aiProviderId,
   type CliProviderId,
   isCliProvider,
+  isServerProvider,
   kindAllowed,
+  type ServerProviderId,
 } from "@dlh/core";
 import { aiRequests } from "@dlh/db";
 import { z } from "zod";
@@ -41,9 +43,15 @@ export { apply, cancel, discard, undo } from "./followups";
 
 export type AiDeps = {
   runners: Map<string, AiRunner>;
-  providers: Partial<Record<"openrouter", AiProvider>>;
+  providers: Partial<Record<ServerProviderId, AiProvider>>;
   defaultModel: string | null;
 };
+
+/** The server provider the app uses by default: OpenRouter if set up, else Vercel. */
+export function serverProvider(deps: { ai: AiDeps }): ServerProviderId | null {
+  const { openrouter, vercel } = deps.ai.providers;
+  return openrouter ? "openrouter" : vercel ? "vercel" : null;
+}
 
 /** At most this many options are shown, after titles are resolved. */
 const MAX_OPTIONS = 3;
@@ -138,7 +146,7 @@ async function itemOrNotFound(
 }
 
 /**
- * Validates the request, records it as `pending` and either calls OpenRouter
+ * Validates the request, records it as `pending` and either calls the server provider
  * and finishes, or hands a CLI run back to the app. The typed text, prompt and
  * context are sent to the model only, never stored.
  */
@@ -166,7 +174,9 @@ export async function prepare(
   const model =
     provider === "openrouter"
       ? (settings.openrouterModel ?? deps.ai.defaultModel)
-      : null;
+      : isServerProvider(provider)
+        ? deps.ai.defaultModel
+        : null;
   const ctx = await runner.context(deps, itemId, {
     timeZone: input.timeZone,
   });
@@ -194,7 +204,7 @@ export async function prepare(
     prompt: `${input.timeZone ? `${todayLine(deps.now(), input.timeZone)}\n` : ""}<instruction>\n${input.text}\n</instruction>\n<item>\n${ctx.text}\n</item>`,
     schema: z.toJSONSchema(schema) as object,
   };
-  if (provider !== "openrouter") {
+  if (!isServerProvider(provider)) {
     // The Claude CLI validates --json-schema against draft-07 and rejects
     // zod's draft 2020-12 `$schema` URI; the schema itself is valid in both.
     const { $schema: _, ...cliSchema } = call.schema as Record<string, unknown>;
@@ -205,15 +215,15 @@ export async function prepare(
     };
   }
 
-  const openrouter = deps.ai.providers.openrouter;
-  if (!openrouter || !model) {
+  const server = deps.ai.providers[provider];
+  if (!server || !model) {
     return fail(
       deps,
       row.id,
       "pending",
       new AiError(
         "provider_unavailable",
-        aiErrorMessage("provider_unavailable", "openrouter", {
+        aiErrorMessage("provider_unavailable", provider, {
           reason: "no_key",
         }),
       ),
@@ -222,7 +232,7 @@ export async function prepare(
   }
   let result: Awaited<ReturnType<AiProvider["complete"]>>;
   try {
-    result = await openrouter.complete({
+    result = await server.complete({
       ...call,
       model,
       signal: new AbortController().signal,
@@ -233,7 +243,7 @@ export async function prepare(
         ? e
         : new AiError(
             "provider_error",
-            aiErrorMessage("provider_error", "openrouter", {
+            aiErrorMessage("provider_error", provider, {
               firstLine: firstLine(e instanceof Error ? e.message : String(e)),
             }),
           );

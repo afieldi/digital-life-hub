@@ -1,5 +1,10 @@
 import { createDb } from "@dlh/db";
-import { createCoreDeps, createOpenRouter, devFakeAi } from "@dlh/server";
+import {
+  createCoreDeps,
+  createOpenRouter,
+  createVercelGateway,
+  devFakeAi,
+} from "@dlh/server";
 import { serve } from "@hono/node-server";
 import { sql } from "drizzle-orm";
 import { createApp } from "./app";
@@ -67,14 +72,26 @@ const deps = {
     ai: config.aiFake
       ? devFakeAi(composed.aiRunners.values())
       : {
-          providers: config.openrouter.apiKey
-            ? {
-                openrouter: createOpenRouter({
-                  apiKey: config.openrouter.apiKey,
-                }),
-              }
-            : {},
-          defaultModel: config.openrouter.defaultModel,
+          providers: {
+            ...(config.openrouter.apiKey
+              ? {
+                  openrouter: createOpenRouter({
+                    apiKey: config.openrouter.apiKey,
+                  }),
+                }
+              : {}),
+            ...(config.aiGateway.apiKey
+              ? {
+                  vercel: createVercelGateway({
+                    apiKey: config.aiGateway.apiKey,
+                  }),
+                }
+              : {}),
+          },
+          // OpenRouter is the default server provider when both are set up.
+          defaultModel: config.openrouter.apiKey
+            ? config.openrouter.defaultModel
+            : config.aiGateway.defaultModel,
         },
   }),
   config,

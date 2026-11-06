@@ -50,6 +50,8 @@ export {
   CLI_PROVIDER_IDS,
   capFor,
   isCliProvider,
+  isServerProvider,
+  type ServerProviderId,
 } from "./ai/kinds";
 export type {
   Item,

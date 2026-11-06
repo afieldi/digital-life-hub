@@ -202,6 +202,7 @@ describe("aiErrorMessage", () => {
   test("names", () => {
     expect(PROVIDER_NAMES).toEqual({
       openrouter: "OpenRouter",
+      vercel: "Vercel AI Gateway",
       "claude-cli": "Claude Code",
       "codex-cli": "Codex",
     });
