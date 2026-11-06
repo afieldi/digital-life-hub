@@ -1,7 +1,12 @@
 import { describeOperation } from "@dlh/core";
 import { requestOps } from "@dlh/module-requests/operations";
 import { z } from "zod";
-import { escalatable, handleMessageInput, slackSettings } from "./schema";
+import {
+  escalatable,
+  handleActionWire,
+  handleMessageInput,
+  slackSettings,
+} from "./schema";
 
 /** Settings → Slack's calls: yours only, and out of ⌘K and AI. */
 const mine = { access: "user", palette: false, ai: false } as const;
@@ -114,6 +119,21 @@ const handleMessage = describeOperation({
   ...bot,
 });
 
+const handleAction = describeOperation({
+  id: "slack.handleAction",
+  kind: "mutation",
+  label: "Handle a Slack button",
+  description:
+    "What a button under a bot reply asks for: apply, discard or undo one of its requests, undo an action it made, or cancel a run.",
+  appliesTo: ["none"],
+  input: handleActionWire,
+  subject: () => null,
+  effects: [],
+  calls: [],
+  summary: () => "Handle a Slack button",
+  ...bot,
+});
+
 /** Which escalation: the message it was filed for, as the request's `sourceHandle` and `externalId`. */
 const message = {
   slackUserId: z.string().min(1),
@@ -164,6 +184,7 @@ export const slackOps = {
   botSettings: botSettingsQuery,
   upsertPerson,
   handleMessage,
+  handleAction,
   runEscalated,
   dismissEscalation,
 };

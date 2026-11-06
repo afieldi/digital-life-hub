@@ -46,6 +46,15 @@ export function runnerFor(deps: CoreDeps, actionId: string): AiRunner {
   return runner;
 }
 
+/** Where the request came from: the app, or the Slack bot. */
+export async function requestOrigin(
+  deps: CoreDeps,
+  id: string,
+): Promise<"app" | "slack"> {
+  const row = await loadRow(deps, id);
+  return z.enum(["app", "slack"]).parse(row.origin);
+}
+
 /** Whether the request is older than `ttlMs` by the deps clock. */
 export function expired(
   deps: CoreDeps,

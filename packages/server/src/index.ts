@@ -27,6 +27,7 @@ export {
   createVercelGateway,
   unwrapCliOutput,
 } from "./ai/providers";
+export { RequestUsedError, requestOrigin } from "./ai/requests";
 export {
   type AiRunner,
   collectAiRunners,

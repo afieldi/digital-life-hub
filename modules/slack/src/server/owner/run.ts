@@ -1,12 +1,31 @@
 import type { AiKind } from "@dlh/core";
 import { AiError, type CoreDeps, prepare } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
-import type { HandleActionInput, HandleMessageResult } from "../../schema";
+import type {
+  HandleActionInput,
+  HandleActionResult,
+  HandleMessageResult,
+} from "../../schema";
 
-const button = (label: string, input: HandleActionInput) => ({
+export const button = (label: string, input: HandleActionInput) => ({
   label,
   value: JSON.stringify(input),
 });
+
+/** What an applied request says: what was done, and the way to undo it. */
+export const doneReply = (
+  requestId: string,
+  summary: string,
+): HandleActionResult => ({
+  reply: `Done: ${summary}`,
+  buttons: [button("Undo", { do: "undo", aiRequestId: requestId })],
+});
+
+/** The gateway throws its `AiError` as the cause of a tRPC error. */
+export function gatewayFailure(e: unknown): AiError | null {
+  const failure = e instanceof TRPCError ? e.cause : e;
+  return failure instanceof AiError ? failure : null;
+}
 
 /**
  * Runs `actionId` as `aiKind` through the gateway, as you would from the app
@@ -60,18 +79,14 @@ export async function runOwnerAction(
           ],
         };
       case "applied":
-        return {
-          reply: `Done: ${out.summary}`,
-          buttons: [button("Undo", { do: "undo", aiRequestId: out.requestId })],
-        };
+        return doneReply(out.requestId, out.summary);
       case "run":
         // The server provider is what answers from Slack; a CLI run needs the app.
         return { reply: "That needs the app to run." };
     }
   } catch (e) {
-    // The gateway throws its AiError as the cause of a tRPC error.
-    const failure = e instanceof TRPCError ? e.cause : e;
-    if (failure instanceof AiError) return { reply: failure.message };
+    const failure = gatewayFailure(e);
+    if (failure) return { reply: failure.message };
     throw e;
   }
 }
