@@ -1,10 +1,11 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inputHash, runStart } from "@dlh/agent-protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HubError, type WorkerApi } from "../src/api";
+import { createApi, HubError, type WorkerApi } from "../src/api";
 import type { Docker, RunSpec } from "../src/docker/docker";
 import type { Price } from "../src/relay/prices";
 import type { AssumeRole } from "../src/run/credentials";
@@ -191,6 +192,8 @@ function setup(
     assumeRole?: AssumeRole;
     /** Another run's data directory, to share it. */
     dataDir?: string;
+    /** A real client in place of the fake one. */
+    api?: WorkerApi;
   } = {},
 ) {
   // Unix socket paths are short (104 bytes on macOS); /tmp keeps them under it.
@@ -227,7 +230,7 @@ function setup(
       ),
   );
   const handle = startRun(claimed(opts.claim), {
-    api,
+    api: opts.api ?? api,
     docker,
     store,
     dataDir,
@@ -516,6 +519,28 @@ describe("startRun", () => {
     // The stale sweep requeues it: its volume stays.
     expect(t.store.markEnded).not.toHaveBeenCalled();
     expect(t.agent.fail.mutate).not.toHaveBeenCalled();
+  });
+
+  it("an API that never answers a heartbeat stops the container", async () => {
+    // Hung, not down: without a timeout the beat would wait forever.
+    const hung = createServer(() => {});
+    await new Promise<void>((r) => hung.listen(0, "127.0.0.1", r));
+    try {
+      const { port } = hung.address() as AddressInfo;
+      const api = createApi(
+        { apiUrl: `http://127.0.0.1:${port}`, workerToken: "w" },
+        { timeoutMs: 50 },
+      );
+      const t = setup({ api });
+      await t.started();
+      t.fire(30_000);
+      const end = await t.handle.done;
+      expect(end.reason).toBe("worker_error");
+      expect(t.docker.stop).toHaveBeenCalled();
+    } finally {
+      hung.closeAllConnections();
+      hung.close();
+    }
   });
 
   it("an API error from heartbeat stops the container without a retry", async () => {

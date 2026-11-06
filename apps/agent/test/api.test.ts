@@ -114,6 +114,30 @@ describe("createApi", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN", message: "nope" });
   });
 
+  it("a worker or run call the API never answers times out", async () => {
+    // Hung: the headers never come.
+    const { url } = await start(() => {});
+    const api = createApi(config(url), { timeoutMs: 50 });
+    await Promise.all([
+      expect(api.worker.agent.claim.mutate({})).rejects.toThrow(),
+      expect(
+        api.asRun("run-tok").call("tasks.list", {}, "query"),
+      ).rejects.toThrow(),
+    ]);
+  }, 2000);
+
+  it("a call whose answer stalls midway times out too", async () => {
+    const { url } = await start((_r, _s, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write('{"result":');
+    });
+    const api = createApi(config(url), { timeoutMs: 50 });
+    await expect(api.worker.agent.claim.mutate({})).rejects.toThrow();
+    await expect(
+      api.asRun("run-tok").call("tasks.create", {}, "mutation"),
+    ).rejects.toThrow();
+  }, 2000);
+
   it("onChanges reconnects after the stream drops", async () => {
     let connections = 0;
     const { url, seen } = await start((_r, _s, res) => {
