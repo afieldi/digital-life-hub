@@ -16,6 +16,7 @@ type Service = {
   stop_grace_period?: string;
   restart?: string;
   depends_on?: string[];
+  profiles?: string[];
 };
 type Compose = {
   services: Record<string, Service>;
@@ -74,13 +75,15 @@ describe("the VPS compose file", () => {
     expect(compose.networks.internal?.external).toBeUndefined();
   });
 
-  it("the slack service has no volumes, is on internal only, and requires the Slack tokens", () => {
+  it("the slack service has no volumes, is on internal only, and is an opt-in profile that needs no Slack settings to validate", () => {
     const slack = compose.services.slack;
     expect(slack?.build?.dockerfile).toBe("apps/slack/Dockerfile");
     expect(slack?.volumes).toBeUndefined();
     expect(slack?.networks).toEqual(["internal"]);
     expect(slack?.depends_on).toEqual(["api"]);
     expect(slack?.restart).toBe("unless-stopped");
+    // Opt-in, so the rest of the stack starts with no Slack settings at all.
+    expect(slack?.profiles).toEqual(["slack"]);
     const env = slack?.environment ?? {};
     expect(env.HUB_API_URL).toBe("http://api:8787");
     // Empty is allowed: the runbook starts the API before the token exists.
@@ -90,7 +93,7 @@ describe("the VPS compose file", () => {
       "SLACK_BOT_TOKEN",
       "SLACK_USER_TOKEN",
     ]) {
-      expect(env[name], name).toMatch(new RegExp(`^\\$\\{${name}:\\?`));
+      expect(env[name], name).toBe(`\${${name}:-}`);
     }
   });
 });

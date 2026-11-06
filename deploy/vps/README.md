@@ -24,7 +24,7 @@ the CLI steps (run from a checkout of this repo).
 1. Clone the repo and `pnpm install`.
 2. `cp deploy/vps/.env.example deploy/vps/.env` and fill in
    `POSTGRES_PASSWORD`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say. The Slack tokens come from "The Slack bot" below.
+   `ALLOWED_EMAIL`. Leave `AGENT_WORKER_TOKEN` empty for now (step 9 fills it); set the other two as the next steps say. The Slack tokens and `COMPOSE_PROFILES=slack` come from "The Slack bot" below; leave them out until then.
 3. Generate the secrets key: `openssl rand -base64 32` into `AGENT_SECRETS_KEY`.
    It encrypts the connection secrets in `/var/lib/dlh-agent/agent.db`. Back it
    up: without it those secrets can't be read.
@@ -87,17 +87,24 @@ network with its own service token.
      `users:read`, `users.profile:read`.
    - App-level token: `connections:write`.
    - User token: `chat:write` (it sends as you; the outbox uses it in Part 2).
-3. Subscribe to the bot events `message.im` and `app_mention`.
+3. Subscribe to the bot events `message.im` and `app_mention`. Turn on
+   **Interactivity** (no request URL is needed in Socket Mode; the escalation
+   flow posts buttons in Part 2). Under App Home -> Messages tab, enable
+   "Allow users to send messages to your app": DMs need it.
 4. Have a workspace admin install the app.
 5. Copy the three tokens into `deploy/vps/.env`: the app-level token
    (`xapp-...`) as `SLACK_APP_TOKEN`, the bot token (`xoxb-...`) as
    `SLACK_BOT_TOKEN`, the user token (`xoxp-...`) as `SLACK_USER_TOKEN`.
 6. Mint the bot's hub token the way step 9 mints the worker's (the API image
-   holds no CLI, so run it from the checkout against the database):
+   holds no CLI, so run it from the checkout against the database; `$DB` is as
+   in step 9):
    `DATABASE_URL=postgres://dlh:<POSTGRES_PASSWORD>@$DB:5432/dlh pnpm --filter @dlh/api tokens slack create`.
    It prints `id` and `token` once; put the token in `HUB_SLACK_TOKEN`. Revoke
    with `tokens slack revoke <id>`.
-7. Start it: `docker compose -f deploy/vps/docker-compose.yml up -d slack`.
+7. The bot is an opt-in Compose profile, so the rest of the stack runs without
+   it. Add `COMPOSE_PROFILES=slack` to `deploy/vps/.env`, then start it:
+   `docker compose -f deploy/vps/docker-compose.yml up -d slack` (plain
+   `up -d` now includes it too).
 8. In the hub, open Settings → Slack and set your Slack user id, so the bot
    knows which DMs are yours.
 

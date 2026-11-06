@@ -68,6 +68,9 @@ services:
     networks: [internal]
 
   slack:
+    # Opt-in: set COMPOSE_PROFILES=slack in deploy/vps/.env (see README), so the
+    # rest of the stack starts without any Slack settings.
+    profiles: ["slack"]
     build:
       context: ../..
       dockerfile: apps/slack/Dockerfile
@@ -77,11 +80,12 @@ services:
     # No volumes and no published port: it dials Slack (Socket Mode) and the API.
     environment:
       HUB_API_URL: http://api:8787
-      # Empty until step 6 of "The Slack bot" in the README; the bot refuses to start without it.
+      # Empty until step 6 of "The Slack bot" in the README. The bot names any
+      # missing token or this one and exits at start.
       HUB_SLACK_TOKEN: ${HUB_SLACK_TOKEN:-}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:?set SLACK_APP_TOKEN in deploy/vps/.env}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:?set SLACK_BOT_TOKEN in deploy/vps/.env}
-      SLACK_USER_TOKEN: ${SLACK_USER_TOKEN:?set SLACK_USER_TOKEN in deploy/vps/.env}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_USER_TOKEN: ${SLACK_USER_TOKEN:-}
     networks: [internal]
 
 volumes:
