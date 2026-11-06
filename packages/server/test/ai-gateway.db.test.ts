@@ -124,6 +124,19 @@ test("ask returns the answer and writes no item", async () => {
   await s.close();
 });
 
+test("prepare records the origin it is given", async () => {
+  const s = await setup();
+  s.fake.queue(JSON.stringify({ answer: "Two things left", used: [] }));
+  const slack = await prepare(s.deps, input(s.item.id, "answer", "ask"), {
+    origin: "slack",
+  });
+  s.fake.queue(JSON.stringify({ answer: "Still two", used: [] }));
+  const app = await prepare(s.deps, input(s.item.id, "answer", "ask"));
+  expect((await rowOf(s, slack.requestId)).origin).toBe("slack");
+  expect((await rowOf(s, app.requestId)).origin).toBe("app");
+  await s.close();
+});
+
 test("suggest stores three options and apply renames once", async () => {
   const s = await setup({ ai: { defaultModels: {} } });
   await s.db.insert(aiSettings).values({
