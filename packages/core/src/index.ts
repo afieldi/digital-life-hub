@@ -75,6 +75,7 @@ export type {
   ModuleDescription,
   ModuleManifest,
   PaletteAction,
+  SettingsSection,
 } from "./module";
 export {
   defineModule,

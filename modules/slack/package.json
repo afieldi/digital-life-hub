@@ -1,0 +1,36 @@
+{
+  "name": "@dlh/module-slack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/manifest.tsx",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "test": "vitest run --passWithNoTests --exclude '**/*.db.test.ts'",
+    "test:db": "vitest run --passWithNoTests '.db.test.ts'",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@dlh/client": "workspace:*",
+    "@dlh/core": "workspace:*",
+    "@dlh/server": "workspace:*",
+    "@dlh/ui": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@trpc/server": "catalog:",
+    "drizzle-orm": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "drizzle-kit": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}
