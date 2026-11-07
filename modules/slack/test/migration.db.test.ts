@@ -16,36 +16,42 @@ async function setup() {
 
 const insert = (
   db: Awaited<ReturnType<typeof setup>>["db"],
-  v: { key: string; origin: string; as: string; requestId?: string },
+  v: { key: string; origin: string; status?: string; requestId?: string },
 ) =>
   db.execute(
-    sql`insert into slack_outbox (key, origin, "as", channel_id, text, request_id)
-        values (${v.key}, ${v.origin}, ${v.as}, 'C1', 'hi', ${v.requestId ?? null})`,
+    sql`insert into slack_outbox (key, origin, channel_id, text, request_id, status)
+        values (${v.key}, ${v.origin}, 'C1', 'hi', ${v.requestId ?? null}, ${v.status ?? "approved"})`,
   );
 
-test("the outbox refuses as me for a non-draft row", async () => {
+test("the outbox refuses a draft origin", async () => {
   const { db, close } = await setup();
   await expect(
-    insert(db, { key: "report:1", origin: "report", as: "me" }),
+    insert(db, { key: "draft:1", origin: "draft" }),
   ).rejects.toThrow();
-  await insert(db, { key: "draft:1", origin: "draft", as: "me" });
-  await insert(db, { key: "report:2", origin: "report", as: "bot" });
+  await expect(
+    insert(db, { key: "r:1", origin: "report", status: "pending" }),
+  ).rejects.toThrow();
+  await insert(db, { key: "report:2", origin: "report" });
+  await db.execute(sql`select "as" from slack_outbox`).then(
+    () => {
+      throw new Error("the as column should be gone");
+    },
+    () => undefined,
+  );
   await close();
 });
 
 test("an outbox key is unique", async () => {
   const { db, close } = await setup();
-  await insert(db, { key: "k", origin: "agent", as: "bot" });
-  await expect(
-    insert(db, { key: "k", origin: "agent", as: "bot" }),
-  ).rejects.toThrow();
+  await insert(db, { key: "k", origin: "agent" });
+  await expect(insert(db, { key: "k", origin: "agent" })).rejects.toThrow();
   await close();
 });
 
 test("deleting the request removes its outbox rows", async () => {
   const { db, item, close } = await setup();
   const requestId = await item();
-  await insert(db, { key: "draft:r", origin: "draft", as: "me", requestId });
+  await insert(db, { key: "agent:r", origin: "agent", requestId });
   await db.execute(sql`delete from items where id = ${requestId}`);
   expect(await db.execute(sql`select 1 from slack_outbox`)).toHaveLength(0);
   await close();

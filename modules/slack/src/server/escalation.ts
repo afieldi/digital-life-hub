@@ -227,7 +227,6 @@ export const runEscalated = implementOperation(slackOps.runEscalated, {
       .values({
         key: `escalation:${requestId}`,
         origin: "escalation",
-        as: "bot",
         status: "approved",
         channelId: m.event.channel,
         threadTs: thread,

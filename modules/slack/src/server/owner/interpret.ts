@@ -30,14 +30,13 @@ export type OwnerPick =
       alternatives: ActionChoice[];
     }
   | {
-      kind: "handOff" | "draftReply";
-      subjectId: string | null;
+      kind: "handOff";
+      subjectId: null;
       confidence: number;
     }
   | { kind: "escalate"; confidence: number; alternatives: ActionChoice[] };
 
 const HAND_OFF = "slack.handOff";
-const DRAFT_REPLY = "slack.draftReply";
 
 const KIND_WORDS: Record<AiKind, string> = {
   ask: "answer only: reads and replies, changes nothing",
@@ -92,12 +91,11 @@ const STOP_WORDS = new Set(
  * query to match, so a sentence rarely finds anything whole: its own hits come
  * first, then items ranked by how many of its words each one matches.
  */
-async function findSubjects(deps: CoreDeps, text: string, types?: string[]) {
+async function findSubjects(deps: CoreDeps, text: string) {
   const search = (query: string) =>
     searchItems(deps.db, {
       query,
       limit: SUBJECT_HITS * 2,
-      ...(types ? { types } : {}),
     });
   const words = [
     ...new Set(
@@ -126,8 +124,7 @@ async function findSubjects(deps: CoreDeps, text: string, types?: string[]) {
 
 /**
  * Picks what to do with the owner's message: an action from the gateway (and
- * how: Ask, Suggest or Do), or hand it to the agent, or draft a reply to a
- * request. An action on items gets a second decision for which item. Below
+ * how: Ask, Suggest or Do), or hand it to the agent. An action on items gets a second decision for which item. Below
  * `threshold` on either, or no item where one is needed, the pick is
  * `escalate`. Throws `AiError` (`timeout`, `provider_unavailable`, `bad_output`).
  */
@@ -141,10 +138,7 @@ export async function interpretOwner(
     threshold: number;
   },
 ): Promise<OwnerPick> {
-  const offered = new Map<
-    string,
-    ActionChoice | typeof HAND_OFF | typeof DRAFT_REPLY
-  >();
+  const offered = new Map<string, ActionChoice | typeof HAND_OFF>();
   const choices: { value: string; description: string }[] = [];
   for (const { action } of deps.ai.runners.values()) {
     for (const aiKind of action.kinds) {
@@ -161,12 +155,6 @@ export async function interpretOwner(
     value: `${HAND_OFF}|do`,
     description:
       "Give the message's work to the agent, to carry out on its own in the background: research, a multi-step job, something for it to go and do (do it)",
-  });
-  offered.set(`${DRAFT_REPLY}|do`, DRAFT_REPLY);
-  choices.push({
-    value: `${DRAFT_REPLY}|do`,
-    description:
-      "Draft a reply, as the owner, to a request someone sent them on Slack, for the owner to review before it is sent (do it)",
   });
   choices.push({
     value: "escalate",
@@ -213,19 +201,13 @@ export async function interpretOwner(
     return escalate(first.confidence);
   }
 
-  const parts =
-    typeof picked === "string"
-      ? { onItems: picked === DRAFT_REPLY, orNone: false }
-      : appliesToParts(deps.ai.runners.get(picked.actionId)?.action.appliesTo);
-  const needsSubject = parts.onItems;
-  if (!needsSubject) {
-    if (typeof picked === "string") {
-      return {
-        kind: picked === HAND_OFF ? "handOff" : "draftReply",
-        subjectId: null,
-        confidence: first.confidence,
-      };
-    }
+  if (typeof picked === "string") {
+    return { kind: "handOff", subjectId: null, confidence: first.confidence };
+  }
+  const parts = appliesToParts(
+    deps.ai.runners.get(picked.actionId)?.action.appliesTo,
+  );
+  if (!parts.onItems) {
     return {
       kind: "action",
       ...picked,
@@ -235,13 +217,9 @@ export async function interpretOwner(
     };
   }
 
-  const hits = await findSubjects(
-    deps,
-    input.text,
-    picked === DRAFT_REPLY ? ["request"] : undefined,
-  );
+  const hits = await findSubjects(deps, input.text);
   const noItem = (confidence: number): OwnerPick =>
-    parts.orNone && typeof picked !== "string"
+    parts.orNone
       ? {
           kind: "action",
           ...picked,
@@ -252,10 +230,7 @@ export async function interpretOwner(
       : escalate(confidence);
   if (hits.length === 0) return noItem(first.confidence);
   const actionNote =
-    typeof picked === "string"
-      ? "draft a reply to a request"
-      : (deps.ai.runners.get(picked.actionId)?.action.description ??
-        picked.actionId);
+    deps.ai.runners.get(picked.actionId)?.action.description ?? picked.actionId;
   const second = await decideOnServer(deps, {
     purpose: "slack.ownerSubject",
     question: {
@@ -283,9 +258,6 @@ export async function interpretOwner(
   const confidence = Math.min(first.confidence, second.confidence);
   if (second.confidence < input.threshold) return escalate(confidence);
   if (!hit) return noItem(confidence);
-  if (typeof picked === "string") {
-    return { kind: "draftReply", subjectId: hit.id, confidence };
-  }
   return {
     kind: "action",
     ...picked,

@@ -72,7 +72,7 @@ const byTitle =
     return { choice: hit.value };
   };
 
-test("offers every action and kind, plus handOff, draftReply and escalate", async () => {
+test("offers every action and kind, plus handOff and escalate", async () => {
   const h = await harness({ action: { choice: "escalate" } });
   await h.run("what's due today?");
   const choices = h.seen[0]?.question.choices ?? [];
@@ -82,7 +82,6 @@ test("offers every action and kind, plus handOff, draftReply and escalate", asyn
   expect(choices.map((c) => c.value)).toEqual([
     ...expected,
     "slack.handOff|do",
-    "slack.draftReply|do",
     "escalate",
   ]);
   const text = (v: string) => choices.find((c) => c.value === v)?.description;
@@ -167,26 +166,6 @@ test("an action on items asks a second question over the search hits", async () 
     actionId: "retitle",
     aiKind: "do",
     subjectId: taskId,
-  });
-  await h.close();
-});
-
-test("draftReply asks for a request among the hits, and only requests are offered", async () => {
-  const h = await harness({
-    action: { choice: "slack.draftReply|do" },
-    subject: byTitle("roadmap deck"),
-  });
-  const { requestId, taskId } = await seed(h);
-  const pick = await h.run(
-    "reply to Dana about the roadmap deck and the invoice",
-  );
-  const values = h.seen[1]?.question.choices.map((c) => c.value) ?? [];
-  expect(values).toContain(requestId);
-  expect(values).not.toContain(taskId);
-  expect(pick).toEqual({
-    kind: "draftReply",
-    subjectId: requestId,
-    confidence: 0.9,
   });
   await h.close();
 });

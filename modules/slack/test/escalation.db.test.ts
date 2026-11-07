@@ -59,7 +59,7 @@ async function harness(replies: string[] = []) {
       text: string;
       request_id: string | null;
     }>(
-      sql`select key, origin, "as", status, channel_id, thread_ts, text, request_id from slack_outbox order by key`,
+      sql`select key, origin, status, channel_id, thread_ts, text, request_id from slack_outbox order by key`,
     );
   return { ...s, escalate, outbox };
 }
@@ -102,7 +102,6 @@ test("runEscalated runs the command, resolves handled and queues one approved ou
     {
       key: `escalation:${id}`,
       origin: "escalation",
-      as: "bot",
       status: "approved",
       channel_id: "D1",
       thread_ts: "1700000000.000009",

@@ -71,7 +71,5 @@ export async function handleOwner(
       return escalateOwner(deps, input);
     case "handOff":
       return handOff(deps, input, pick.subjectId);
-    case "draftReply":
-      throw new Error("NOT_IMPLEMENTED");
   }
 }

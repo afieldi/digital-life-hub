@@ -86,15 +86,14 @@ network with its own service token.
      `channels:history`, `groups:history`, `chat:write`, `reactions:write`,
      `users:read`, `users.profile:read`.
    - App-level token: `connections:write`.
-   - User token: `chat:write` (it sends as you; the outbox uses it in Part 2).
 3. Subscribe to the bot events `message.im` and `app_mention`. Turn on
    **Interactivity** (no request URL is needed in Socket Mode; the escalation
    flow posts buttons in Part 2). Under App Home -> Messages tab, enable
    "Allow users to send messages to your app": DMs need it.
 4. Have a workspace admin install the app.
-5. Copy the three tokens into `deploy/vps/.env`: the app-level token
+5. Copy the two tokens into `deploy/vps/.env`: the app-level token
    (`xapp-...`) as `SLACK_APP_TOKEN`, the bot token (`xoxb-...`) as
-   `SLACK_BOT_TOKEN`, the user token (`xoxp-...`) as `SLACK_USER_TOKEN`.
+   `SLACK_BOT_TOKEN`.
 6. Mint the bot's hub token the way step 9 mints the worker's (the API image
    holds no CLI, so run it from the checkout against the database; `$DB` is as
    in step 9):

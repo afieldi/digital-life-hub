@@ -76,14 +76,13 @@ export const slackOutbox = pgTable(
   "slack_outbox",
   {
     id: uuid("id").primaryKey().default(sql`uuidv7()`),
-    /** Makes every insert idempotent: `report:<runId>`, `draft:<requestId>`… */
+    /** Makes every insert idempotent: `report:<runId>`, `escalation:<requestId>`… */
     key: text("key").notNull(),
     origin: text("origin").notNull(),
-    as: text("as").notNull(),
     channelId: text("channel_id").notNull(),
     threadTs: text("thread_ts"),
     text: text("text").notNull(),
-    status: text("status").notNull().default("pending"),
+    status: text("status").notNull().default("approved"),
     requestId: uuid("request_id"),
     runId: uuid("run_id"),
     error: text("error"),
@@ -97,16 +96,11 @@ export const slackOutbox = pgTable(
     index("slack_outbox_status_idx").on(t.status),
     check(
       "slack_outbox_origin_check",
-      sql`${t.origin} in ('draft', 'agent', 'report', 'review_ping', 'escalation')`,
+      sql`${t.origin} in ('agent', 'report', 'review_ping', 'escalation')`,
     ),
-    check("slack_outbox_as_check", sql`${t.as} in ('bot', 'me')`),
     check(
       "slack_outbox_status_check",
-      sql`${t.status} in ('pending', 'approved', 'sent', 'failed', 'discarded')`,
-    ),
-    check(
-      "slack_outbox_as_me_draft_check",
-      sql`${t.as} = 'bot' or ${t.origin} = 'draft'`,
+      sql`${t.status} in ('approved', 'sent', 'failed')`,
     ),
   ],
 );

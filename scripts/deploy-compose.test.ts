@@ -98,11 +98,7 @@ describe("the VPS compose file", () => {
     expect(env.HUB_API_URL).toBe("http://api:8787");
     // Empty is allowed: the runbook starts the API before the token exists.
     expect(env.HUB_SLACK_TOKEN).toBe("${HUB_SLACK_TOKEN:-}");
-    for (const name of [
-      "SLACK_APP_TOKEN",
-      "SLACK_BOT_TOKEN",
-      "SLACK_USER_TOKEN",
-    ]) {
+    for (const name of ["SLACK_APP_TOKEN", "SLACK_BOT_TOKEN"]) {
       expect(env[name], name).toBe(`\${${name}:-}`);
     }
   });

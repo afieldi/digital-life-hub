@@ -15,6 +15,13 @@
       "when": 1794008647744,
       "tag": "0001_heavy_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794027595847,
+      "tag": "0002_whole_reptil",
+      "breakpoints": true
     }
   ]
 }

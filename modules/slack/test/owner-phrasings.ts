@@ -7,7 +7,7 @@ export type OwnerSubject =
 
 export type OwnerPhrasing = {
   text: string;
-  /** `"<actionId>|<kind>"`, `slack.handOff|do`, `slack.draftReply|do` or `escalate`. */
+  /** `"<actionId>|<kind>"`, `slack.handOff|do` or `escalate`. */
   expected: string;
   /** The seeded item it is about, when the pick needs one. */
   subject?: OwnerSubject;
@@ -22,6 +22,8 @@ const p = (
 /** Labelled messages from the owner: text, and the pick that should handle it. */
 export const ownerPhrasings: OwnerPhrasing[] = [
   // capture
+  p("remind me to email Dana the roadmap deck on Friday", "tasks.create|do"),
+  p("note to self: pick up the dry cleaning", "tasks.create|do"),
   p("remind me to chase Dana Friday", "tasks.create|do"),
   p("add a task to renew my passport", "tasks.create|do"),
   p("todo: book flights for the offsite", "tasks.create|do"),
@@ -29,6 +31,7 @@ export const ownerPhrasings: OwnerPhrasing[] = [
   p("put 'review Acme contract' on my list, due Monday", "tasks.create|do"),
   p("new task: send the invoice to Globex", "tasks.create|do"),
   // ask
+  p("what is the Dana roadmap deck request asking for?", "answer|ask"),
   p("what's due today?", "tasks.due|ask"),
   p("what do I have due this week?", "tasks.due|ask"),
   p("any tasks due on Friday?", "tasks.due|ask"),
@@ -80,18 +83,6 @@ export const ownerPhrasings: OwnerPhrasing[] = [
     "get the agent to go through the backlog and draft release notes",
     "slack.handOff|do",
   ),
-  // draft a reply
-  p(
-    "draft a reply to Dana's roadmap deck request",
-    "slack.draftReply|do",
-    "dana",
-  ),
-  p(
-    "write back to Dana saying I'll send the deck on Friday",
-    "slack.draftReply|do",
-    "dana",
-  ),
-  p("reply to Dana about the roadmap deck", "slack.draftReply|do", "dana"),
   // escalate
   p("hello", "escalate"),
   p("asdf qwerty", "escalate"),

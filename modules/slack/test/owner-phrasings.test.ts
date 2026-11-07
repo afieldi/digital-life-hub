@@ -16,9 +16,6 @@ test("the owner phrasings are 40, with 6 that should escalate", () => {
   expect(new Set(ownerPhrasings.map((p) => p.expected))).toContain(
     "slack.handOff|do",
   );
-  expect(new Set(ownerPhrasings.map((p) => p.expected))).toContain(
-    "slack.draftReply|do",
-  );
 });
 
 test.skipIf(!apiKey)(
