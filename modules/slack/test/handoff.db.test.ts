@@ -119,3 +119,25 @@ test("undo after the claim says Changed since and offers Cancel run", async () =
   expect(await h.live("agent_runs")).toBe(1);
   await h.close();
 });
+
+test("a redelivered handoff replies Already handled", async () => {
+  const h = await harness();
+  await h.send("have the agent tidy the docs");
+  const again = await h.send("have the agent tidy the docs");
+  expect(again).toEqual({ reply: "Already handled." });
+  expect(await h.live("agent_runs")).toBe(1);
+  await h.close();
+});
+
+test("an assign failure leaves the request in the queue and says so", async () => {
+  const h = await harness();
+  // The run can't be queued, so assignRequest fails after the request is filed.
+  await h.db.execute(sql`alter table agent_runs rename to agent_runs_gone`);
+  const out = await h.send("have the agent tidy the docs");
+  expect(out).toEqual({
+    reply: "Filed it, but couldn't give it to the agent. It's in your queue.",
+  });
+  const { items } = await h.caller.requests.open({});
+  expect(items.map((r) => r.title)).toEqual(["have the agent tidy the docs"]);
+  await h.close();
+});

@@ -1,5 +1,6 @@
 import { requestOps } from "@dlh/module-requests/operations";
 import { type CoreDeps, runMutation } from "@dlh/server";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { slackActions } from "../../db/schema";
 import type { HandleMessageResult } from "../../schema";
@@ -46,10 +47,22 @@ export async function handOff(
       })
     ).result,
   );
-  const ran = await runMutation(deps, assign, {
-    id: request.id,
-    expectedUpdatedAt: request.updatedAt,
-  });
+  let ran: Awaited<ReturnType<typeof runMutation>>;
+  try {
+    ran = await runMutation(deps, assign, {
+      id: request.id,
+      expectedUpdatedAt: request.updatedAt,
+    });
+  } catch (e) {
+    // Already resolved: a redelivered message, whose first delivery was handed off.
+    if (e instanceof TRPCError && e.code === "CONFLICT") {
+      return { reply: "Already handled." };
+    }
+    // The request is filed and stays in the queue; the owner still gets an answer.
+    return {
+      reply: "Filed it, but couldn't give it to the agent. It's in your queue.",
+    };
+  }
   const { task } = assigned.parse(ran.result);
   const [action] = await deps.db
     .insert(slackActions)
