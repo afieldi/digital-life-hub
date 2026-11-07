@@ -134,6 +134,48 @@ const handleAction = describeOperation({
   ...bot,
 });
 
+const pendingSends = describeOperation({
+  id: "slack.pendingSends",
+  kind: "mutation",
+  label: "Pending Slack sends",
+  description:
+    "Notes the bot is alive, fails approved messages older than a day, and returns the next approved ones to post.",
+  appliesTo: ["none"],
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  summary: () => "Pending Slack sends",
+  ...bot,
+});
+
+const markSent = describeOperation({
+  id: "slack.markSent",
+  kind: "mutation",
+  label: "Mark a Slack message sent",
+  description:
+    "Records that an approved outbox message was posted; a repeat changes nothing.",
+  appliesTo: ["none"],
+  input: z.object({ id: z.uuid(), ts: z.string().min(1) }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Mark a Slack message sent",
+  ...bot,
+});
+
+const markFailed = describeOperation({
+  id: "slack.markFailed",
+  kind: "mutation",
+  label: "Mark a Slack message failed",
+  description:
+    "Records that posting an approved outbox message failed; a repeat changes nothing.",
+  appliesTo: ["none"],
+  input: z.object({ id: z.uuid(), error: z.string().min(1) }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Mark a Slack message failed",
+  ...bot,
+});
+
 /** Which escalation: the message it was filed for, as the request's `sourceHandle` and `externalId`. */
 const message = {
   slackUserId: z.string().min(1),
@@ -185,6 +227,9 @@ export const slackOps = {
   upsertPerson,
   handleMessage,
   handleAction,
+  pendingSends,
+  markSent,
+  markFailed,
   runEscalated,
   dismissEscalation,
 };

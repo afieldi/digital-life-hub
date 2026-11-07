@@ -3,6 +3,7 @@ import { slackModule } from "./module";
 import { handleAction } from "./server/actions";
 import { dismissEscalation, runEscalated } from "./server/escalation";
 import { handleMessage } from "./server/handleMessage";
+import { markFailed, markSent, pendingSends } from "./server/outbox";
 import { people, setGithubLogin, upsertPerson } from "./server/people";
 import { botSettings, setSettings, settingsQuery } from "./server/settings";
 
@@ -17,6 +18,9 @@ const slackServer = defineServerModule(slackModule, {
     upsertPerson,
     handleMessage,
     handleAction,
+    pendingSends,
+    markSent,
+    markFailed,
     runEscalated,
     dismissEscalation,
   },

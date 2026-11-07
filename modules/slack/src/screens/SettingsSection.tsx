@@ -1,6 +1,7 @@
 import { useModuleApi, useModuleWrite } from "@dlh/client";
 import {
   Button,
+  Caption,
   EmptyState,
   ItemRow,
   QueryState,
@@ -72,81 +73,91 @@ function SettingsForm() {
     <QueryState query={query} errorTitle="Couldn't load Slack settings">
       {() =>
         draft && (
-          <form
-            className="flex flex-col gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const threshold = parseThreshold(draft.threshold);
-              if (threshold === null) return;
-              void write({
-                op: "slack.setSettings",
-                summary: "Slack settings saved",
-                verb: "save Slack settings",
-                call: () =>
-                  api.setSettings.mutate({
-                    ownerSlackId: orNull(draft.ownerSlackId),
-                    teamId: orNull(draft.teamId),
-                    botUserId: orNull(draft.botUserId),
-                    ackText: draft.ackText,
-                    threshold,
-                    appendMinutes: Number(draft.appendMinutes),
-                    interpreter: draft.interpreter.trim(),
-                    coworkerAi: draft.coworkerAi,
-                  }),
-              });
-            }}
-          >
-            <TextField
-              label="Your Slack user ID"
-              description="The bot answers no one until this is set."
-              value={draft.ownerSlackId}
-              onChange={set("ownerSlackId")}
-            />
-            <TextField
-              label="Workspace ID"
-              value={draft.teamId}
-              onChange={set("teamId")}
-            />
-            <TextField
-              label="Bot user ID"
-              value={draft.botUserId}
-              onChange={set("botUserId")}
-            />
-            <TextField
-              label="Acknowledgement"
-              description="What a coworker sees once their message is filed."
-              value={draft.ackText}
-              onChange={set("ackText")}
-            />
-            <TextField
-              label="Threshold"
-              description="How sure the interpreter must be to act without asking you (0 to 1)."
-              inputMode="decimal"
-              value={draft.threshold}
-              onChange={set("threshold")}
-              isInvalid={parseThreshold(draft.threshold) === null}
-              errorMessage="Enter a number from 0 to 1."
-            />
-            <TextField
-              label="Append window (minutes)"
-              description="How long a later message joins the sender's open request (1 to 120)."
-              inputMode="numeric"
-              value={draft.appendMinutes}
-              onChange={set("appendMinutes")}
-            />
-            <TextField
-              label="Interpreter model"
-              description="An AI Gateway model id."
-              value={draft.interpreter}
-              onChange={set("interpreter")}
-            />
-            <Switch isSelected={draft.coworkerAi} onChange={set("coworkerAi")}>
-              Coworker messages use AI
-            </Switch>
-            <Button type="submit" variant="solid">
-              Save
-            </Button>
-          </form>
+          <>
+            <Caption>
+              {query.data?.seenAt
+                ? `Bot last seen ${new Date(query.data.seenAt).toLocaleString()}`
+                : "Bot not seen yet"}
+            </Caption>
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const threshold = parseThreshold(draft.threshold);
+                if (threshold === null) return;
+                void write({
+                  op: "slack.setSettings",
+                  summary: "Slack settings saved",
+                  verb: "save Slack settings",
+                  call: () =>
+                    api.setSettings.mutate({
+                      ownerSlackId: orNull(draft.ownerSlackId),
+                      teamId: orNull(draft.teamId),
+                      botUserId: orNull(draft.botUserId),
+                      ackText: draft.ackText,
+                      threshold,
+                      appendMinutes: Number(draft.appendMinutes),
+                      interpreter: draft.interpreter.trim(),
+                      coworkerAi: draft.coworkerAi,
+                    }),
+                });
+              }}
+            >
+              <TextField
+                label="Your Slack user ID"
+                description="The bot answers no one until this is set."
+                value={draft.ownerSlackId}
+                onChange={set("ownerSlackId")}
+              />
+              <TextField
+                label="Workspace ID"
+                value={draft.teamId}
+                onChange={set("teamId")}
+              />
+              <TextField
+                label="Bot user ID"
+                value={draft.botUserId}
+                onChange={set("botUserId")}
+              />
+              <TextField
+                label="Acknowledgement"
+                description="What a coworker sees once their message is filed."
+                value={draft.ackText}
+                onChange={set("ackText")}
+              />
+              <TextField
+                label="Threshold"
+                description="How sure the interpreter must be to act without asking you (0 to 1)."
+                inputMode="decimal"
+                value={draft.threshold}
+                onChange={set("threshold")}
+                isInvalid={parseThreshold(draft.threshold) === null}
+                errorMessage="Enter a number from 0 to 1."
+              />
+              <TextField
+                label="Append window (minutes)"
+                description="How long a later message joins the sender's open request (1 to 120)."
+                inputMode="numeric"
+                value={draft.appendMinutes}
+                onChange={set("appendMinutes")}
+              />
+              <TextField
+                label="Interpreter model"
+                description="An AI Gateway model id."
+                value={draft.interpreter}
+                onChange={set("interpreter")}
+              />
+              <Switch
+                isSelected={draft.coworkerAi}
+                onChange={set("coworkerAi")}
+              >
+                Coworker messages use AI
+              </Switch>
+              <Button type="submit" variant="solid">
+                Save
+              </Button>
+            </form>
+          </>
         )
       }
     </QueryState>

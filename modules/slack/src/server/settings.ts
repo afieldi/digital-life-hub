@@ -31,7 +31,15 @@ async function writeSettings(
 }
 
 export const settingsQuery = implementOperation(slackOps.settings, {
-  run: (deps) => readSettings(deps.db),
+  async run(deps) {
+    const settings = await readSettings(deps.db);
+    const [row] = await deps.db
+      .select({ seenAt: table.seenAt })
+      .from(table)
+      .where(eq(table.id, 1));
+    // `seenAt` is not a setting you change, so it rides beside them, as an ISO time.
+    return { ...settings, seenAt: row?.seenAt?.toISOString() ?? null };
+  },
 });
 
 export const setSettings = implementOperation(slackOps.setSettings, {
