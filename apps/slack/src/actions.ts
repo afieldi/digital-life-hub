@@ -44,12 +44,19 @@ export async function handleBlockAction(
   const post = (text: string, buttons?: { label: string; value: string }[]) =>
     deps.web.chat.postMessage({
       channel,
-      ...blocksFor(text, buttons),
+      ...blocksFor(text, buttons, deps.log),
       thread_ts: body.message?.thread_ts ?? body.message?.ts,
     });
+  let ownerId: string | null;
   try {
-    const settings = await withRetries(deps, () => deps.settings());
-    if (!body.user?.id || body.user.id !== settings.ownerSlackId) return;
+    ownerId = (await withRetries(deps, () => deps.settings())).ownerSlackId;
+  } catch {
+    // Without a known owner nobody is answered, so no one is told anything.
+    deps.log?.(`${channel} click ignored: owner unknown`);
+    return;
+  }
+  if (!body.user?.id || body.user.id !== ownerId) return;
+  try {
     const result = await withRetries(deps, () => deps.api.handleAction(input));
     await post(result.reply, result.buttons);
     deps.log?.(`${channel}:${body.message?.ts} action ${input.do} handled`);

@@ -33,6 +33,28 @@ describe("blocksFor", () => {
   });
 });
 
+describe("blocksFor limits", () => {
+  it("drops a button whose value is over 2000 characters and logs it", () => {
+    const log = vi.fn();
+    const out = blocksFor(
+      "hi",
+      [
+        { label: "Big", value: "x".repeat(2001) },
+        { label: "Ok", value: "y".repeat(2000) },
+      ],
+      log,
+    );
+    const block = out.blocks?.[1] as { elements: { value: string }[] };
+    const actions = block.elements;
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.value).toHaveLength(2000);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(
+      blocksFor("hi", [{ label: "Big", value: "x".repeat(2001) }], log),
+    ).toEqual({ text: "hi" });
+  });
+});
+
 describe("buttons", () => {
   it("a reply with buttons posts an actions block", async () => {
     const web = stubWeb();
@@ -97,6 +119,27 @@ describe("buttons", () => {
     }
     expect(api.of("handleAction")).toHaveLength(0);
     expect(web.of("chat.postMessage")).toHaveLength(0);
+  });
+});
+
+describe("an unknown owner", () => {
+  it("a click while the owner is unknown does nothing", async () => {
+    const web = stubWeb();
+    const api = stubApi();
+    const log = vi.fn();
+    await handleBlockAction(
+      {
+        ...deps(web, api),
+        log,
+        settings: async () => {
+          throw new TypeError("fetch failed");
+        },
+      },
+      click("UDANA", UNDO),
+    );
+    expect(web.of("chat.postMessage")).toHaveLength(0);
+    expect(api.of("handleAction")).toHaveLength(0);
+    expect(log).toHaveBeenCalled();
   });
 });
 
