@@ -308,6 +308,9 @@ importers:
 
   apps/slack:
     dependencies:
+      '@dlh/api-contract':
+        specifier: workspace:*
+        version: link:../../packages/api-contract
       '@dlh/module-slack':
         specifier: workspace:*
         version: link:../../modules/slack

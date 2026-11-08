@@ -6,6 +6,10 @@ import { loadConfig } from "./config";
 import type { SlackWeb } from "./context";
 import { serialByUser } from "./events";
 import { withIdentity } from "./identity";
+import { createOutbox } from "./outbox";
+
+/** How often the outbox is checked, whatever `/changes` says. */
+const OUTBOX_INTERVAL_MS = 30_000;
 
 /** How long the owner, team and bot ids are kept before the hub is asked again. */
 const SETTINGS_TTL_MS = 30_000;
@@ -74,3 +78,23 @@ try {
   // Each event reads the settings again, so the service carries on.
   console.warn("Slack bot started, but the hub could not be reached yet");
 }
+
+const outbox = createOutbox({
+  api,
+  bot: web,
+  log: (line) => console.log(line),
+});
+// On start, on every change in the hub, and on a timer in case a change was missed.
+void outbox.tick();
+const stopChanges = api.onChanges(() => {
+  void outbox.tick();
+});
+const timer = setInterval(() => void outbox.tick(), OUTBOX_INTERVAL_MS);
+
+const shutdown = () => {
+  clearInterval(timer);
+  stopChanges();
+  void app.stop().finally(() => process.exit(0));
+};
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);

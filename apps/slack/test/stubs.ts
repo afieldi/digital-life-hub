@@ -105,6 +105,11 @@ export function stubApi(
       if (a instanceof Error) throw a;
       return a;
     },
+    syncRuns: async () => {},
+    pendingSends: async () => [],
+    markSent: async () => {},
+    markFailed: async () => {},
+    onChanges: () => () => {},
   };
   return { api, calls, of: (m: string) => calls.filter((c) => c.method === m) };
 }
