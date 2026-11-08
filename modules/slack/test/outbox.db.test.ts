@@ -112,3 +112,24 @@ test("only a slack token calls the outbox", async () => {
   });
   await h.close();
 });
+
+test("an insert without approved_at gets one and is still subject to the 24 h rule", async () => {
+  const h = await harness([]);
+  await h.db.execute(
+    sql`insert into slack_outbox (key, origin, channel_id, text, created_at)
+        values ('d', 'report', 'C1', 'x', now() - interval '2 days')`,
+  );
+  const [r] = await h.db.execute<{ approved_at: Date | null }>(
+    sql`select approved_at from slack_outbox where key = 'd'`,
+  );
+  expect(r?.approved_at).not.toBeNull();
+  // The default is the insert time, so a fresh row is sent...
+  expect((await h.slack.slack.pendingSends({})).result).toHaveLength(1);
+  // ...and once 25 hours old, it fails like any other.
+  await h.db.execute(
+    sql`update slack_outbox set approved_at = now() - interval '25 hours' where key = 'd'`,
+  );
+  expect((await h.slack.slack.pendingSends({})).result).toEqual([]);
+  expect((await h.row("d"))?.status).toBe("failed");
+  await h.close();
+});

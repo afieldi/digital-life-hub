@@ -9,9 +9,13 @@ const BATCH = 20;
 /** Past this an approved row is stale: a late message is worse than none. */
 const STALE_HOURS = 24;
 
+/** Assumes a single sender loop: rows are read without locks, so two loops could post one twice. */
 export const pendingSends = implementOperation(slackOps.pendingSends, {
   async run(w) {
-    await w.tx.update(slackSettings).set({ seenAt: sql`now()` });
+    await w.tx
+      .update(slackSettings)
+      .set({ seenAt: sql`now()` })
+      .where(eq(slackSettings.id, 1));
     await w.tx
       .update(slackOutbox)
       .set({ status: "failed", error: "Too old to send" })

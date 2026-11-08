@@ -88,7 +88,7 @@ export const slackOutbox = pgTable(
     error: text("error"),
     sentTs: text("sent_ts"),
     createdAt: at("created_at").notNull().defaultNow(),
-    approvedAt: at("approved_at"),
+    approvedAt: at("approved_at").notNull().defaultNow(),
     sentAt: at("sent_at"),
   },
   (t) => [
