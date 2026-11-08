@@ -6,7 +6,7 @@ import {
   disableConnection,
   setDefaultConnections,
 } from "./server/connections";
-import { events, run, runs } from "./server/reads";
+import { events, recentRuns, run, runSource, runs } from "./server/reads";
 import { cancel, decide, message, retry } from "./server/runs";
 import { setSettings, settingsQuery } from "./server/settings";
 import {
@@ -32,6 +32,8 @@ const agentServer = defineServerModule(agentModule, {
     decide,
     run,
     runs,
+    recentRuns,
+    runSource,
     events,
     connections: connectionsQuery,
     setDefaultConnections,

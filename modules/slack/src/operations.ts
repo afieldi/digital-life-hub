@@ -1,4 +1,5 @@
 import { describeOperation } from "@dlh/core";
+import { agentOps } from "@dlh/module-agent/operations";
 import { requestOps } from "@dlh/module-requests/operations";
 import { z } from "zod";
 import {
@@ -218,6 +219,21 @@ const dismissEscalation = describeOperation({
   ...mine,
 });
 
+const syncRuns = describeOperation({
+  id: "slack.syncRuns",
+  kind: "mutation",
+  label: "Report agent runs",
+  description:
+    "Queues a report in your DM or thread for each agent run that ended since the last sync and came from a message you sent. The first call only starts the clock.",
+  appliesTo: ["none"],
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  calls: [agentOps.recentRuns, requestOps.get],
+  summary: () => "Report agent runs",
+  ...bot,
+});
+
 export const slackOps = {
   settings,
   setSettings,
@@ -232,4 +248,5 @@ export const slackOps = {
   markFailed,
   runEscalated,
   dismissEscalation,
+  syncRuns,
 };
