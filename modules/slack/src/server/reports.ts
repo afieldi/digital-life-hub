@@ -40,15 +40,16 @@ const filed = z.object({
 
 type Run = z.infer<typeof recent>["runs"][number];
 
-/** The text posted for a run that ended. */
+/** The text posted for a run that ended; empty parts are left out. */
 function reportText(run: Run): string {
   if (run.status === "failed") {
-    return `The agent couldn't finish ${run.taskTitle}: ${run.failureMessage ?? ""}`;
+    const why = run.failureMessage?.trim();
+    return `The agent couldn't finish ${run.taskTitle}${why ? `: ${why}` : "."}`;
   }
   const links = (run.report?.links ?? []).map((l) => `${l.label}: ${l.url}`);
-  return [`Done: ${run.taskTitle}`, run.report?.summary ?? "", ...links].join(
-    "\n",
-  );
+  return [`Done: ${run.taskTitle}`, run.report?.summary.trim(), ...links]
+    .filter((part) => part)
+    .join("\n");
 }
 
 function allowed<T>(method: T | undefined): T {

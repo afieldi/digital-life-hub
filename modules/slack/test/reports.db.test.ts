@@ -20,6 +20,8 @@ async function endedRun(
   o: {
     title?: string;
     status?: "done" | "failed";
+    report?: null;
+    failureMessage?: string | null;
     finishedAt: Date;
     request?: Record<string, unknown>;
   },
@@ -31,8 +33,13 @@ async function endedRun(
       taskId: task.result.id,
       status: o.status ?? "done",
       finishedAt: o.finishedAt,
-      report: o.status === "failed" ? null : report,
-      failureMessage: o.status === "failed" ? "It crashed" : null,
+      report: o.status === "failed" || o.report === null ? null : report,
+      failureMessage:
+        "failureMessage" in o
+          ? o.failureMessage
+          : o.status === "failed"
+            ? "It crashed"
+            : null,
     })
     .returning();
   if (!run) throw new Error("no run");
@@ -174,5 +181,57 @@ test("the first syncRuns only starts the clock", async () => {
   await s.slack.slack.syncRuns({});
   expect(await outbox(s)).toHaveLength(0);
   expect((await syncedAt(s))?.getTime()).toBeGreaterThan(t(10).getTime());
+  await s.close();
+});
+
+test("a done run with no report is just its title", async () => {
+  const s = await setup();
+  await started(s, t(0));
+  await endedRun(s, {
+    title: "Fix the build",
+    report: null,
+    finishedAt: t(10),
+    request: dm,
+  });
+  await s.slack.slack.syncRuns({});
+  expect((await outbox(s))[0]?.text).toBe("Done: Fix the build");
+  await s.close();
+});
+
+test("a failed run with no message has no colon", async () => {
+  const s = await setup();
+  await started(s, t(0));
+  await endedRun(s, {
+    title: "Fix the build",
+    status: "failed",
+    failureMessage: "",
+    finishedAt: t(10),
+    request: dm,
+  });
+  await endedRun(s, {
+    title: "Other",
+    status: "failed",
+    failureMessage: null,
+    finishedAt: t(20),
+    request: { ...dm, externalId: "D1:1700000001.000001" },
+  });
+  await s.slack.slack.syncRuns({});
+  expect((await outbox(s)).map((r) => r.text)).toEqual([
+    "The agent couldn't finish Fix the build.",
+    "The agent couldn't finish Other.",
+  ]);
+  await s.close();
+});
+
+test("a run whose request was deleted is skipped and the cursor advances", async () => {
+  const s = await setup();
+  await started(s, t(0));
+  await endedRun(s, { finishedAt: t(10), request: dm });
+  await s.db.execute(
+    sql`update items set deleted_at = now() where id in (select request_id from agent_assignments)`,
+  );
+  await s.slack.slack.syncRuns({});
+  expect(await outbox(s)).toHaveLength(0);
+  expect((await syncedAt(s))?.toISOString()).toBe(t(10).toISOString());
   await s.close();
 });
