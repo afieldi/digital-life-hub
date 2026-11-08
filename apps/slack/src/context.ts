@@ -19,6 +19,7 @@ export type SlackWeb = {
       channel: string;
       text: string;
       thread_ts?: string;
+      blocks?: unknown[];
     }): Promise<unknown>;
     getPermalink(args: {
       channel: string;

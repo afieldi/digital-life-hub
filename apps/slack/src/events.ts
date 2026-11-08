@@ -1,4 +1,6 @@
 import { type HubApi, isRetryable } from "./api";
+import type { Button } from "./blocks";
+import { blocksFor } from "./blocks";
 import { classify, type SlackMessageEvent } from "./classify";
 import { fetchContext, type SlackWeb } from "./context";
 import { githubLogin } from "./profile";
@@ -27,7 +29,7 @@ const defaultSleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Calls `fn`, repeating it after 1, 4 and 15 s while the failure is the hub's. */
-async function withRetries<T>(
+export async function withRetries<T>(
   deps: EventDeps,
   fn: () => Promise<T>,
 ): Promise<T> {
@@ -95,10 +97,10 @@ export async function handleEvent(
   const id = `${event.channel}:${event.ts}`;
   const { web, api } = deps;
   let kind: "owner" | "coworker" = "coworker";
-  const post = (text: string) =>
+  const post = (text: string, buttons?: Button[]) =>
     web.chat.postMessage({
       channel: event.channel,
-      text,
+      ...blocksFor(text, buttons),
       thread_ts: threadOf(event),
     });
   try {
@@ -133,7 +135,7 @@ export async function handleEvent(
         context,
       });
     });
-    if (result.reply) await post(result.reply);
+    if (result.reply) await post(result.reply, result.buttons);
     if (result.react) {
       await web.reactions.add({
         channel: event.channel,

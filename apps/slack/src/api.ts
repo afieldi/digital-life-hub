@@ -15,6 +15,10 @@ export type HandleMessageInput = Parameters<
 export type HandleMessageResult = Awaited<
   ReturnType<Client["handleMessage"]["mutate"]>
 >["result"];
+export type HandleActionInput = Parameters<Client["handleAction"]["mutate"]>[0];
+export type HandleActionResult = Awaited<
+  ReturnType<Client["handleAction"]["mutate"]>
+>["result"];
 export type Turn = HandleMessageInput["context"][number];
 
 /** A hub call that came back as an error: tRPC's `code` and the message. */
@@ -28,7 +32,7 @@ export class HubError extends Error {
   }
 }
 
-/** The three operations this service calls, signed in with its slack token. */
+/** The operations this service calls, signed in with its slack token. */
 export type HubApi = {
   botSettings(): Promise<BotSettings>;
   upsertPerson(input: {
@@ -37,6 +41,7 @@ export type HubApi = {
     githubLogin: string | null;
   }): Promise<unknown>;
   handleMessage(input: HandleMessageInput): Promise<HandleMessageResult>;
+  handleAction(input: HandleActionInput): Promise<HandleActionResult>;
 };
 
 export type ApiOptions = {
@@ -93,5 +98,7 @@ export function createApi(
     upsertPerson: (input) => asHubError(slack.upsertPerson.mutate(input)),
     handleMessage: async (input) =>
       (await asHubError(slack.handleMessage.mutate(input))).result,
+    handleAction: async (input) =>
+      (await asHubError(slack.handleAction.mutate(input))).result,
   };
 }

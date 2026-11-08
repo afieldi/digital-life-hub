@@ -1,4 +1,5 @@
 import { App, LogLevel } from "@slack/bolt";
+import { type BlockActionBody, handleBlockAction } from "./actions";
 import { createApi } from "./api";
 import type { SlackMessageEvent } from "./classify";
 import { loadConfig } from "./config";
@@ -38,12 +39,13 @@ const settings = () => {
   return (cached as NonNullable<typeof cached>).value;
 };
 
-const handle = serialByUser({
+const deps = {
   web,
   api,
   settings,
-  log: (line) => console.log(line),
-});
+  log: (line: string) => console.log(line),
+};
+const handle = serialByUser(deps);
 
 /** Handles in the background: the listener returns at once, so Bolt acknowledges the event. */
 const accept = (event: SlackMessageEvent) => {
@@ -56,6 +58,12 @@ app.message(async ({ message }) => {
 });
 app.event("app_mention", async ({ event }) => {
   accept(event as unknown as SlackMessageEvent);
+});
+
+// Acknowledged at once; only the owner's clicks act (checked in `handleBlockAction`).
+app.action(/^dlh_/, async ({ ack, body }) => {
+  await ack();
+  void handleBlockAction(deps, body as unknown as BlockActionBody);
 });
 
 await app.start();

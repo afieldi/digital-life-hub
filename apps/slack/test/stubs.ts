@@ -1,4 +1,5 @@
 import type {
+  HandleActionResult,
   HandleMessageInput,
   HandleMessageResult,
   HubApi,
@@ -78,9 +79,11 @@ export function stubWeb(
 /** A hub client that records calls; `handleMessage` answers from `answers`, or throws what it is given. */
 export function stubApi(
   answers: Array<HandleMessageResult | Error> = [{ reply: "ok" }],
+  actionAnswers: Array<HandleActionResult | Error> = [{ reply: "Done." }],
 ) {
   const calls: { method: string; at: number; input: unknown }[] = [];
   let n = 0;
+  let m = 0;
   const api: HubApi = {
     botSettings: async () => settings,
     upsertPerson: async (input) => {
@@ -90,6 +93,14 @@ export function stubApi(
       calls.push({ method: "handleMessage", at: Date.now(), input });
       const a = answers[Math.min(n++, answers.length - 1)] as
         | HandleMessageResult
+        | Error;
+      if (a instanceof Error) throw a;
+      return a;
+    },
+    handleAction: async (input) => {
+      calls.push({ method: "handleAction", at: Date.now(), input });
+      const a = actionAnswers[Math.min(m++, actionAnswers.length - 1)] as
+        | HandleActionResult
         | Error;
       if (a instanceof Error) throw a;
       return a;
