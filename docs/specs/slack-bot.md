@@ -247,7 +247,7 @@ Any other hub call is ask: the run suspends with an approval quoting the call ("
 
 **Hub calls carry `runId`.** A run's hub calls to operations with a `runId` input are filled in by the worker, and Core checks them (see Run identity).
 
-**Prompt.** A coworker-audience run's prompt says that the coworker reads what it posts, and which reads need approval.
+**Prompt.** A coworker-audience run's prompt says that the coworker reads what it posts, and which reads need approval. Its instruction is fixed ("Handle the request from <sender> quoted below. Reply with postToSource."); the task's title and notes are quoted as data with the message, never given as the task.
 
 ## Data model
 
