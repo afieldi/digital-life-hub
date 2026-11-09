@@ -11,7 +11,7 @@ const refuse = (message: string): never => {
 };
 
 /**
- * No run may file a request as if it came from you or from Slack
+ * No run may file a request as you or as a source
  * (`filesAsSource`): that would make it look like your own message, which the
  * agent then runs with full reach. Beyond that, keeps a coworker-audience run
  * to what involves its coworker; without an audience a run is not limited. With one, it may call what
@@ -23,7 +23,7 @@ const refuse = (message: string): never => {
 export const runGuard: RunGuard = async (deps, { runId, operation, input }) => {
   // Every run, before its audience is read, and no approval lets it through.
   if (filesAsSource(operation.desc, input)) {
-    return refuse("A run can't file as Slack");
+    return refuse("A run can't file as you or as a source");
   }
   const [run] = await deps.db
     .select({

@@ -88,7 +88,7 @@ export type AudienceRun = {
  * - an operation whose subject is its own task or request and whose input
  *   names no other item (as `tasks.addParent` would, moving another task under
  *   its own; this also decides what the operation's `w.call`s reach);
- * - `requests.file` that doesn't file as a source (`filesAsSource`), and
+ * - `requests.file` that doesn't file as you or as a source (`filesAsSource`), and
  *   `slack.postToSource`.
  * Anything else needs your approval.
  */

@@ -463,7 +463,10 @@ test("a run can't file a request as your Slack message", async () => {
     fromName: "Arek",
     externalId: "D_OWNER:1700000000.000100",
   };
-  const refused = { code: "FORBIDDEN", message: "A run can't file as Slack" };
+  const refused = {
+    code: "FORBIDDEN",
+    message: "A run can't file as you or as a source",
+  };
   for (const runId of [coworker.id, yours.id]) {
     const bot = asRun(s, runId);
     await expect(bot.requests.file(forged)).rejects.toMatchObject(refused);
