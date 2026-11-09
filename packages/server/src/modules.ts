@@ -22,12 +22,11 @@ import type { DeleteWith, RunGuard } from "./trpc";
  * Calls an operation a run can call (`access: "everyone"`) may make to one
  * only you can call. A run guard checks the run's call, never what it reaches
  * with `w.call`, so each is listed here, `caller -> callee`, with why the
- * caller keeps it to what the run may reach.
+ * caller keeps it to what the run may reach. Composing refuses an entry that
+ * isn't such a call, so the list can't go stale; an app test checks every
+ * listed caller exists.
  */
 export const UNGUARDED_CALLS: ReadonlySet<string> = new Set([
-  // The agent's guard decides makeTask by its subject, the request a task is
-  // made of; the task it creates is that request's.
-  "requests.makeTask -> tasks.create",
   // Both read only the run's own request: Core holds `runId` to the calling
   // run, and the request is the one `agent.runSource` names for it.
   "slack.postToSource -> agent.runSource",
@@ -169,6 +168,7 @@ export function collectServerModules(
   mods: ServerModule[],
   reservedIds: string[],
   core: { actions: AiActionDescription[]; runners: AiRunner[] },
+  unguardedCalls: ReadonlySet<string> = UNGUARDED_CALLS,
 ): {
   modules: ServerModule[];
   itemTypes: Set<string>;
@@ -251,12 +251,30 @@ export function collectServerModules(
       if (
         accessOf(op.desc) === "everyone" &&
         accessOf(registered.desc) !== "everyone" &&
-        !UNGUARDED_CALLS.has(`${op.desc.id} -> ${callee.id}`)
+        !unguardedCalls.has(`${op.desc.id} -> ${callee.id}`)
       ) {
         throw new ServerModuleError(
           `Operation "${op.desc.id}" can be called by a run, so it may call only operations a run can call, but calls "${callee.id}". List it in UNGUARDED_CALLS if that is safe`,
         );
       }
+    }
+  }
+  // A listed call must be one: a caller a run can call, calling one it can't.
+  // A caller this composition lacks (a test's subset of modules) is skipped.
+  for (const pair of unguardedCalls) {
+    const [callerId = "", calleeId = ""] = pair.split(" -> ");
+    const caller = operations.get(callerId);
+    if (!caller) continue;
+    const callee = operations.get(calleeId);
+    const real =
+      accessOf(caller.desc) === "everyone" &&
+      (caller.desc.calls ?? []).some((c) => c.id === calleeId) &&
+      callee !== undefined &&
+      accessOf(callee.desc) !== "everyone";
+    if (!real) {
+      throw new ServerModuleError(
+        `UNGUARDED_CALLS lists "${pair}", which is not a call a run could make unguarded: remove it`,
+      );
     }
   }
   const aiRunners = collectAiRunners(descriptions, runners, moduleOf, owners);

@@ -84,6 +84,7 @@ export {
   moduleRouter,
   type ServerModule,
   ServerModuleError,
+  UNGUARDED_CALLS,
 } from "./modules";
 export {
   type ImplementedMutation,

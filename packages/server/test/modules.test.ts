@@ -8,6 +8,7 @@ import {
   implementOperation,
   type Operations,
   ServerModuleError,
+  UNGUARDED_CALLS,
 } from "../src";
 
 const router = initTRPC.create().router({});
@@ -266,8 +267,61 @@ describe("collectServerModules operations", () => {
           ],
           reserved,
           core,
+          new Set(["slack.postToSource -> agent.runSource"]),
         ),
       ).not.toThrow();
+    });
+
+    it("a listed call that needs no listing is refused, so the list can't go stale", () => {
+      const yours = desc("b.read", "query", undefined, "user");
+      const open = desc("b.open", "query", undefined, "everyone");
+      const compose = (caller: ReturnType<typeof desc>, listed: string) =>
+        collectServerModules(
+          [
+            owned("a", { wrap: mutation(caller) }),
+            owned("b", { read: query(yours), open: query(open) }),
+          ],
+          reserved,
+          core,
+          new Set([listed]),
+        );
+      const stale = (pair: string) =>
+        `UNGUARDED_CALLS lists "${pair}", which is not a call a run could make unguarded: remove it`;
+      // The callee is one a run can call.
+      expect(() =>
+        compose(
+          desc("a.wrap", "mutation", [open], "everyone"),
+          "a.wrap -> b.open",
+        ),
+      ).toThrow(stale("a.wrap -> b.open"));
+      // The caller is only yours.
+      expect(() =>
+        compose(
+          desc("a.wrap", "mutation", [yours], "user"),
+          "a.wrap -> b.read",
+        ),
+      ).toThrow(stale("a.wrap -> b.read"));
+      // The caller doesn't make that call.
+      expect(() =>
+        compose(
+          desc("a.wrap", "mutation", [open], "everyone"),
+          "a.wrap -> b.read",
+        ),
+      ).toThrow(stale("a.wrap -> b.read"));
+      // A caller that isn't composed here is left to the app's own check.
+      expect(() =>
+        compose(
+          desc("a.wrap", "mutation", [open], "everyone"),
+          "z.gone -> b.read",
+        ),
+      ).not.toThrow();
+    });
+
+    it("the real list names only real violations", () => {
+      expect([...UNGUARDED_CALLS].sort()).toEqual([
+        "slack.postToSource -> agent.runSource",
+        "slack.postToSource -> requests.get",
+      ]);
     });
 
     it("registration accepts a call to a query", () => {
