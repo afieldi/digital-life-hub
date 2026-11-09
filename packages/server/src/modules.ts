@@ -1,5 +1,6 @@
 import {
   type AiActionDescription,
+  accessOf,
   type ModuleDescription,
   type OperationDescription,
   toAiAction,
@@ -16,6 +17,22 @@ import type { ModuleConfig } from "./moduleConfig";
 import type { ImplementedOperation, Operations } from "./operations/implement";
 import { operationsRouter } from "./operations/router";
 import type { DeleteWith, RunGuard } from "./trpc";
+
+/**
+ * Calls an operation a run can call (`access: "everyone"`) may make to one
+ * only you can call. A run guard checks the run's call, never what it reaches
+ * with `w.call`, so each is listed here, `caller -> callee`, with why the
+ * caller keeps it to what the run may reach.
+ */
+export const UNGUARDED_CALLS: ReadonlySet<string> = new Set([
+  // The agent's guard decides makeTask by its subject, the request a task is
+  // made of; the task it creates is that request's.
+  "requests.makeTask -> tasks.create",
+  // Both read only the run's own request: Core holds `runId` to the calling
+  // run, and the request is the one `agent.runSource` names for it.
+  "slack.postToSource -> agent.runSource",
+  "slack.postToSource -> requests.get",
+]);
 
 export const CORE_ROUTER_IDS = [
   "auth",
@@ -229,6 +246,15 @@ export function collectServerModules(
       if (registered.desc.calls?.length) {
         throw new ServerModuleError(
           `Operation "${op.desc.id}" calls "${callee.id}", which makes calls of its own`,
+        );
+      }
+      if (
+        accessOf(op.desc) === "everyone" &&
+        accessOf(registered.desc) !== "everyone" &&
+        !UNGUARDED_CALLS.has(`${op.desc.id} -> ${callee.id}`)
+      ) {
+        throw new ServerModuleError(
+          `Operation "${op.desc.id}" can be called by a run, so it may call only operations a run can call, but calls "${callee.id}". List it in UNGUARDED_CALLS if that is safe`,
         );
       }
     }

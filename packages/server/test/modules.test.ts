@@ -152,8 +152,10 @@ describe("collectServerModules operations", () => {
       id: string,
       kind: "query" | "mutation",
       calls?: ReturnType<typeof describeOperation>[],
+      access?: "everyone" | "user",
     ) =>
       describeOperation({
+        ...(access ? { access } : {}),
         id,
         kind,
         label: "Op",
@@ -219,6 +221,53 @@ describe("collectServerModules operations", () => {
       ).toThrow(
         'Operation "a.wrap" calls "b.make", which makes calls of its own',
       );
+    });
+
+    it("an operation a run can call calls only what a run can, unless listed", () => {
+      const yours = desc("b.read", "query", undefined, "user");
+      const open = desc("b.open", "query", undefined, "everyone");
+      const compose = (caller: ReturnType<typeof desc>) =>
+        collectServerModules(
+          [
+            owned("a", { wrap: mutation(caller) }),
+            owned("b", { read: query(yours), open: query(open) }),
+          ],
+          reserved,
+          core,
+        );
+      // A run's call isn't guarded again inside: the callee would be reached unchecked.
+      expect(() =>
+        compose(desc("a.wrap", "mutation", [open, yours], "everyone")),
+      ).toThrow(
+        'Operation "a.wrap" can be called by a run, so it may call only operations a run can call, but calls "b.read". List it in UNGUARDED_CALLS if that is safe',
+      );
+      expect(() =>
+        compose(desc("a.wrap", "mutation", [open], "everyone")),
+      ).not.toThrow();
+      // Only you can call it: its calls are yours to make.
+      expect(() =>
+        compose(desc("a.wrap", "mutation", [yours], "user")),
+      ).not.toThrow();
+    });
+
+    it("a listed call from an operation a run can call is allowed", () => {
+      const runSource = desc("agent.runSource", "query", undefined, "user");
+      const post = desc(
+        "slack.postToSource",
+        "mutation",
+        [runSource],
+        "everyone",
+      );
+      expect(() =>
+        collectServerModules(
+          [
+            owned("slack", { postToSource: mutation(post) }),
+            owned("agent", { runSource: query(runSource) }),
+          ],
+          reserved,
+          core,
+        ),
+      ).not.toThrow();
     });
 
     it("registration accepts a call to a query", () => {
