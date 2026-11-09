@@ -392,11 +392,28 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
       inputHash: "h1",
     });
     expect(start.request).toEqual({
+      id: "00000000-0000-7000-8000-0000000000aa",
       sender: "Ann",
       body: "Please",
       source: "slack",
       sourceUrl: null,
     });
+    expect(start.audience).toBeNull();
+  });
+
+  it("GET /run carries the run's audience", async () => {
+    const asker = { slackUserId: "U_BOB", githubLogin: "bob" };
+    const t = setup({
+      claim: {
+        run: {
+          ...claimed().run,
+          audience: { asker: { ...asker, extra: 1 } as typeof asker },
+        },
+      },
+    });
+    await t.started();
+    const start = runStart.parse((await t.call("GET", "/run")).body);
+    expect(start.audience).toEqual({ asker });
   });
 
   it("events are numbered after lastSeq", async () => {
@@ -605,6 +622,27 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
       code: "CONFLICT",
       message: "Changed since",
     });
+  });
+
+  it("the worker fills runId", async () => {
+    const t = setup();
+    await t.started();
+    for (const input of [
+      { text: "Hi" },
+      { text: "Hi", runId: "00000000-0000-7000-8000-0000000000ff" },
+    ]) {
+      await t.call("POST", "/hub", { operation: "slack.postToSource", input });
+    }
+    // An operation without a runId is sent as it came.
+    await t.call("POST", "/hub", {
+      operation: "tasks.create",
+      input: { title: "x", runId: "kept" },
+    });
+    expect(t.hubCalls.map((c) => c.input)).toEqual([
+      { text: "Hi", runId: RUN },
+      { text: "Hi", runId: RUN },
+      { title: "x", runId: "kept" },
+    ]);
   });
 
   it("credentials are refused for a connection the run wasn't granted", async () => {

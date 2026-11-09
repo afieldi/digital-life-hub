@@ -1,59 +1,22 @@
-import { canonical, hubCallHash, hubToolName } from "@dlh/core/hash";
+import { audienceAllows } from "@dlh/core/audience";
+import { hubCallHash, hubToolName } from "@dlh/core/hash";
 import type { RunGuard } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { agentAssignments, agentRuns } from "../db/schema";
 import { audience as audienceSchema } from "../schema";
 
-/** Operations a coworker-audience run may always call: filing a request, and replying where it was asked. */
-const ALWAYS = new Set(["requests.file", "slack.postToSource"]);
-
 const refuse = (message: string): never => {
   throw new TRPCError({ code: "FORBIDDEN", message });
 };
 
-/** The operation's subject for `input`; none if it can't tell. */
-function subjectOf(
-  subject: (input: never) => string | null,
-  input: unknown,
-): string | null {
-  try {
-    return subject(input as never);
-  } catch {
-    return null;
-  }
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Every id-shaped string anywhere in `value`. */
-function idsIn(value: unknown, out: string[] = []): string[] {
-  if (typeof value === "string") {
-    if (UUID.test(value)) out.push(value);
-  } else if (value && typeof value === "object") {
-    for (const v of Object.values(value)) idsIn(v, out);
-  }
-  return out;
-}
-
-/** `input.asker`, if the input has one. */
-function askerOf(input: unknown): unknown {
-  return input && typeof input === "object" && "asker" in input
-    ? input.asker
-    : undefined;
-}
-
 /**
  * Keeps a coworker-audience run to what involves its coworker. Without an
- * audience a run is not limited here. With one, it may call:
- * an `audience: "asker"` operation for its own asker; an operation whose
- * subject is its own task or request and which names no other item (as
- * `tasks.addParent` would, moving another task under its own; this also
- * decides what the operation's `w.call`s reach, as they aren't guarded);
- * `requests.file` and
- * `slack.postToSource`. Anything else needs a hub approval you gave for that
- * exact call, which it spends. Fails closed: a run it can't find, or whose
- * audience it can't read, is refused.
+ * audience a run is not limited here. With one, it may call what
+ * `audienceAllows` allows (the rule the runner asks you by, too); anything
+ * else needs a hub approval you gave for that exact call, which it spends.
+ * Fails closed: a run it can't find, or whose audience it can't read, is
+ * refused.
  */
 export const runGuard: RunGuard = async (deps, { runId, operation, input }) => {
   const [run] = await deps.db
@@ -73,22 +36,12 @@ export const runGuard: RunGuard = async (deps, { runId, operation, input }) => {
   if (audience === null) return;
 
   const desc = operation.desc;
-  if (
-    desc.audience === "asker" &&
-    canonical(askerOf(input)) === canonical(audience.asker)
-  ) {
-    return;
-  }
-  const own = new Set([run.taskId, run.requestId].filter((x) => x !== null));
-  const subject = subjectOf(desc.subject, input);
-  if (
-    subject !== null &&
-    own.has(subject) &&
-    idsIn(input).every((x) => own.has(x))
-  ) {
-    return;
-  }
-  if (ALWAYS.has(desc.id)) return;
+  const ofRun = {
+    asker: audience.asker,
+    taskId: run.taskId,
+    requestId: run.requestId,
+  };
+  if (audienceAllows(desc, input, ofRun)) return;
   if (await spendApproval(deps, runId, desc, input)) return;
   refuse("Needs your approval");
 };

@@ -5,6 +5,7 @@ import { dismissEscalation, runEscalated } from "./server/escalation";
 import { handleMessage } from "./server/handleMessage";
 import { markFailed, markSent, pendingSends } from "./server/outbox";
 import { people, setGithubLogin, upsertPerson } from "./server/people";
+import { postToSource } from "./server/postToSource";
 import { syncRuns } from "./server/reports";
 import { botSettings, setSettings, settingsQuery } from "./server/settings";
 
@@ -25,6 +26,7 @@ const slackServer = defineServerModule(slackModule, {
     runEscalated,
     dismissEscalation,
     syncRuns,
+    postToSource,
   },
 });
 

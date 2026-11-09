@@ -376,6 +376,38 @@ describe("runSession", () => {
     expect(calls.events.flat().map((e) => e.kind)).toContain("permission");
   });
 
+  it("with an audience, an out-of-audience hub call suspends for approval", async () => {
+    const { host, calls } = fakeHost({ suspendSeq: 4 });
+    const tool = "mcp__dlh__hub__requests_open";
+    const start = runStart({
+      audience: { asker: { slackUserId: "U_DANA", githubLogin: null } },
+    });
+    const { query } = fakeQuery(async (_m, _i, options) => {
+      const signal = new AbortController().signal;
+      const lookup = await options.canUseTool?.(
+        "mcp__dlh__hub__requests_fromSender",
+        { asker: { slackUserId: "U_DANA", githubLogin: null } },
+        { signal, toolUseID: "t0", requestId: "r0" },
+      );
+      expect(lookup).toMatchObject({ behavior: "allow" });
+      const answer = await options.canUseTool?.(
+        tool,
+        {},
+        {
+          signal,
+          toolUseID: "t1",
+          requestId: "r1",
+        },
+      );
+      expect(answer).toMatchObject({ behavior: "deny", interrupt: true });
+      return [result()];
+    });
+    expect(await runSession(start, deps(host, query))).toBe("suspended");
+    expect(calls.suspend).toEqual([
+      { sessionId: SESSION, kind: "approval", tool, input: {} },
+    ]);
+  });
+
   it("a report interrupts the turn before the answer goes back", async () => {
     // A tool that reports (request_connection, finish_task) answers the SDK
     // after its report; the turn must stop there, not go on to the model.

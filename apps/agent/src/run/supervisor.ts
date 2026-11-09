@@ -66,12 +66,18 @@ const FLUSH_MS = 2_000;
 /** The container's user, which alone may reach the run's socket. */
 const RUN_UID = 1000;
 
-/** Hub operations a run may call: those whose access is `everyone`, by id. */
+/**
+ * Hub operations a run may call: those whose access is `everyone`, by id,
+ * and whether their input names a run (`runId`), which is always this one.
+ */
 const RUN_OPERATIONS = new Map(
   moduleDescriptions
     .flatMap((m) => Object.values(m.operations) as OperationDescription[])
     .filter((op) => accessOf(op) === "everyone")
-    .map((op) => [op.id, op.kind] as const),
+    .map(
+      (op) =>
+        [op.id, { kind: op.kind, runId: "runId" in op.input.shape }] as const,
+    ),
 );
 
 const firstLine = (e: unknown) =>
@@ -108,10 +114,19 @@ function runStartOf(claimed: Claimed): RunStart {
     task: { id: task.id, title: task.title, notes: task.notes },
     request: r
       ? {
+          id: r.id,
           sender: r.sender,
           body: r.body,
           source: r.source,
           sourceUrl: r.sourceUrl,
+        }
+      : null,
+    audience: claimed.run.audience
+      ? {
+          asker: {
+            slackUserId: claimed.run.audience.asker.slackUserId,
+            githubLogin: claimed.run.audience.asker.githubLogin,
+          },
         }
       : null,
     instructions: claimed.instructions,
@@ -355,8 +370,8 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
         return { status: 200, body: { messages } };
       },
       async hub({ operation, input }) {
-        const kind = RUN_OPERATIONS.get(operation);
-        if (!kind) {
+        const op = RUN_OPERATIONS.get(operation);
+        if (!op) {
           return {
             status: 200,
             body: {
@@ -367,9 +382,16 @@ export function startRun(claimed: Claimed, deps: SupervisorDeps): RunHandle {
           };
         }
         try {
+          // The run's own id, whatever the agent sent: the hub refuses another.
+          const sent = op.runId
+            ? {
+                ...(typeof input === "object" ? input : {}),
+                runId: claimed.run.id,
+              }
+            : input;
           const result = await deps.api
             .asRun(claimed.token)
-            .call(operation, input, kind);
+            .call(operation, sent, op.kind);
           return { status: 200, body: { ok: true, result } };
         } catch (e) {
           const code = e instanceof HubError ? e.code : "INTERNAL_SERVER_ERROR";

@@ -234,6 +234,27 @@ const syncRuns = describeOperation({
   ...bot,
 });
 
+const postToSource = describeOperation({
+  id: "slack.postToSource",
+  kind: "mutation",
+  label: "Post to the Slack thread",
+  description:
+    "For an agent run whose task came from a Slack message: posts text as the bot in that message's thread, at most five times a run. Only for agent runs.",
+  appliesTo: ["none"],
+  input: z.object({
+    runId: z.uuid(),
+    text: z.string().trim().min(1).max(2000),
+  }),
+  // A run fills `runId` with its own; the fake has none to guess.
+  devFake: { runId: "00000000-0000-4000-8000-000000000000", text: "On it." },
+  subject: () => null,
+  effects: [],
+  calls: [agentOps.runSource, requestOps.get],
+  access: "everyone",
+  palette: false,
+  summary: () => "Post to the Slack thread",
+});
+
 export const slackOps = {
   settings,
   setSettings,
@@ -249,4 +270,5 @@ export const slackOps = {
   runEscalated,
   dismissEscalation,
   syncRuns,
+  postToSource,
 };

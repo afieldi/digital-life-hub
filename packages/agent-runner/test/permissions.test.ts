@@ -17,9 +17,19 @@ function ctx(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
     sourceUrl: "https://acme.slack.com/archives/C024BE91L/p1700000000000100",
     cwd: "/workspace/web",
     currentBranch: () => "feature",
+    audience: null,
+    taskId: TASK,
+    requestId: REQUEST,
     ...overrides,
   };
 }
+
+const TASK = "00000000-0000-4000-8000-000000000001";
+const REQUEST = "00000000-0000-4000-8000-000000000002";
+const OTHER = "00000000-0000-4000-8000-000000000003";
+const RUN = "00000000-0000-4000-8000-000000000004";
+const BOB = { slackUserId: "U_BOB", githubLogin: null };
+const hub = (key: string) => `mcp__dlh__hub__${key}`;
 
 const bash = (command: string, c = ctx()) => classify("Bash", { command }, c);
 
@@ -171,6 +181,61 @@ describe("classify", () => {
   });
 });
 
+describe("classify with an audience", () => {
+  const coworker = () => ctx({ audience: { asker: BOB } });
+
+  it("with an audience, an out-of-audience hub tool asks", () => {
+    const asks: [string, Record<string, unknown>][] = [
+      [hub("requests_open"), {}],
+      [hub("tasks_create"), { title: "x" }],
+      [hub("tasks_update"), { id: OTHER, expectedUpdatedAt: "x" }],
+      // Its own task as the parent, another task moved under it.
+      [hub("tasks_addParent"), { id: OTHER, parentId: TASK }],
+      [
+        hub("requests_fromSender"),
+        { asker: { slackUserId: "U_CAROL", githubLogin: null } },
+      ],
+      // Bob's Slack id with someone else's GitHub login.
+      [
+        hub("requests_fromSender"),
+        { asker: { slackUserId: "U_BOB", githubLogin: "carol" } },
+      ],
+      [hub("no_such"), {}],
+    ];
+    for (const [tool, input] of asks) {
+      expect(classify(tool, input, coworker()), tool).toBe("ask");
+    }
+  });
+
+  it("with an audience, the asker lookup for the audience is alone", () => {
+    const alone: [string, Record<string, unknown>][] = [
+      [hub("requests_fromSender"), { asker: BOB }],
+      [hub("tasks_update"), { id: TASK, expectedUpdatedAt: "x" }],
+      [hub("requests_resolve"), { id: REQUEST, taskId: TASK }],
+      [hub("requests_file"), { title: "x" }],
+      [hub("slack_postToSource"), { text: "Done" }],
+    ];
+    for (const [tool, input] of alone) {
+      expect(classify(tool, input, coworker()), tool).toBe("alone");
+    }
+    // Without a request, the request's id isn't the run's own.
+    expect(
+      classify(
+        hub("requests_resolve"),
+        { id: REQUEST },
+        ctx({ audience: { asker: BOB }, requestId: null }),
+      ),
+    ).toBe("ask");
+  });
+
+  it("without an audience every hub tool is alone", () => {
+    expect(classify(hub("requests_open"), {}, ctx())).toBe("alone");
+    expect(
+      classify(hub("tasks_addParent"), { id: OTHER, parentId: TASK }, ctx()),
+    ).toBe("alone");
+  });
+});
+
 describe("approvals", () => {
   it("an approval allows that exact action once", () => {
     const approvals = new Approvals();
@@ -197,6 +262,20 @@ describe("asked input", () => {
     if (!op) throw new Error("no requests.fromSender hub tool");
     // What the API's run guard hashes for the same call.
     expect(inputHash(tool, askedInput(tool, raw))).toBe(hubCallHash(op, raw));
+  });
+
+  it("an operation with a runId is asked with the run's own", () => {
+    const post = hub("slack_postToSource");
+    expect(askedInput(post, { text: "Hi" }, RUN)).toEqual({
+      text: "Hi",
+      runId: RUN,
+    });
+    expect(askedInput(post, { text: "Hi", runId: "other" }, RUN)).toEqual({
+      text: "Hi",
+      runId: RUN,
+    });
+    // Only for an operation that takes one.
+    expect(askedInput(tool, { asker }, RUN)).toEqual({ asker });
   });
 
   it("other tools, and input the operation refuses, are left as sent", () => {

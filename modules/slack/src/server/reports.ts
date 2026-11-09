@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { slackOutbox, slackSettings } from "../db/schema";
 import { slackOps } from "../operations";
-import { threadOf } from "./coworker";
+import { replyPlaceOf } from "./coworker";
 
 /** What `agent.recentRuns` returns, as far as a report needs it. */
 const recent = z.object({
@@ -93,25 +93,16 @@ export const syncRuns = implementOperation(slackOps.syncRuns, {
         if (e instanceof TRPCError && e.code === "NOT_FOUND") continue;
         throw e;
       }
-      const at = request.externalId?.indexOf(":") ?? -1;
-      if (
-        request.source !== "slack" ||
-        !request.fromOwner ||
-        !request.externalId ||
-        at < 0
-      ) {
-        continue;
-      }
-      const ts = request.externalId.slice(at + 1);
+      const place = replyPlaceOf(request);
+      if (!place || !request.fromOwner) continue;
       const inserted = await w.tx
         .insert(slackOutbox)
         .values({
           key: `report:${run.id}`,
           origin: "report",
           status: "approved",
-          channelId: request.externalId.slice(0, at),
-          // Into the thread it was asked in, or under the message itself.
-          threadTs: threadOf({ sourceUrl: request.sourceUrl }) ?? ts,
+          channelId: place.channelId,
+          threadTs: place.threadTs,
           text: reportText(run),
           requestId: run.requestId,
           runId: run.id,

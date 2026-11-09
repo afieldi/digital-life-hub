@@ -32,7 +32,14 @@ const examples: [string, import("zod").ZodType, unknown][] = [
     {
       runId: "r1",
       task: { id: "t1", title: "Do it", notes: null },
-      request: { sender: null, body: "b", source: "email", sourceUrl: null },
+      request: {
+        id: "q1",
+        sender: null,
+        body: "b",
+        source: "email",
+        sourceUrl: null,
+      },
+      audience: { asker: { slackUserId: "U1", githubLogin: null } },
       instructions: "be nice",
       connections: [
         { id: "c1", name: "gh", type: "github", scopeSummary: "repo" },

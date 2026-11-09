@@ -24,7 +24,8 @@ const listed = (cs: Connection[]) =>
 /**
  * A run's opening message, in the spec's order: the global instructions, the
  * task (the instructions proper), the connections and the alone/ask rules,
- * then the request it came from, quoted as data.
+ * for a coworker's run who it answers to, then the request it came from,
+ * quoted as data.
  */
 export function buildPrompt(start: RunStart): string {
   const granted = new Set(start.grantedIds);
@@ -38,6 +39,15 @@ export function buildPrompt(start: RunStart): string {
       .join("\n"),
     `Connections you have:\n${listed(have)}\n\nYou can ask for:\n${listed(canAsk)}\n\n${RULES}`,
   ];
+  if (start.audience) {
+    // Their name, or their Slack id when the request has none.
+    const sender =
+      oneLine(start.request?.sender ?? "") ||
+      oneLine(start.audience.asker.slackUserId);
+    parts.push(
+      `This task came from ${sender}, who reads what you post with postToSource. Use only what involves them; reading anything else of the owner's needs the owner's approval.`,
+    );
+  }
   const body = start.request?.body;
   if (start.request && body) {
     const sender = oneLine(start.request.sender ?? "") || "someone";

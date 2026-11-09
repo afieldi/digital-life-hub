@@ -25,5 +25,10 @@ export async function setup() {
   const asSlack = (p: Principal = slackPrincipal) =>
     testServer(t.db, modules, { principal: p });
   const { caller: slack, deps: slackDeps } = asSlack();
-  return { ...t, caller, deps, slack, slackDeps };
+  /** A caller as agent run `runId`, as the runner reaches the hub. */
+  const asRun = (runId: string) =>
+    testServer(t.db, modules, {
+      principal: { kind: "run", tokenId: "t", runId },
+    }).caller;
+  return { ...t, caller, deps, slack, slackDeps, asRun };
 }

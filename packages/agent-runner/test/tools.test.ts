@@ -80,6 +80,18 @@ describe("hub tools", () => {
   });
 });
 
+describe("a hub tool with a runId", () => {
+  it("doesn't ask the model for it: the worker fills it", async () => {
+    const { calls, byName } = setUp();
+    const post = byName("hub__slack_postToSource");
+    expect(Object.keys(post.inputSchema)).toEqual(["text"]);
+    await post.handler({ text: "On it" }, {});
+    expect(calls.hub).toEqual([
+      { operation: "slack.postToSource", input: { text: "On it" } },
+    ]);
+  });
+});
+
 describe("ending tools", () => {
   it("finish_task reports the files git sees changed", async () => {
     const repo = join(dir, "web");

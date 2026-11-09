@@ -17,6 +17,7 @@ import {
   ESCALATED_PREFIX,
   keyOf,
   recentIn,
+  replyPlaceOf,
   type SenderRequest,
   sendersRequests,
   threadOf,
@@ -95,13 +96,10 @@ function messageOf(
   r: z.infer<typeof filed>["request"],
   githubLogin: string | null,
 ): { m: CoworkerMessage; thread: string } {
-  const at = r.externalId?.indexOf(":") ?? -1;
-  if (r.source !== "slack" || !r.externalId || at < 0 || !r.sourceHandle) {
-    badRequest("Not a request filed from Slack");
-  }
-  const channel = r.externalId.slice(0, at);
-  const ts = r.externalId.slice(at + 1);
-  const threadTs = threadOf({ sourceUrl: r.sourceUrl }) ?? undefined;
+  const place = replyPlaceOf(r);
+  if (!place || !r.sourceHandle) badRequest("Not a request filed from Slack");
+  const { channelId: channel, ts } = place;
+  const threadTs = threadOf(r) ?? undefined;
   return {
     m: {
       event: {
@@ -121,8 +119,7 @@ function messageOf(
       },
       context: [],
     },
-    // A reply in the thread of the message, or the message's own thread.
-    thread: threadTs ?? ts,
+    thread: place.threadTs,
   };
 }
 
