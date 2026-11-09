@@ -45,12 +45,16 @@ export type HubOperation = {
 /**
  * The hub operations a run may call: every operation of the module
  * descriptions whose access is `everyone` (D6). An `ai: false` operation is
- * `user` unless it says otherwise, and one that does is left out too.
+ * `user` unless it says otherwise, and one that does is left out too, unless
+ * it is `hub: true` (a tool for runs only).
  */
 export function hubOperations(): HubOperation[] {
   return moduleDescriptions.flatMap((m) =>
     Object.entries(m.operations as Record<string, OperationDescription>)
-      .filter(([, op]) => accessOf(op) === "everyone" && op.ai !== false)
+      .filter(
+        ([, op]) =>
+          accessOf(op) === "everyone" && (op.ai !== false || op.hub === true),
+      )
       .map(([key, op]) => ({
         name: `hub__${m.id}_${key}`,
         id: op.id,

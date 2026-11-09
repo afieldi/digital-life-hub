@@ -239,19 +239,20 @@ const postToSource = describeOperation({
   kind: "mutation",
   label: "Post to the Slack thread",
   description:
-    "For an agent run whose task came from a Slack message: posts text as the bot in that message's thread, at most five times a run. Only for agent runs.",
+    "For an agent run whose task came from a Slack message: posts text as the bot in that message's thread, at most five times a run.",
   appliesTo: ["none"],
   input: z.object({
     runId: z.uuid(),
     text: z.string().trim().min(1).max(2000),
   }),
-  // A run fills `runId` with its own; the fake has none to guess.
-  devFake: { runId: "00000000-0000-4000-8000-000000000000", text: "On it." },
   subject: () => null,
   effects: [],
   calls: [agentOps.runSource, requestOps.get],
+  // A hub tool for agent runs only: not in ⌘K, the in-app AI or Slack's.
   access: "everyone",
   palette: false,
+  ai: false,
+  hub: true,
   summary: () => "Post to the Slack thread",
 });
 

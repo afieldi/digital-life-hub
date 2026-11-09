@@ -92,6 +92,18 @@ test("offers every action and kind, plus handOff and escalate", async () => {
   await h.close();
 });
 
+test("postToSource is not an AI action", async () => {
+  const h = await harness({ action: { choice: "escalate" } });
+  await h.run("post in the thread that it's done");
+  expect(h.deps.ai.runners.has("slack.postToSource")).toBe(false);
+  const choices = h.seen[0]?.question.choices ?? [];
+  expect(choices.length).toBeGreaterThan(2);
+  expect(
+    choices.filter((c) => c.value.startsWith("slack.postToSource")),
+  ).toEqual([]);
+  await h.close();
+});
+
 test("an action that applies to none asks one question", async () => {
   const h = await harness({
     action: { choice: "test.note|do", confidence: 0.95 },

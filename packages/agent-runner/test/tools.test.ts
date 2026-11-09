@@ -60,10 +60,25 @@ describe("hub tools", () => {
     expect(names).toContain("hub__tasks_create");
     expect(names.some((n) => n.startsWith("hub__agent_"))).toBe(false);
     for (const op of all.filter((o) => o.ai === false || o.access)) {
-      if (op.access === "everyone" && op.ai !== false) continue;
+      if (op.access === "everyone" && (op.ai !== false || op.hub === true)) {
+        continue;
+      }
       const [mod, key] = op.id.split(".");
       expect(names, op.id).not.toContain(`hub__${mod}_${key}`);
     }
+  });
+
+  it("postToSource is still a hub tool", () => {
+    const op = hubOperations().find((o) => o.id === "slack.postToSource");
+    expect(op?.name).toBe("hub__slack_postToSource");
+    expect(hubToolName("slack.postToSource")).toBe(
+      `mcp__${RUNNER_SERVER}__hub__slack_postToSource`,
+    );
+    // A hub tool for runs only: not in ⌘K or AI.
+    const desc = moduleDescriptions
+      .flatMap((m) => Object.values(m.operations) as OperationDescription[])
+      .find((o) => o.id === "slack.postToSource");
+    expect(desc).toMatchObject({ ai: false, palette: false, hub: true });
   });
 
   it("a hub tool calls the operation through the socket", async () => {

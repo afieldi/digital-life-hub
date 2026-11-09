@@ -307,6 +307,32 @@ describe("describeOperation", () => {
       describeOperation({ ...worker, palette: false, ai: false }),
     ).not.toThrow();
   });
+  test("hub: true needs access everyone", () => {
+    const run: OperationDescription = {
+      id: "slack.post",
+      kind: "mutation",
+      label: "Post",
+      description: "x",
+      appliesTo: "none",
+      input: z.object({}),
+      subject: () => null,
+      effects: [],
+      summary: () => "Post",
+      palette: false,
+      ai: false,
+      hub: true,
+    };
+    // `ai: false` alone defaults to access user.
+    expect(() => describeOperation(run)).toThrow(
+      'Operation "slack.post" has hub: true but not access: "everyone"',
+    );
+    expect(() => describeOperation({ ...run, access: "user" })).toThrow(
+      OperationError,
+    );
+    expect(() =>
+      describeOperation({ ...run, access: "everyone" }),
+    ).not.toThrow();
+  });
   test("access slack needs palette false and ai false", () => {
     const slack: OperationDescription = {
       id: "slack.check",

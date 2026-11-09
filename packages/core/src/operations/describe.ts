@@ -112,6 +112,11 @@ export type OperationDescription<
   /** Defaults to `true`. */
   ai?: boolean;
   /**
+   * An agent run's hub tool even with `ai: false`: for operations only runs
+   * call, kept out of the in-app AI. Needs `access: "everyone"`.
+   */
+  hub?: boolean;
+  /**
    * Who may call it: `everyone` (you or an agent run), `user` (only you) or
    * `worker` (only the agent host's worker token) or `slack` (only the Slack
    * bot's token). See `accessOf` for the default.
@@ -166,6 +171,11 @@ export function describeOperation<
   ) {
     throw new OperationError(
       `Operation "${d.id}" has access: "${d.access}" but is in ⌘K or AI`,
+    );
+  }
+  if (d.hub === true && accessOf(d) !== "everyone") {
+    throw new OperationError(
+      `Operation "${d.id}" has hub: true but not access: "everyone"`,
     );
   }
   if (d.audience === "asker") {
