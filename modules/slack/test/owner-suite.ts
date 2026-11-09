@@ -57,7 +57,7 @@ export async function runOwnerSuite(
         : pick.kind === "escalate"
           ? "escalate"
           : `slack.${pick.kind}|do`;
-    const subject = pick.kind === "escalate" ? null : pick.subjectId;
+    const subject = "subjectId" in pick ? pick.subjectId : null;
     const wanted = phrasing.subject ? ids[phrasing.subject] : null;
     if (choice !== phrasing.expected || (wanted && subject !== wanted)) {
       const confidence = pick.confidence.toFixed(2);

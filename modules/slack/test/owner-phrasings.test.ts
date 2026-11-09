@@ -8,10 +8,13 @@ import { setup } from "./setup";
 // biome-ignore lint/style/noProcessEnv: the live suite runs only when the key is set
 const apiKey = process.env.AI_GATEWAY_API_KEY;
 
-test("the owner phrasings are 40, with 6 that should escalate", () => {
-  expect(ownerPhrasings).toHaveLength(40);
+test("the owner phrasings are 44: 6 replies in words and 4 that should escalate", () => {
+  expect(ownerPhrasings).toHaveLength(44);
+  expect(
+    ownerPhrasings.filter((p) => p.expected === "slack.reply|do"),
+  ).toHaveLength(6);
   expect(ownerPhrasings.filter((p) => p.expected === "escalate")).toHaveLength(
-    6,
+    4,
   );
   expect(new Set(ownerPhrasings.map((p) => p.expected))).toContain(
     "slack.handOff|do",

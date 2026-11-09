@@ -31,9 +31,11 @@ export type OwnerPick =
       subjectId: null;
       confidence: number;
     }
+  | { kind: "reply"; confidence: number }
   | { kind: "escalate"; confidence: number };
 
 const HAND_OFF = "slack.handOff";
+const REPLY = "slack.reply|do";
 
 const KIND_WORDS: Record<AiKind, string> = {
   ask: "answer only: reads and replies, changes nothing",
@@ -124,7 +126,7 @@ async function findSubjects(deps: CoreDeps, text: string) {
 
 /**
  * Picks what to do with the owner's message: an action from the gateway (and
- * how: Ask, Suggest or Do), or hand it to the agent. An action on items gets a second decision for which item. Below
+ * how: Ask, Suggest or Do), hand it to the agent, or just reply in words. An action on items gets a second decision for which item. Below
  * `threshold` on either, or no item where one is needed, the pick is
  * `escalate`. Throws `AiError` (`timeout`, `provider_unavailable`, `bad_output`).
  */
@@ -157,9 +159,14 @@ export async function interpretOwner(
       "Give the message's work to the agent, to carry out on its own in the background: research, a multi-step job, going through a backlog, writing something up, anything for the agent to go and do. Pick it whenever the message says the agent should do it (do it)",
   });
   choices.push({
+    value: REPLY,
+    description:
+      "Just reply in words, looking nothing up and changing nothing: a greeting, thanks, small talk, a question about what this bot can do, or a general question common knowledge answers. Never for the owner's own tasks, requests or notes, and never for anything that needs current information such as weather, news or prices",
+  });
+  choices.push({
     value: "escalate",
     description:
-      "None of the above fits: the message is unclear, small talk, a general question unrelated to the owner's own tasks, requests and notes, or it asks for something no action here does. Leave it for the owner to handle themselves",
+      "None of the above fits: the message is unclear, needs current information from outside the hub, needs the owner's own judgement, or asks for something no action here does. Leave it for the owner to handle themselves",
   });
 
   const first = await decideOnServer(deps, {
@@ -178,6 +185,11 @@ export async function interpretOwner(
     confidence,
   });
 
+  if (first.choice === REPLY) {
+    return first.confidence < input.threshold
+      ? escalate(first.confidence)
+      : { kind: "reply", confidence: first.confidence };
+  }
   const picked = offered.get(first.choice);
   if (first.choice !== "escalate" && picked === undefined) {
     throw new AiError("bad_output", aiErrorMessage("bad_output", "vercel"));

@@ -2,6 +2,7 @@ import { type AiDecisionProvider, AiError } from "@dlh/server";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import type { HandleMessageInput } from "../src/schema";
+import { HELP_REPLY } from "../src/server/owner/reply";
 import { setup } from "./setup";
 
 type Answer = { choice: string; confidence?: number };
@@ -112,6 +113,24 @@ test("an owner Suggest offers each option and None of these", async () => {
     { do: "apply", option: 1 },
     { do: "discard" },
   ]);
+  await h.close();
+});
+
+test("small talk gets a reply in words and files nothing", async () => {
+  const h = await harness({ choice: "slack.reply|do" });
+  h.completions.push(JSON.stringify({ reply: "Hi Arek!" }));
+  const out = await h.send("hello");
+  expect(out.result).toEqual({ reply: "Hi Arek!" });
+  expect((await h.caller.requests.open({})).items).toEqual([]);
+  expect(await h.taskTitles()).toEqual([]);
+  await h.close();
+});
+
+test("a reply the model can't write is the help text, and files nothing", async () => {
+  const h = await harness({ choice: "slack.reply|do" });
+  const out = await h.send("hello");
+  expect(out.result).toEqual({ reply: HELP_REPLY });
+  expect((await h.caller.requests.open({})).items).toEqual([]);
   await h.close();
 });
 

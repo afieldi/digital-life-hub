@@ -8,6 +8,7 @@ import type {
 import { ESCALATED_PREFIX, firstLine, keyOf } from "../coworker";
 import { handOff } from "./handoff";
 import { interpretOwner, type OwnerPick } from "./interpret";
+import { replyToOwner } from "./reply";
 import { runOwnerAction } from "./run";
 
 /** How long Jev has before the owner's message is escalated. */
@@ -67,6 +68,8 @@ export async function handleOwner(
         aiKind: pick.aiKind,
         subjectId: pick.subjectId,
       });
+    case "reply":
+      return replyToOwner(deps, input);
     case "escalate":
       return escalateOwner(deps, input);
     case "handOff":

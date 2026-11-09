@@ -72,7 +72,7 @@ const byTitle =
     return { choice: hit.value };
   };
 
-test("offers every action and kind, plus handOff and escalate", async () => {
+test("offers every action and kind, plus handOff, reply and escalate", async () => {
   const h = await harness({ action: { choice: "escalate" } });
   await h.run("what's due today?");
   const choices = h.seen[0]?.question.choices ?? [];
@@ -82,6 +82,7 @@ test("offers every action and kind, plus handOff and escalate", async () => {
   expect(choices.map((c) => c.value)).toEqual([
     ...expected,
     "slack.handOff|do",
+    "slack.reply|do",
     "escalate",
   ]);
   const text = (v: string) => choices.find((c) => c.value === v)?.description;
@@ -201,6 +202,24 @@ test("an unsure subject escalates", async () => {
   expect(await h.run("rename the Dana invoice task")).toMatchObject({
     kind: "escalate",
   });
+  await h.close();
+});
+
+test("a reply in words asks one question and needs no item", async () => {
+  const h = await harness({
+    action: { choice: "slack.reply|do", confidence: 0.9 },
+  });
+  await seed(h);
+  expect(await h.run("thanks!")).toEqual({ kind: "reply", confidence: 0.9 });
+  expect(h.seen).toHaveLength(1);
+  await h.close();
+});
+
+test("an unsure reply escalates", async () => {
+  const h = await harness({
+    action: { choice: "slack.reply|do", confidence: 0.4 },
+  });
+  expect(await h.run("hmm")).toEqual({ kind: "escalate", confidence: 0.4 });
   await h.close();
 });
 

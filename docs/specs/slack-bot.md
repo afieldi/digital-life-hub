@@ -116,7 +116,7 @@ The model interpreter lives in `modules/slack/src/server/interpret.ts`. It is se
 | Decision | Options supplied | Asked |
 | --- | --- | --- |
 | Which command (coworkers) | The coworker command set, each as `value` + `description`, which includes `escalate` | Always |
-| Which action and kind (you) | Every AI action the gateway has, crossed with each kind it allows, as `"<actionId>\|<kind>"`, plus `slack.handOff\|do` and `escalate` | Always |
+| Which action and kind (you) | Every AI action the gateway has, crossed with each kind it allows, as `"<actionId>\|<kind>"`, plus `slack.handOff\|do`, `slack.reply\|do` and `escalate` | Always |
 | Which subject (you) | Up to 5 items from full-text search on the message text, plus `none` | Only when the picked action applies to items |
 
 Both are `choice` questions to Jev. The interpreter's result has `subjectId: string | null`. In Part 1 only the coworker set is used, and it has no subjects. Below `slack_settings.threshold` (0.6) on either decision, a pick of `none` for an action that needs an item, or a pick of `escalate`, the message escalates. The server re-checks the action, the subject's type and the cap as it does for ⌘K; safety never depends on Jev.
@@ -127,7 +127,7 @@ Both are `choice` questions to Jev. The interpreter's result has `subjectId: str
 | --- | --- |
 | Every AI action the gateway has (Core's and modules', so `tasks.create`, `answer`, `requests.makeTask`…) | `leaveRequest`: file a request (the default) |
 | `slack.handOff`: give the message's work to the agent | `addToRequest`: append to their open request (see Several messages) |
-| | `requestStatus`: their requests, open or resolved, and when |
+| `slack.reply`: reply in words, with nothing looked up or changed (greetings, thanks, what the bot can do, common knowledge) | `requestStatus`: their requests, open or resolved, and when |
 | | `withdraw`: resolve their open request as `handled` |
 | | `askAbout`: answer from an asker-scoped lookup (`github.prsBetween`, their requests) |
 | | `requestReview`: ask you to review their PR |
@@ -135,6 +135,8 @@ Both are `choice` questions to Jev. The interpreter's result has `subjectId: str
 | | `escalate`: something only you can answer |
 
 **Running.** Once picked, the gateway runs the action as it does for ⌘K: the generative model fills the input and writes any answer, the output is checked, and a Do applies with Undo. `modules/slack` runs it as you (see The owner path in Core changes).
+
+**Replies to you in words.** `slack.reply` is for a message that needs no tool: nothing to look up, nothing to change. The model sees only your conversation with the bot and the descriptions of what the bot can do, and is told never to claim it did something or to invent your items. It files nothing. If the model can't reply, the bot sends a fixed help text instead. Anything that needs current outside information (weather, prices) or your own judgement still escalates.
 
 **Coworker answers.** `askAbout` and `requestStatus` reply in words written by the model, as the bot. Their prompt is built by one fixed context builder that holds only the conversation with that coworker and the result of the lookup Jev picked. It gets no item search, no tools and no other context, so a prompt like "summarise Arek's tasks" has nothing to draw on. The rest of the coworker set replies with fixed templates.
 
