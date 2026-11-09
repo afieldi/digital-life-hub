@@ -15,12 +15,15 @@ export type OutboxDeps = {
 /** How many rows one `pendingSends` hands over at most. */
 const BATCH = 20;
 
-/** Slack's error code (`channel_not_found`, …), else the error's message. */
-function errorCode(e: unknown): string {
+/** The code of a Slack platform error (`channel_not_found`, …): the row can't be posted as it is. A rate limit is not one. */
+function platformError(e: unknown): string | null {
   const code = (e as { data?: { error?: unknown } } | null)?.data?.error;
-  if (typeof code === "string" && code) return code;
-  return (e as Error | null)?.message || "unknown_error";
+  return typeof code === "string" && code && code !== "ratelimited"
+    ? code
+    : null;
 }
+
+const describe = (e: unknown) => (e as Error | null)?.message || String(e);
 
 /**
  * Posts what the hub has approved. A tick queues the reports of ended runs,
@@ -33,8 +36,12 @@ export function createOutbox(deps: OutboxDeps): { tick(): Promise<void> } {
   const retry = <T>(fn: () => Promise<T>) =>
     withRetries({ sleep: deps.sleep } as unknown as EventDeps, fn);
 
-  /** Posts one row and records the outcome; false when the hub could not be told. */
-  async function send(row: PendingSend): Promise<boolean> {
+  /**
+   * Posts one row and records the outcome. "stop" when the rest of the batch
+   * should wait for the next tick: Slack failed in a way that may pass (the row
+   * stays approved), or the hub could not be told.
+   */
+  async function send(row: PendingSend): Promise<"done" | "stop"> {
     let ts: string | undefined;
     let error: string | undefined;
     try {
@@ -47,7 +54,12 @@ export function createOutbox(deps: OutboxDeps): { tick(): Promise<void> } {
       ).ts;
       if (!ts) error = "Slack gave no timestamp";
     } catch (e) {
-      error = errorCode(e);
+      const code = platformError(e);
+      if (!code) {
+        log(`outbox ${row.id}: not posted, retrying next tick: ${describe(e)}`);
+        return "stop";
+      }
+      error = code;
     }
     try {
       // The post is done: repeat the mark rather than the post, so it goes out once.
@@ -57,10 +69,10 @@ export function createOutbox(deps: OutboxDeps): { tick(): Promise<void> } {
           api.markFailed({ id: row.id, error: error as string }),
         );
       log(`outbox ${row.id}: ${ts ? "sent" : `failed (${error})`}`);
-      return true;
+      return "done";
     } catch (e) {
-      log(`outbox ${row.id}: could not record the outcome: ${errorCode(e)}`);
-      return false;
+      log(`outbox ${row.id}: could not record the outcome: ${describe(e)}`);
+      return "stop";
     }
   }
 
@@ -69,13 +81,12 @@ export function createOutbox(deps: OutboxDeps): { tick(): Promise<void> } {
     try {
       await api.syncRuns();
       const rows = await api.pendingSends();
-      let recorded = true;
       for (const row of rows) {
-        if (!(await send(row))) recorded = false;
+        if ((await send(row)) === "stop") return false;
       }
-      return recorded && rows.length >= BATCH;
+      return rows.length >= BATCH;
     } catch (e) {
-      log(`outbox tick failed: ${errorCode(e)}`);
+      log(`outbox tick failed: ${describe(e)}`);
       return false;
     }
   }

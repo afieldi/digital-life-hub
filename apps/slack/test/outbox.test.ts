@@ -139,6 +139,60 @@ describe("outbox tick", () => {
     expect(h.calls).toContain("sent:a:91.0");
   });
 
+  it("a rate limit leaves the row for the next tick", async () => {
+    const h = hub([row("a"), row("b")]);
+    const b = bot({ "text a": "ratelimited" });
+    const log: string[] = [];
+    await createOutbox({
+      api: h.api,
+      bot: b.web,
+      log: (l) => log.push(l),
+    }).tick();
+    expect(h.calls.filter((c) => /^(sent|failed)/.test(c))).toEqual([]);
+    expect(b.posts()).toHaveLength(1);
+    expect(log.join()).toContain("retrying next tick");
+  });
+
+  it("a network error leaves the row for the next tick", async () => {
+    const h = hub([row("a"), row("b")]);
+    const { web, posts } = bot();
+    let down = true;
+    const post = web.chat.postMessage;
+    web.chat.postMessage = async (a) => {
+      if (down) throw new Error("socket hang up");
+      return post(a);
+    };
+    const outbox = createOutbox({ api: h.api, bot: web });
+    await outbox.tick();
+    expect(h.calls.filter((c) => /^(sent|failed)/.test(c))).toEqual([]);
+    down = false;
+    await outbox.tick();
+    expect(posts().map((p) => p.args.text)).toEqual(["text a", "text b"]);
+    expect(h.calls).toContain("sent:a:91.0");
+  });
+
+  it("an unrecordable mark stops the batch", async () => {
+    const h = hub([row("a"), row("b")]);
+    h.api.markSent = async () => {
+      throw new Error("hub down");
+    };
+    const b = bot();
+    await createOutbox({
+      api: h.api,
+      bot: b.web,
+      sleep: async () => {},
+    }).tick();
+    expect(b.posts().map((p) => p.args.text)).toEqual(["text a"]);
+  });
+
+  it("a post without a timestamp is marked failed", async () => {
+    const h = hub([row("a")]);
+    const { web } = bot();
+    web.chat.postMessage = async () => ({});
+    await createOutbox({ api: h.api, bot: web }).tick();
+    expect(h.calls).toContain("failed:a:Slack gave no timestamp");
+  });
+
   it("ticks never overlap", async () => {
     const h = hub([]);
     let running = 0;
