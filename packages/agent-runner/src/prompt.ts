@@ -65,8 +65,12 @@ export function buildPrompt(start: RunStart): string {
     const sender =
       quotedName(start.request?.sender) ??
       quotedName(start.audience.asker.slackUserId);
+    // The whole asker, as the hub compares it: a lookup with only the Slack
+    // id, or another login, needs the owner's approval.
+    const { slackUserId, githubLogin } = start.audience.asker;
+    const asker = JSON.stringify({ slackUserId, githubLogin });
     parts.push(
-      `This task came from ${sender}, who reads what you post with postToSource. Use only what involves them; reading anything else of the owner's needs the owner's approval.`,
+      `This task came from ${sender}, who reads what you post with postToSource. Use only what involves them; reading anything else of the owner's needs the owner's approval.\nIn asker lookups about them, pass asker: ${asker} exactly.`,
     );
   }
   const body = start.request?.body;

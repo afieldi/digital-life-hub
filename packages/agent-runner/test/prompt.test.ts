@@ -36,6 +36,10 @@ describe("buildPrompt", () => {
     // After the rules, before the quoted message.
     expect(prompt.indexOf(line)).toBeGreaterThan(prompt.indexOf("finish_task"));
     expect(prompt.indexOf(line)).toBeLessThan(prompt.indexOf("Message from"));
+    // The asker the hub compares, exactly, on the line after.
+    expect(prompt).toContain(
+      `${line}\nIn asker lookups about them, pass asker: {"slackUserId":"U_DANA","githubLogin":null}`,
+    );
     // No sender name: the Slack id.
     const base = runStart();
     const unnamed = buildPrompt(
