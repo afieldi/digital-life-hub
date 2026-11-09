@@ -12,7 +12,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { Decision, Pending, Report } from "../schema";
+import type {
+  Audience,
+  Decision,
+  HubApproval,
+  Pending,
+  Report,
+} from "../schema";
 
 const at = (name: string) =>
   timestamp(name, { withTimezone: true, precision: 3 });
@@ -62,6 +68,13 @@ export const agentRuns = pgTable(
     /** Running time in the current allowance, added by each heartbeat; the time cap counts it. */
     runningMs: integer("running_ms").notNull().default(0),
     image: text("image"),
+    /** Whom the run answers to when it isn't you: a coworker's request (`runGuard`). */
+    audience: jsonb("audience").$type<Audience>(),
+    /** Hub calls you approved for the run, each passing its guard once. */
+    hubApprovals: jsonb("hub_approvals")
+      .$type<HubApproval[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
   },
   (t) => [
     check(
@@ -136,6 +149,11 @@ export const agentSettings = pgTable(
   {
     id: integer("id").primaryKey().default(1),
     defaultConnectionIds: uuid("default_connection_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    /** The connections a run for a coworker's request starts with. */
+    coworkerConnectionIds: uuid("coworker_connection_ids")
       .array()
       .notNull()
       .default(sql`'{}'`),

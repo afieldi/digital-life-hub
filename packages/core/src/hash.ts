@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { z } from "zod";
 
 /**
  * How an approval is matched: the runner and the worker hash a tool call the
@@ -47,4 +48,29 @@ export function inputHash(tool: string, input: unknown): string {
 export function hubToolName(operationId: string): string {
   const dot = operationId.indexOf(".");
   return `mcp__dlh__hub__${operationId.slice(0, dot)}_${operationId.slice(dot + 1)}`;
+}
+
+/**
+ * A hub call's input as its operation's schema parses it: defaults filled
+ * and unknown keys dropped. Input the schema refuses is left as sent (the
+ * hub refuses that call anyway).
+ */
+export function hubCallInput(
+  op: { input: z.ZodType },
+  input: unknown,
+): unknown {
+  const parsed = op.input.safeParse(input);
+  return parsed.success ? parsed.data : input;
+}
+
+/**
+ * The hash of a call to operation `op` as a hub tool. The runner hashes the
+ * model's input and a run guard the hub's already parsed copy; parsing both
+ * through the operation's schema makes them agree.
+ */
+export function hubCallHash(
+  op: { id: string; input: z.ZodType },
+  input: unknown,
+): string {
+  return inputHash(hubToolName(op.id), hubCallInput(op, input));
 }

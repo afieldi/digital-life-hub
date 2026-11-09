@@ -1,5 +1,12 @@
 import { inputHash } from "@dlh/agent-protocol";
-import { Approvals, type ClassifyContext, classify } from "../src/permissions";
+import { hubCallHash } from "@dlh/core/hash";
+import {
+  Approvals,
+  askedInput,
+  type ClassifyContext,
+  classify,
+} from "../src/permissions";
+import { hubOperations } from "../src/tools";
 
 function ctx(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
   return {
@@ -176,5 +183,26 @@ describe("approvals", () => {
     expect(approvals.take("Other", inputHash("Bash", merge))).toBe(false);
     expect(approvals.take("Bash", inputHash("Bash", merge))).toBe(true);
     expect(approvals.take("Bash", inputHash("Bash", merge))).toBe(false);
+  });
+});
+
+describe("asked input", () => {
+  const tool = "mcp__dlh__hub__requests_fromSender";
+  const asker = { slackUserId: "U1", githubLogin: null };
+
+  it("a hub call is asked and hashed as its operation parses it", () => {
+    const raw = { asker, junk: 1 };
+    expect(askedInput(tool, raw)).toEqual({ asker });
+    const op = hubOperations().find((o) => o.id === "requests.fromSender");
+    if (!op) throw new Error("no requests.fromSender hub tool");
+    // What the API's run guard hashes for the same call.
+    expect(inputHash(tool, askedInput(tool, raw))).toBe(hubCallHash(op, raw));
+  });
+
+  it("other tools, and input the operation refuses, are left as sent", () => {
+    const bash = { command: "ls", junk: 1 };
+    expect(askedInput("Bash", bash)).toBe(bash);
+    const bad = { asker: { slackUserId: "" } };
+    expect(askedInput(tool, bad)).toBe(bad);
   });
 });

@@ -3,8 +3,10 @@ import type {
   PermissionResult,
 } from "@anthropic-ai/claude-agent-sdk";
 import { describeAction, inputHash } from "@dlh/agent-protocol";
+import { hubCallInput } from "@dlh/core/hash";
 import type { RunControl } from "./control";
 import type { EventSink } from "./events";
+import { type HubOperation, hubOperations } from "./tools";
 
 export type Verdict = "alone" | "ask";
 
@@ -421,6 +423,28 @@ function ghAsks(args: string[]): boolean {
 
 // ---------------------------------------------------------------- approvals
 
+let hubByTool: Map<string, HubOperation> | undefined;
+
+/**
+ * What a call asks for: a hub tool's input as its operation parses it (as
+ * the hub's run guard hashes it, so an approval of it matches there), any
+ * other tool's as sent.
+ */
+export function askedInput(
+  tool: string,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  hubByTool ??= new Map(
+    hubOperations().map((op) => [`mcp__${RUNNER_SERVER}__${op.name}`, op]),
+  );
+  const op = hubByTool.get(tool);
+  if (!op) return input;
+  const asked = hubCallInput(op, input);
+  return asked && typeof asked === "object"
+    ? (asked as Record<string, unknown>)
+    : input;
+}
+
 /** Actions the owner approved, each allowed once, matched on tool and input hash. */
 export class Approvals {
   private readonly allowed = new Set<string>();
@@ -448,10 +472,12 @@ export function createCanUseTool(deps: {
   log: (line: string) => void;
 }): CanUseTool {
   return async (tool, input): Promise<PermissionResult> => {
-    if (classify(tool, input, deps.ctx) === "alone") {
+    // Classified, hashed and quoted as the hub will see it.
+    const asked = askedInput(tool, input);
+    if (classify(tool, asked, deps.ctx) === "alone") {
       return { behavior: "allow", updatedInput: input };
     }
-    const hash = inputHash(tool, input);
+    const hash = inputHash(tool, asked);
     if (deps.approvals.take(tool, hash)) {
       return { behavior: "allow", updatedInput: input };
     }
@@ -462,11 +488,16 @@ export function createCanUseTool(deps: {
         interrupt: true,
       };
     }
-    const action = describeAction(tool, input);
+    const action = describeAction(tool, asked);
     deps.events.add("permission", { tool, action });
     try {
       // The worker words the ask and hashes it from this input.
-      await deps.control.suspend({ kind: "approval", tool, input, action });
+      await deps.control.suspend({
+        kind: "approval",
+        tool,
+        input: asked,
+        action,
+      });
     } catch (e) {
       deps.log(`suspend failed: ${e instanceof Error ? e.message : String(e)}`);
       return {

@@ -55,6 +55,7 @@ function claimed(over: Partial<Claimed> = {}): Claimed {
       outputTokens: 10,
       costUsd: 1.5,
       image: null,
+      audience: null,
     },
     token: RUN_TOKEN,
     task: { id: TASK, title: "Fix the build", notes: null },
@@ -370,6 +371,7 @@ describe.skipIf(process.platform === "win32")("startRun", () => {
       claim: {
         decision,
         request: {
+          id: "00000000-0000-7000-8000-0000000000aa",
           sender: "Ann",
           body: "Please",
           source: "slack",

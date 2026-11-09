@@ -13,6 +13,7 @@ import { agentRunMessages, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
 import {
   decision,
+  hubApproval,
   pending,
   type RunRow,
   type RunStatus,
@@ -421,7 +422,12 @@ const decideRecord = z.object({
   decision: decision.nullable(),
   connectionIds: z.array(z.uuid()),
   heartbeatAt: z.iso.datetime().nullable(),
+  /** Absent in a record from before hub approvals. */
+  hubApprovals: z.array(hubApproval).optional(),
 });
+
+/** The tool-name prefix of the runner's hub tools (`hubToolName`). */
+const HUB_TOOL = "mcp__dlh__hub__";
 
 export const decide = implementOperation(agentOps.decide, {
   async run(w, input) {
@@ -452,6 +458,14 @@ export const decide = implementOperation(agentOps.decide, {
       input.approve && asked.kind === "grant" && asked.connectionId
         ? asked.connectionId
         : null;
+    // An approved hub call also passes the run guard, once.
+    const hubCall =
+      input.approve &&
+      asked.kind === "approval" &&
+      asked.tool?.startsWith(HUB_TOOL) &&
+      asked.inputHash
+        ? { tool: asked.tool, inputHash: asked.inputHash, usedAt: null }
+        : null;
     const [row] = await holdingSlot(() =>
       w.tx
         .update(agentRuns)
@@ -469,6 +483,7 @@ export const decide = implementOperation(agentOps.decide, {
           ...(granted && !run.connectionIds.includes(granted)
             ? { connectionIds: [...run.connectionIds, granted] }
             : {}),
+          ...(hubCall ? { hubApprovals: [...run.hubApprovals, hubCall] } : {}),
         })
         .where(eq(agentRuns.id, run.id))
         .returning(),
@@ -484,6 +499,7 @@ export const decide = implementOperation(agentOps.decide, {
         decision: run.decision,
         connectionIds: run.connectionIds,
         heartbeatAt: iso(run.heartbeatAt),
+        hubApprovals: run.hubApprovals,
       },
     };
   },
@@ -505,6 +521,7 @@ export const decide = implementOperation(agentOps.decide, {
         pending: r.pending,
         decision: r.decision,
         connectionIds: r.connectionIds,
+        ...(r.hubApprovals ? { hubApprovals: r.hubApprovals } : {}),
       })
       .where(eq(agentRuns.id, r.runId));
     await allowed(w.touchItem)(r.taskId);

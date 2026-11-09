@@ -2,10 +2,12 @@ import { item as itemSchema } from "@dlh/core";
 import { requestOps } from "@dlh/module-requests/operations";
 import { taskOps } from "@dlh/module-tasks/operations";
 import { implementOperation, type ScopedWriter, type Tx } from "@dlh/server";
-import { eq } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { agentAssignments, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
+import type { Audience } from "../schema";
 import { liveConnections } from "./connections";
 import {
   ALREADY_LIVE,
@@ -40,23 +42,52 @@ async function refuseLive(tx: Tx, taskId: string) {
 }
 
 /**
- * Stores the task's connections (the defaults when none are given; given ones
- * must be live) and queues its run. Returns the run and the connections the
- * assignment had before.
+ * The audience of the task's latest run that had one, if the task was given
+ * from a request: a coworker's task assigned again still answers to them.
+ */
+async function keptAudience(
+  tx: Tx,
+  taskId: string,
+  requestId: string | null | undefined,
+): Promise<Audience | null> {
+  if (!requestId) return null;
+  const [run] = await tx
+    .select({ audience: agentRuns.audience })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.taskId, taskId), isNotNull(agentRuns.audience)))
+    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
+    .limit(1);
+  return run?.audience ?? null;
+}
+
+/**
+ * Stores the task's connections and queues its run. A run with an audience
+ * (`opts.audience`, or kept from the task's request) starts with the coworker
+ * connections, any other with the defaults, unless connections are given
+ * (which must be live). Returns the run and the connections the assignment
+ * had before.
  */
 async function queue(
   tx: Tx,
   taskId: string,
-  opts: { connections?: string[]; requestId?: string },
+  opts: { connections?: string[]; requestId?: string; audience?: Audience },
 ) {
-  const connectionIds = opts.connections
-    ? await liveConnections(tx, opts.connections)
-    : (await readSettings(tx)).defaultConnectionIds;
   const [before] = await tx
-    .select({ connectionIds: agentAssignments.connectionIds })
+    .select({
+      connectionIds: agentAssignments.connectionIds,
+      requestId: agentAssignments.requestId,
+    })
     .from(agentAssignments)
     .where(eq(agentAssignments.taskId, taskId))
     .for("update");
+  const audience =
+    opts.audience ?? (await keptAudience(tx, taskId, before?.requestId));
+  const settings = opts.connections ? null : await readSettings(tx);
+  const connectionIds = opts.connections
+    ? await liveConnections(tx, opts.connections)
+    : audience
+      ? (settings?.coworkerConnectionIds ?? [])
+      : (settings?.defaultConnectionIds ?? []);
   await tx
     .insert(agentAssignments)
     .values({ taskId, connectionIds, requestId: opts.requestId ?? null })
@@ -68,7 +99,7 @@ async function queue(
   const [run] = await holdingSlot(() =>
     tx
       .insert(agentRuns)
-      .values({ taskId, status: "queued", connectionIds })
+      .values({ taskId, status: "queued", connectionIds, audience })
       .returning(),
   );
   if (!run) throw new Error("run not written");
@@ -135,8 +166,28 @@ const requestView = z.object({
     title: z.string(),
     body: z.string().nullable(),
     outcome: z.string().nullable(),
+    source: z.string(),
+    sourceHandle: z.string().nullable(),
+    fromOwner: z.boolean(),
   }),
 });
+
+/**
+ * A coworker's Slack request (not one you sent) makes a run that answers to
+ * them. One with no sender can't be kept to them, so it is refused.
+ */
+function audienceOf(
+  request: z.infer<typeof requestView>["request"],
+): Audience | undefined {
+  if (request.source !== "slack" || request.fromOwner) return undefined;
+  if (!request.sourceHandle) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "This Slack request has no sender",
+    });
+  }
+  return { asker: { slackUserId: request.sourceHandle, githubLogin: null } };
+}
 
 export const assignRequest = implementOperation(agentOps.assignRequest, {
   async run(w, input) {
@@ -145,6 +196,7 @@ export const assignRequest = implementOperation(agentOps.assignRequest, {
       await call(requestOps.get, { id: input.id }),
     );
     if (request.outcome !== null) conflict("Already resolved");
+    const audience = audienceOf(request);
     const created = itemSchema.parse(
       await call(taskOps.create, {
         title: input.title ?? request.title,
@@ -167,6 +219,7 @@ export const assignRequest = implementOperation(agentOps.assignRequest, {
     const { run, before } = await queue(w.tx, task.id, {
       connections: input.connections,
       requestId: input.id,
+      ...(audience ? { audience } : {}),
     });
     // Core reverts resolve and setAssignee through their records and deletes the task.
     return {

@@ -6,6 +6,7 @@ import {
   disableConnection,
   setDefaultConnections,
 } from "./server/connections";
+import { runGuard } from "./server/guard";
 import { events, recentRuns, run, runSource, runs } from "./server/reads";
 import { cancel, decide, message, retry } from "./server/runs";
 import { setSettings, settingsQuery } from "./server/settings";
@@ -22,6 +23,7 @@ import {
 
 const agentServer = defineServerModule(agentModule, {
   migrations: true,
+  runGuard,
   operations: {
     assign,
     assignRequest,

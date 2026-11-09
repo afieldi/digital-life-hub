@@ -1,4 +1,5 @@
-import { canonical, hubToolName, inputHash } from "../src/hash";
+import { z } from "zod";
+import { canonical, hubCallHash, hubToolName, inputHash } from "../src/hash";
 
 describe("hash", () => {
   test("inputHash is unchanged by the move", () => {
@@ -29,6 +30,25 @@ describe("hash", () => {
   test("hubToolName is the runner's MCP name of an operation", () => {
     expect(hubToolName("requests.fromSender")).toBe(
       "mcp__dlh__hub__requests_fromSender",
+    );
+  });
+
+  test("hubCallHash hashes the input as the operation parses it", () => {
+    const op = {
+      id: "x.search",
+      input: z.object({ text: z.string(), limit: z.number().default(10) }),
+    };
+    const tool = "mcp__dlh__hub__x_search";
+    const parsed = { text: "a", limit: 10 };
+    // The model's raw input (a default left out, an unknown key added) and
+    // the API's parsed input hash the same.
+    expect(hubCallHash(op, { text: "a" })).toBe(inputHash(tool, parsed));
+    expect(hubCallHash(op, { text: "a", extra: 1 })).toBe(
+      inputHash(tool, parsed),
+    );
+    expect(hubCallHash(op, parsed)).toBe(inputHash(tool, parsed));
+    expect(hubCallHash(op, { text: "a", limit: 5 })).not.toBe(
+      inputHash(tool, parsed),
     );
   });
 });
