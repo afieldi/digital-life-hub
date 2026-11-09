@@ -12,6 +12,32 @@ const ALWAYS = new Set(["requests.file", "slack.postToSource"]);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** `input[key]`, if the input is an object. */
+function field(input: unknown, key: string): unknown {
+  return input && typeof input === "object" && key in input
+    ? (input as Record<string, unknown>)[key]
+    : undefined;
+}
+
+/**
+ * Whether `op` is `requests.file` with an input that claims where the request
+ * came from: your own message (`fromOwner`), a source other than the agent,
+ * or a source's sender or message id. Such a request reads as a message from
+ * you (in Slack, a full-reach handoff), so no run may file one: the agent's
+ * run guard refuses it for every run, and a coworker-audience run doesn't get
+ * it alone.
+ */
+export function filesAsSource(op: { id: string }, input: unknown): boolean {
+  if (op.id !== "requests.file") return false;
+  const source = field(input, "source");
+  return (
+    field(input, "fromOwner") === true ||
+    (source !== undefined && source !== "agent") ||
+    field(input, "sourceHandle") !== undefined ||
+    field(input, "externalId") !== undefined
+  );
+}
+
 /** Every id-shaped string anywhere in `value`. */
 function idsIn(value: unknown, out: string[] = []): string[] {
   if (typeof value === "string") {
@@ -62,7 +88,8 @@ export type AudienceRun = {
  * - an operation whose subject is its own task or request and whose input
  *   names no other item (as `tasks.addParent` would, moving another task under
  *   its own; this also decides what the operation's `w.call`s reach);
- * - `requests.file` and `slack.postToSource`.
+ * - `requests.file` that doesn't file as a source (`filesAsSource`), and
+ *   `slack.postToSource`.
  * Anything else needs your approval.
  */
 export function audienceAllows(
@@ -85,5 +112,5 @@ export function audienceAllows(
   ) {
     return true;
   }
-  return ALWAYS.has(op.id);
+  return ALWAYS.has(op.id) && !filesAsSource(op, input);
 }

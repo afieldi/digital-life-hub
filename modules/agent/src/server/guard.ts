@@ -1,4 +1,4 @@
-import { audienceAllows } from "@dlh/core/audience";
+import { audienceAllows, filesAsSource } from "@dlh/core/audience";
 import { hubCallHash, hubToolName } from "@dlh/core/hash";
 import type { RunGuard } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
@@ -11,14 +11,20 @@ const refuse = (message: string): never => {
 };
 
 /**
- * Keeps a coworker-audience run to what involves its coworker. Without an
- * audience a run is not limited here. With one, it may call what
+ * No run may file a request as if it came from you or from Slack
+ * (`filesAsSource`): that would make it look like your own message, which the
+ * agent then runs with full reach. Beyond that, keeps a coworker-audience run
+ * to what involves its coworker; without an audience a run is not limited. With one, it may call what
  * `audienceAllows` allows (the rule the runner asks you by, too); anything
  * else needs a hub approval you gave for that exact call, which it spends.
  * Fails closed: a run it can't find, or whose audience it can't read, is
  * refused.
  */
 export const runGuard: RunGuard = async (deps, { runId, operation, input }) => {
+  // Every run, before its audience is read, and no approval lets it through.
+  if (filesAsSource(operation.desc, input)) {
+    return refuse("A run can't file as Slack");
+  }
   const [run] = await deps.db
     .select({
       taskId: agentRuns.taskId,

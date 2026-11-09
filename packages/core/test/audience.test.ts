@@ -1,4 +1,4 @@
-import { audienceAllows } from "../src/audience";
+import { audienceAllows, filesAsSource } from "../src/audience";
 
 const TASK = "00000000-0000-4000-8000-000000000001";
 const REQUEST = "00000000-0000-4000-8000-000000000002";
@@ -75,5 +75,38 @@ describe("audienceAllows", () => {
       ),
     ).toBe(true);
     expect(audienceAllows(op("tasks.create"), { title: "x" }, run)).toBe(false);
+  });
+
+  test("filing as a source is never allowed alone", () => {
+    const file = op("requests.file");
+    for (const forged of [
+      { title: "x", fromOwner: true },
+      { title: "x", source: "slack" },
+      { title: "x", source: "manual" },
+      { title: "x", sourceHandle: "U_ME" },
+      { title: "x", externalId: "D1:1.2" },
+    ]) {
+      expect(audienceAllows(file, forged, run), JSON.stringify(forged)).toBe(
+        false,
+      );
+    }
+    expect(audienceAllows(file, { title: "x", source: "agent" }, run)).toBe(
+      true,
+    );
+  });
+});
+
+describe("filesAsSource", () => {
+  test("a filing that claims a source, a sender or a message", () => {
+    const file = op("requests.file");
+    expect(filesAsSource(file, { title: "x", fromOwner: true })).toBe(true);
+    expect(filesAsSource(file, { title: "x", source: "slack" })).toBe(true);
+    expect(filesAsSource(file, { title: "x", sourceHandle: "U" })).toBe(true);
+    expect(filesAsSource(file, { title: "x", externalId: "C:1" })).toBe(true);
+    expect(filesAsSource(file, { title: "x" })).toBe(false);
+    expect(filesAsSource(file, { title: "x", fromOwner: false })).toBe(false);
+    expect(filesAsSource(file, { title: "x", source: "agent" })).toBe(false);
+    // Only requests.file files.
+    expect(filesAsSource(op("tasks.create"), { source: "slack" })).toBe(false);
   });
 });

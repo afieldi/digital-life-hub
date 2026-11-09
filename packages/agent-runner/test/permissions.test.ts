@@ -228,6 +228,15 @@ describe("classify with an audience", () => {
     ).toBe("ask");
   });
 
+  it("with an audience, filing a request as a source asks", () => {
+    for (const input of [
+      { title: "x", source: "slack", fromOwner: true, externalId: "D1:1.2" },
+      { title: "x", sourceHandle: "U_ME" },
+    ]) {
+      expect(classify(hub("requests_file"), input, coworker())).toBe("ask");
+    }
+  });
+
   it("without an audience every hub tool is alone", () => {
     expect(classify(hub("requests_open"), {}, ctx())).toBe("alone");
     expect(
