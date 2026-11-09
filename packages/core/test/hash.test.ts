@@ -33,6 +33,18 @@ describe("hash", () => {
     );
   });
 
+  test("canonical writes a Date as its ISO string", () => {
+    const at = "2026-11-02T17:00:00.000Z";
+    expect(canonical(new Date(at))).toBe(`"${at}"`);
+    expect(canonical({ since: new Date(at), b: [new Date(at)] })).toBe(
+      `{"b":["${at}"],"since":"${at}"}`,
+    );
+    // A Date parsed by the hub hashes as the string the runner sent.
+    expect(inputHash("mcp__dlh__hub__x_y", { since: new Date(at) })).toBe(
+      inputHash("mcp__dlh__hub__x_y", { since: at }),
+    );
+  });
+
   test("hubToolName is the runner's MCP name of an operation", () => {
     expect(hubToolName("requests.fromSender")).toBe(
       "mcp__dlh__hub__requests_fromSender",

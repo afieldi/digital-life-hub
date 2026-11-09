@@ -8,8 +8,13 @@ import type { z } from "zod";
  * (`@dlh/core/hash`) because it needs `node:crypto`, which the app can't load.
  */
 
-/** JSON with every object's keys sorted, so equal inputs hash equal. */
+/**
+ * JSON with every object's keys sorted, so equal inputs hash equal. A Date is
+ * its ISO string, as JSON sends it: the hub's parsed input may hold a Date
+ * where the runner's has the string.
+ */
 export function canonical(value: unknown): string {
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
