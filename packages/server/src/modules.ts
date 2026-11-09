@@ -15,7 +15,7 @@ import type { ItemWriter } from "./items/writer";
 import type { ModuleConfig } from "./moduleConfig";
 import type { ImplementedOperation, Operations } from "./operations/implement";
 import { operationsRouter } from "./operations/router";
-import type { DeleteWith } from "./trpc";
+import type { DeleteWith, RunGuard } from "./trpc";
 
 export const CORE_ROUTER_IDS = [
   "auth",
@@ -48,6 +48,8 @@ export type ServerModule<
   deleteWith?: DeleteWith;
   /** Settings or secrets from the API's environment; read them with `configFor`. */
   config?: ModuleConfig;
+  /** Checks every call an agent run makes, to any module's operation (`RunGuard`). */
+  runGuard?: RunGuard;
 };
 
 export class ServerModuleError extends Error {
@@ -156,6 +158,7 @@ export function collectServerModules(
   aiRunners: Map<string, AiRunner>;
   deleteWith: Map<string, DeleteWith>;
   operations: Map<string, ImplementedOperation>;
+  runGuards: RunGuard[];
 } {
   const ids = new Set<string>();
   const owners = new Map<string, string>();
@@ -237,5 +240,6 @@ export function collectServerModules(
     aiRunners,
     deleteWith,
     operations,
+    runGuards: mods.flatMap((m) => (m.runGuard ? [m.runGuard] : [])),
   };
 }

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { moduleDescriptions } from "@dlh/agent-protocol/modules";
 import type { OperationDescription } from "@dlh/core";
+import { hubToolName } from "@dlh/core/hash";
 import { createControl } from "../src/control";
+import { RUNNER_SERVER } from "../src/permissions";
 import { createTools, hubOperations } from "../src/tools";
 import { fakeHost, runStart } from "./fixtures";
 
@@ -41,6 +43,14 @@ function setUp() {
 }
 
 describe("hub tools", () => {
+  it("hubToolName matches the runner's tool names", () => {
+    const ops = hubOperations();
+    expect(ops.map((o) => o.id)).toContain("requests.fromSender");
+    for (const op of ops) {
+      expect(hubToolName(op.id)).toBe(`mcp__${RUNNER_SERVER}__${op.name}`);
+    }
+  });
+
   it("hub tools are only everyone-access operations", () => {
     const all = moduleDescriptions.flatMap(
       (m) => Object.values(m.operations) as OperationDescription[],

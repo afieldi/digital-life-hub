@@ -174,7 +174,7 @@ export const fromSender = implementOperation(requestOps.fromSender, {
   async run(deps, input) {
     const open = input.openOnly ? sql`and r.resolved_at is null` : sql``;
     const since = input.since
-      ? sql`and r.received_at >= ${input.since.toISOString()}::timestamptz`
+      ? sql`and r.received_at >= ${input.since}::timestamptz`
       : sql``;
     const raw = await deps.db.execute<RawRow>(
       rowsQuery(

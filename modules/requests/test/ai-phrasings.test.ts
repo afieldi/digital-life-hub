@@ -65,17 +65,22 @@ test("Queue's actions don't lower Tasks' accuracy", async () => {
   expect(together.report).toEqual(alone.report);
 });
 
-test("at least 8 phrasings for each of the 4 Queue AI actions", () => {
+// An AI action so agent runs get it as a hub tool; you don't ask for it
+// (it takes a Slack asker), so it needs no phrasings.
+const RUNS_ONLY = ["requests.fromSender"];
+
+test("at least 8 phrasings for each of the 4 Queue AI actions you ask for", () => {
   const ids = requestsActions.map((a) => a.id).sort();
   expect(ids).toEqual(
     [
       "requests.file",
+      "requests.fromSender",
       "requests.makeTask",
       "requests.open",
       "requests.resolve",
     ].sort(),
   );
-  for (const id of ids) {
+  for (const id of ids.filter((i) => !RUNS_ONLY.includes(i))) {
     const n = requestsPhrasings.filter((p) => p.actionId === id).length;
     expect({ id, enough: n >= 8 }).toEqual({ id, enough: true });
   }

@@ -364,11 +364,32 @@ describe("describeOperation", () => {
         ),
       ).toThrow(OperationError);
     });
-    test("audience asker needs access slack", () => {
+    test("an asker input that accepts undefined is refused", () => {
+      const withAsker = (a: z.ZodType) =>
+        describeOperation({
+          ...asker,
+          input: z.object({ asker: a }) as z.ZodObject,
+        });
+      expect(() => withAsker(askerInput.optional())).toThrow(OperationError);
+      expect(() => withAsker(askerInput.nullable())).toThrow(OperationError);
+      expect(() => withAsker(askerInput.nullish())).toThrow(OperationError);
+    });
+    test("asker operations may be everyone", () => {
+      expect(() =>
+        describeOperation({ ...asker, access: "everyone" }),
+      ).not.toThrow();
+      expect(() =>
+        describeOperation({ ...asker, access: "everyone", ai: true }),
+      ).not.toThrow();
+    });
+    test("audience asker needs access slack or everyone", () => {
       const { access: _, ...noAccess } = asker;
       expect(() => describeOperation(noAccess)).toThrow(OperationError);
       expect(() => describeOperation({ ...asker, access: "worker" })).toThrow(
-        'access: "slack"',
+        'access: "slack" or "everyone"',
+      );
+      expect(() => describeOperation({ ...asker, access: "user" })).toThrow(
+        OperationError,
       );
     });
   });

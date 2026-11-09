@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./capture": "./src/capture.ts",
     "./fixture": "./src/fixture.ts",
+    "./hash": "./src/hash.ts",
     "./testing": "./src/ai/suite.ts"
   },
   "scripts": {

@@ -117,6 +117,7 @@ export {
   type Principal,
   protectedProcedure,
   publicProcedure,
+  type RunGuard,
   router,
   type Session,
   type Tx,

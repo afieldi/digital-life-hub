@@ -232,18 +232,22 @@ const fromSender = describeOperation({
   description:
     "One Slack user's own requests, newest first, for answering whether the person saw them.",
   appliesTo: "none",
+  // An agent run may call it; the agent module's run guard allows only the
+  // run's own asker without an approval.
   audience: "asker",
-  access: "slack",
+  access: "everyone",
   input: z.object({
     asker: askerInput,
     openOnly: z.boolean().optional(),
-    since: z.coerce.date().optional(),
+    // A string, not a Date: as a hub tool and AI action its input is JSON Schema.
+    since: z.iso.datetime().optional(),
   }),
   subject: () => null,
   effects: [],
   summary: () => "Requests from a sender",
   palette: false,
-  ai: false,
+  // The dev fake can't guess an asker from field names.
+  devFake: { asker: { slackUserId: "U_DEV", githubLogin: null } },
 });
 
 export const requestOps = {

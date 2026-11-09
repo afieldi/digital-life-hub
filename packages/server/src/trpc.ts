@@ -18,6 +18,16 @@ export type DeleteWith = (
   opts: { restoring: boolean },
 ) => Promise<string[]>;
 
+/**
+ * A module's check on every call an agent run makes, after access and run
+ * identity and before the operation runs. It refuses by throwing (a
+ * TRPCError). Operations a call reaches with `w.call` are not checked again.
+ */
+export type RunGuard = (
+  deps: CoreDeps,
+  call: { runId: string; operation: ImplementedOperation; input: unknown },
+) => Promise<void>;
+
 export type CoreDeps = {
   db: Db;
   changes: ChangeBus;
@@ -31,6 +41,8 @@ export type CoreDeps = {
   operations: ReadonlyMap<string, ImplementedOperation>;
   /** Module id -> its checked config (`configFor`), for modules that declare one. */
   moduleConfig: ReadonlyMap<string, unknown>;
+  /** Each module's `runGuard`, in module order, for every run's call. */
+  runGuards: readonly RunGuard[];
 };
 
 /** Augmented by apps/api (`declare module "@dlh/server"`) with its own deps. */

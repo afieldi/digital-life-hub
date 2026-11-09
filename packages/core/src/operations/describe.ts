@@ -119,7 +119,9 @@ export type OperationDescription<
   access?: OperationAccess;
   /**
    * `asker`: returns only what involves one person, given as `input.asker`
-   * (`askerInput`). Needs `access: "slack"`, which is what vouches for it.
+   * (`askerInput`), which it must require. Needs `access: "slack"` (the bot
+   * vouches for the asker) or `"everyone"` (an agent run, whose run guard
+   * allows only its own asker without an approval).
    */
   audience?: "asker";
   /**
@@ -167,17 +169,21 @@ export function describeOperation<
     );
   }
   if (d.audience === "asker") {
-    if (d.access !== "slack") {
+    const access = accessOf(d);
+    if (access !== "slack" && access !== "everyone") {
       throw new OperationError(
-        `Operation "${d.id}" has audience: "asker" but not access: "slack"`,
+        `Operation "${d.id}" has audience: "asker" but not access: "slack" or "everyone"`,
       );
     }
-    // Matches `askerInput` if it takes an asker and refuses what it refuses.
+    // Matches `askerInput` if it takes an asker and refuses what it refuses,
+    // including no asker at all.
     const asker = d.input.shape.asker;
     if (
       !asker?.safeParse({ slackUserId: "U1", githubLogin: null }).success ||
       asker.safeParse({ slackUserId: "", githubLogin: null }).success ||
-      asker.safeParse({ slackUserId: "U1" }).success
+      asker.safeParse({ slackUserId: "U1" }).success ||
+      asker.safeParse(undefined).success ||
+      asker.safeParse(null).success
     ) {
       throw new OperationError(
         `Operation "${d.id}" has audience: "asker" but no asker input`,
