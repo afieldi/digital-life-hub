@@ -28,6 +28,21 @@ function allowed<T>(method: T | undefined): T {
   return method;
 }
 
+/**
+ * The text with Slack's special mentions (`<!channel>`, `<!here>`,
+ * `<!everyone>`, a group's `<!subteam^…>`) made plain words, so an agent's
+ * post pings nobody beyond the thread. The bot posts without `link_names`,
+ * so a plain `@channel` stays text.
+ */
+export function withoutPings(text: string): string {
+  return text
+    .replace(/<!(channel|here|everyone)(?:\|[^>]*)?>/g, "@$1")
+    .replace(/<!subteam\^[^>|]*(?:\|([^>]*))?>/g, (_m, label?: string) => {
+      const name = label?.trim().replace(/^@/, "");
+      return name ? `@${name}` : "@group";
+    });
+}
+
 const notFromSlack = (): never => {
   throw new TRPCError({
     code: "BAD_REQUEST",
@@ -42,7 +57,8 @@ const fivePosts = (): never => {
 /**
  * Queues an agent run's post, as the bot, in the thread of the Slack message
  * its task came from. The run's identity check holds a run to its own
- * `runId`. Born approved; the outbox loop posts it. Keyed
+ * `runId`. Its pings are made plain (`withoutPings`). Born approved; the
+ * outbox loop posts it. Keyed
  * `agent:<runId>:<n>`, so at most five per run.
  */
 export const postToSource = implementOperation(slackOps.postToSource, {
@@ -81,7 +97,7 @@ export const postToSource = implementOperation(slackOps.postToSource, {
         status: "approved",
         channelId: place.channelId,
         threadTs: place.threadTs,
-        text: input.text,
+        text: withoutPings(input.text),
         requestId,
         runId: input.runId,
         approvedAt: deps.now(),

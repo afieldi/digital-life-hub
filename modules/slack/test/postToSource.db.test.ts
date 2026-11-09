@@ -186,3 +186,16 @@ test("a post whose key is taken is refused, never reported as sent", async () =>
   ).rejects.toMatchObject({ code: "CONFLICT", message: "Five posts per run" });
   await s.close();
 });
+
+test("an agent post can't ping a channel or a group", async () => {
+  const s = await setup();
+  const { run } = await runFrom(s);
+  await s.asRun(run.id).slack.postToSource({
+    runId: run.id,
+    text: "<!channel> <!here> <!here|here> <!everyone> <!subteam^S0123|@eng> <!subteam^S0456> see <@U_BOB> and <https://x.dev|this>",
+  });
+  expect((await outbox(s))[0]?.text).toBe(
+    "@channel @here @here @everyone @eng @group see <@U_BOB> and <https://x.dev|this>",
+  );
+  await s.close();
+});
