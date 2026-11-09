@@ -41,13 +41,21 @@ export function inputHash(tool: string, input: unknown): string {
     .digest("hex");
 }
 
+/** The prefix of every hub tool's name (`hubToolName`). */
+const HUB_TOOL = "mcp__dlh__hub__";
+
+/** Whether `tool` is a hub tool: an agent run calling a hub operation. */
+export function isHubTool(tool: string): boolean {
+  return tool.startsWith(HUB_TOOL);
+}
+
 /**
  * The tool name an agent run calls operation `<module>.<key>` by: the
  * runner's MCP server `dlh`, tool `hub__<module>_<key>`.
  */
 export function hubToolName(operationId: string): string {
   const dot = operationId.indexOf(".");
-  return `mcp__dlh__hub__${operationId.slice(0, dot)}_${operationId.slice(dot + 1)}`;
+  return `${HUB_TOOL}${operationId.slice(0, dot)}_${operationId.slice(dot + 1)}`;
 }
 
 /**

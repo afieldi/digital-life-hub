@@ -1,3 +1,4 @@
+import { isHubTool } from "@dlh/core/hash";
 import { requestOps } from "@dlh/module-requests/operations";
 import { taskOps } from "@dlh/module-tasks/operations";
 import {
@@ -426,9 +427,6 @@ const decideRecord = z.object({
   hubApprovals: z.array(hubApproval).optional(),
 });
 
-/** The tool-name prefix of the runner's hub tools (`hubToolName`). */
-const HUB_TOOL = "mcp__dlh__hub__";
-
 export const decide = implementOperation(agentOps.decide, {
   async run(w, input) {
     const [run] = await w.tx
@@ -462,7 +460,8 @@ export const decide = implementOperation(agentOps.decide, {
     const hubCall =
       input.approve &&
       asked.kind === "approval" &&
-      asked.tool?.startsWith(HUB_TOOL) &&
+      asked.tool !== undefined &&
+      isHubTool(asked.tool) &&
       asked.inputHash
         ? { tool: asked.tool, inputHash: asked.inputHash, usedAt: null }
         : null;

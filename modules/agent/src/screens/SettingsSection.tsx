@@ -33,7 +33,9 @@ function CoworkerConnections() {
   const chosen = settings.data?.coworkerConnectionIds ?? [];
 
   const toggle = (id: string, on: boolean) => {
-    const ids = on ? [...chosen, id] : chosen.filter((x) => x !== id);
+    // Only live ones: a connection disabled since would refuse every save.
+    const kept = chosen.filter((x) => x !== id && live.some((c) => c.id === x));
+    const ids = on ? [...kept, id] : kept;
     void write({
       op: "agent.setSettings",
       summary: "Coworker connections saved",
@@ -43,29 +45,32 @@ function CoworkerConnections() {
   };
 
   return (
-    <QueryState
-      query={connections}
-      errorTitle="Couldn't load connections"
-      isEmpty={live.length === 0}
-      empty={<EmptyState icon={Plug} title="No connections yet" />}
-    >
+    <QueryState query={settings} errorTitle="Couldn't load agent settings">
       {() => (
-        <div className="flex flex-col">
-          <Caption>
-            A coworker's request given to the agent starts with these, in place
-            of the default set.
-          </Caption>
-          {live.map((c) => (
-            <Checkbox
-              key={c.id}
-              isSelected={chosen.includes(c.id)}
-              isDisabled={!settings.data}
-              onChange={(on) => toggle(c.id, on)}
-            >
-              {`${c.name} (${c.type})`}
-            </Checkbox>
-          ))}
-        </div>
+        <QueryState
+          query={connections}
+          errorTitle="Couldn't load connections"
+          isEmpty={live.length === 0}
+          empty={<EmptyState icon={Plug} title="No connections yet" />}
+        >
+          {() => (
+            <div className="flex flex-col">
+              <Caption>
+                A coworker's request given to the agent starts with these, in
+                place of the default set.
+              </Caption>
+              {live.map((c) => (
+                <Checkbox
+                  key={c.id}
+                  isSelected={chosen.includes(c.id)}
+                  onChange={(on) => toggle(c.id, on)}
+                >
+                  {`${c.name} (${c.type})`}
+                </Checkbox>
+              ))}
+            </div>
+          )}
+        </QueryState>
       )}
     </QueryState>
   );

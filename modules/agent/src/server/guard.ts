@@ -3,6 +3,7 @@ import type { RunGuard } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { agentAssignments, agentRuns } from "../db/schema";
+import { audience as audienceSchema } from "../schema";
 
 /** Operations a coworker-audience run may always call: filing a request, and replying where it was asked. */
 const ALWAYS = new Set(["requests.file", "slack.postToSource"]);
@@ -51,7 +52,8 @@ function askerOf(input: unknown): unknown {
  * decides what the operation's `w.call`s reach, as they aren't guarded);
  * `requests.file` and
  * `slack.postToSource`. Anything else needs a hub approval you gave for that
- * exact call, which it spends. Fails closed: a run it can't find is refused.
+ * exact call, which it spends. Fails closed: a run it can't find, or whose
+ * audience it can't read, is refused.
  */
 export const runGuard: RunGuard = async (deps, { runId, operation, input }) => {
   const [run] = await deps.db
@@ -64,12 +66,16 @@ export const runGuard: RunGuard = async (deps, { runId, operation, input }) => {
     .leftJoin(agentAssignments, eq(agentAssignments.taskId, agentRuns.taskId))
     .where(eq(agentRuns.id, runId));
   if (!run) return refuse("No run");
-  if (!run.audience) return;
+  // Only a real null is no audience; anything else unreadable is refused.
+  const parsed = audienceSchema.nullable().safeParse(run.audience);
+  if (!parsed.success) return refuse("Needs your approval");
+  const audience = parsed.data;
+  if (audience === null) return;
 
   const desc = operation.desc;
   if (
     desc.audience === "asker" &&
-    canonical(askerOf(input)) === canonical(run.audience.asker)
+    canonical(askerOf(input)) === canonical(audience.asker)
   ) {
     return;
   }

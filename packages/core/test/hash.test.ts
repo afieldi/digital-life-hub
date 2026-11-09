@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { canonical, hubCallHash, hubToolName, inputHash } from "../src/hash";
+import {
+  canonical,
+  hubCallHash,
+  hubToolName,
+  inputHash,
+  isHubTool,
+} from "../src/hash";
 
 describe("hash", () => {
   test("inputHash is unchanged by the move", () => {
@@ -31,6 +37,9 @@ describe("hash", () => {
     expect(hubToolName("requests.fromSender")).toBe(
       "mcp__dlh__hub__requests_fromSender",
     );
+    expect(isHubTool(hubToolName("requests.fromSender"))).toBe(true);
+    expect(isHubTool("Bash")).toBe(false);
+    expect(isHubTool("mcp__dlh__finish_task")).toBe(false);
   });
 
   test("hubCallHash hashes the input as the operation parses it", () => {

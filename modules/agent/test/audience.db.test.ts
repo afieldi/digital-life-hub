@@ -6,7 +6,7 @@ import {
   type Principal,
 } from "@dlh/server";
 import { testServer } from "@dlh/server/testing";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import { z } from "zod";
 import requestsServer from "../../requests/src/server";
@@ -387,6 +387,27 @@ test("undoing an approval takes its hub approval back", async () => {
   await expect(
     asRun(s, run.id).hx.search({ text: "deploys" }),
   ).rejects.toMatchObject(forbidden);
+  await s.close();
+});
+
+test("a run whose audience can't be read is guarded as closed", async () => {
+  const s = await setup();
+  const task = await s.mkTask();
+  const { run } = (
+    await s.caller.agent.assign({
+      id: task.id,
+      expectedUpdatedAt: task.updatedAt,
+    })
+  ).result;
+  const bot = asRun(s, run.id);
+  for (const bad of [false, {}, { asker: { slackUserId: "" } }]) {
+    await s.deps.db.execute(
+      sql`update agent_runs set audience = ${JSON.stringify(bad)}::jsonb where id = ${run.id}`,
+    );
+    await expect(bot.requests.open({})).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+  }
   await s.close();
 });
 
