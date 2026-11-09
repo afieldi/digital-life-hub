@@ -224,7 +224,7 @@ Give to agent on any request in the queue works as it does today.
 
 These change the [Agent hub spec](agent-hub.md); it links here.
 
-**Run audience.** `agent_runs.audience` jsonb, null for you, `{ asker: { slackUserId: sourceHandle, githubLogin: null } }` for a run whose request has `source = 'slack'` and is not `fromOwner`. `assignRequest` sets it from the request; `claim` passes it to the runner.
+**Run audience.** `agent_runs.audience` jsonb, null for you, `{ asker: { slackUserId: sourceHandle, githubLogin: null } }` for a run whose request has `source = 'slack'` and is not `fromOwner`. `assignRequest` sets it from the request, and `assign` from the request the task was made from (`requests.madeFrom`), each time; `claim` passes it to the runner. No run may file a request with `fromOwner`, a source other than the agent, a sender or a message id.
 
 A coworker-audience run, alone:
 
