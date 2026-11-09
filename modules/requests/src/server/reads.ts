@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requestOps } from "../operations";
-import type { RequestRow } from "../schema";
+import { type RequestRow, source } from "../schema";
 import { requestTask, requestTasks } from "./links";
 import { toRequestRow } from "./writes";
 
@@ -196,5 +196,43 @@ export const fromSender = implementOperation(requestOps.fromSender, {
         appendedIds: rawRow.appended_ids,
       };
     });
+  },
+});
+
+/**
+ * Where the request a task was made from came from: a request resolved as the
+ * task (its outcome link, or a `relates` link when its outcome is `task`), or
+ * `requestId` when given. Deleted requests count, so deleting one can't make
+ * its task look like yours. When several apply, a coworker's Slack request
+ * (not one you sent) comes first, so the task answers to them; then the
+ * outcome link, then the oldest.
+ */
+export const madeFrom = implementOperation(requestOps.madeFrom, {
+  async run(deps, input) {
+    const named = input.requestId
+      ? sql`or r.item_id = ${input.requestId}::uuid`
+      : sql``;
+    const [row] = await deps.db.execute<{
+      item_id: string;
+      source: string;
+      from_owner: boolean;
+      source_handle: string | null;
+    }>(sql`
+      select r.item_id, r.source, r.from_owner, r.source_handle
+      from requests r
+      left join links l on l.from_id = r.item_id and l.to_id = ${input.taskId}::uuid
+        and l.kind = 'relates' and (l.context = 'outcome' or r.outcome = 'task')
+      where l.id is not null ${named}
+      order by (r.source = 'slack' and not r.from_owner) desc,
+        (l.context is not distinct from 'outcome') desc,
+        r.received_at, r.item_id
+      limit 1`);
+    if (!row) return null;
+    return {
+      requestId: row.item_id,
+      source: source.parse(row.source),
+      fromOwner: row.from_owner,
+      sourceHandle: row.source_handle,
+    };
   },
 });

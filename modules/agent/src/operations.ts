@@ -73,8 +73,14 @@ const assign = describeOperation({
   subject: (input) => input.id,
   // Sets the AI cap (suggest, you confirm), and touches the task when setAssignee changed nothing.
   effects: ["touchItems"],
-  // `requests.*` resolve the failed run's open "Needs you".
-  calls: [taskOps.setAssignee, requestOps.get, requestOps.resolve],
+  // `requests.get` and `resolve` resolve the failed run's open "Needs you";
+  // `madeFrom` finds the request the task came from, for its audience.
+  calls: [
+    taskOps.setAssignee,
+    requestOps.get,
+    requestOps.resolve,
+    requestOps.madeFrom,
+  ],
   access: "user",
   summary: () => "Make AI task",
   palette: (ctx) => {

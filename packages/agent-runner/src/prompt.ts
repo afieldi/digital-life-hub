@@ -46,9 +46,16 @@ export function buildPrompt(start: RunStart): string {
   const have = start.connections.filter((c) => granted.has(c.id));
   const canAsk = start.connections.filter((c) => !granted.has(c.id));
 
+  // Make task and Give to agent copy a request's body into the task's notes.
+  // A coworker's is quoted below as data, so it isn't repeated as instructions.
+  const notes = start.task.notes?.trim();
+  const fromCoworker =
+    start.audience !== null &&
+    notes !== undefined &&
+    notes === start.request?.body?.trim();
   const parts = [
     start.instructions.trim(),
-    ["Your task:", start.task.title, start.task.notes?.trim()]
+    ["Your task:", start.task.title, fromCoworker ? undefined : notes]
       .filter(Boolean)
       .join("\n"),
     `Connections you have:\n${listed(have)}\n\nYou can ask for:\n${listed(canAsk)}\n\n${RULES}`,

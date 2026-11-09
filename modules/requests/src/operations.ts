@@ -250,6 +250,27 @@ const fromSender = describeOperation({
   devFake: { asker: { slackUserId: "U_DEV", githubLogin: null } },
 });
 
+const madeFrom = describeOperation({
+  id: "requests.madeFrom",
+  kind: "query",
+  label: "Request a task was made from",
+  description:
+    "The request a task was made from (resolved as it), deleted or not, with where it came from. Reached only through operation calls (the agent decides a run's audience by it).",
+  appliesTo: "none",
+  input: z.object({
+    taskId: id,
+    // A request the caller already ties to the task (the agent's own record of
+    // the request it was given from), read even if no longer linked to it.
+    requestId: id.optional(),
+  }),
+  subject: (input) => input.taskId,
+  effects: [],
+  summary: () => "Request a task was made from",
+  access: "user",
+  palette: false,
+  ai: false,
+});
+
 export const requestOps = {
   file,
   resolve,
@@ -260,4 +281,5 @@ export const requestOps = {
   get,
   append,
   fromSender,
+  madeFrom,
 };

@@ -3,7 +3,7 @@ import { requestOps } from "@dlh/module-requests/operations";
 import { taskOps } from "@dlh/module-tasks/operations";
 import { implementOperation, type ScopedWriter, type Tx } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { agentAssignments, agentRuns } from "../db/schema";
 import { agentOps } from "../operations";
@@ -41,38 +41,9 @@ async function refuseLive(tx: Tx, taskId: string) {
   if (await liveRun(tx, taskId)) conflict(ALREADY_LIVE);
 }
 
-/**
- * The audience of the task's latest run that had one, if the task was given
- * from a request: a coworker's task assigned again still answers to them.
- */
-async function keptAudience(
-  tx: Tx,
-  taskId: string,
-  requestId: string | null | undefined,
-): Promise<Audience | null> {
-  if (!requestId) return null;
-  const [run] = await tx
-    .select({ audience: agentRuns.audience })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.taskId, taskId), isNotNull(agentRuns.audience)))
-    .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
-    .limit(1);
-  return run?.audience ?? null;
-}
-
-/**
- * Stores the task's connections and queues its run. A run with an audience
- * (`opts.audience`, or kept from the task's request) starts with the coworker
- * connections, any other with the defaults, unless connections are given
- * (which must be live). Returns the run and the connections the assignment
- * had before.
- */
-async function queue(
-  tx: Tx,
-  taskId: string,
-  opts: { connections?: string[]; requestId?: string; audience?: Audience },
-) {
-  const [before] = await tx
+/** The task's assignment, locked: its connections and the request it was given from. */
+async function lockAssignment(tx: Tx, taskId: string) {
+  const [row] = await tx
     .select({
       connectionIds: agentAssignments.connectionIds,
       requestId: agentAssignments.requestId,
@@ -80,8 +51,26 @@ async function queue(
     .from(agentAssignments)
     .where(eq(agentAssignments.taskId, taskId))
     .for("update");
-  const audience =
-    opts.audience ?? (await keptAudience(tx, taskId, before?.requestId));
+  return row ?? null;
+}
+
+/**
+ * Stores the task's connections and the request it came from, and queues its
+ * run. A run with an audience starts with the coworker connections, any other
+ * with the defaults, unless connections are given (which must be live).
+ * Returns the run and the connections the assignment had before.
+ */
+async function queue(
+  tx: Tx,
+  taskId: string,
+  opts: {
+    connections?: string[];
+    requestId: string | null;
+    audience: Audience | null;
+  },
+) {
+  const before = await lockAssignment(tx, taskId);
+  const { audience } = opts;
   const settings = opts.connections ? null : await readSettings(tx);
   const connectionIds = opts.connections
     ? await liveConnections(tx, opts.connections)
@@ -90,11 +79,10 @@ async function queue(
       : (settings?.defaultConnectionIds ?? []);
   await tx
     .insert(agentAssignments)
-    .values({ taskId, connectionIds, requestId: opts.requestId ?? null })
+    .values({ taskId, connectionIds, requestId: opts.requestId })
     .onConflictDoUpdate({
       target: agentAssignments.taskId,
-      // A task given from a request keeps its request when assigned again.
-      set: { connectionIds },
+      set: { connectionIds, requestId: opts.requestId },
     });
   const [run] = await holdingSlot(() =>
     tx
@@ -146,8 +134,19 @@ export const assign = implementOperation(agentOps.assign, {
       }),
     );
     await resolveFailure(w, task.id);
+    // A task made from a coworker's request answers to them, however it was
+    // made: derived from the request each time, never remembered.
+    const given = await lockAssignment(w.tx, task.id);
+    const found = madeFromView.parse(
+      await allowed(w.call)(requestOps.madeFrom, {
+        taskId: task.id,
+        ...(given?.requestId ? { requestId: given.requestId } : {}),
+      }),
+    );
     const { run, before } = await queue(w.tx, task.id, {
       connections: input.connections,
+      requestId: found?.requestId ?? null,
+      audience: found ? (audienceOf(found) ?? null) : null,
     });
     const touch = task.updatedAt === input.expectedUpdatedAt;
     if (touch) await allowed(w.touchItem)(task.id);
@@ -159,6 +158,16 @@ export const assign = implementOperation(agentOps.assign, {
   undo: unqueue,
   undoRecord: assignRecord,
 });
+
+/** What assign needs of `requests.madeFrom`'s result. */
+const madeFromView = z
+  .object({
+    requestId: z.uuid(),
+    source: z.string(),
+    sourceHandle: z.string().nullable(),
+    fromOwner: z.boolean(),
+  })
+  .nullable();
 
 /** What assignRequest needs of `requests.get`'s result. */
 const requestView = z.object({
@@ -176,9 +185,11 @@ const requestView = z.object({
  * A coworker's Slack request (not one you sent) makes a run that answers to
  * them. One with no sender can't be kept to them, so it is refused.
  */
-function audienceOf(
-  request: z.infer<typeof requestView>["request"],
-): Audience | undefined {
+function audienceOf(request: {
+  source: string;
+  sourceHandle: string | null;
+  fromOwner: boolean;
+}): Audience | undefined {
   if (request.source !== "slack" || request.fromOwner) return undefined;
   if (!request.sourceHandle) {
     throw new TRPCError({
@@ -219,7 +230,7 @@ export const assignRequest = implementOperation(agentOps.assignRequest, {
     const { run, before } = await queue(w.tx, task.id, {
       connections: input.connections,
       requestId: input.id,
-      ...(audience ? { audience } : {}),
+      audience: audience ?? null,
     });
     // Core reverts resolve and setAssignee through their records and deletes the task.
     return {

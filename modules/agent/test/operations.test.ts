@@ -84,6 +84,7 @@ test("assign, assignRequest and unassign declare the calls they make", () => {
     taskOps.setAssignee,
     requestOps.get,
     requestOps.resolve,
+    requestOps.madeFrom,
   ]);
   expect(agentOps.assignRequest.calls).toEqual([
     requestOps.get,

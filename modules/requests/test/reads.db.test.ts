@@ -318,3 +318,75 @@ test("fromSender openOnly leaves out resolved requests, since leaves out older",
   expect(since.map((r) => r.title)).toEqual(["open"]);
   await close();
 });
+
+test("madeFrom finds the request a task was made from, deleted or not", async () => {
+  const t = await setup();
+  const r = (
+    await t.caller.requests.file({
+      title: "Check my PR",
+      source: "slack",
+      sourceHandle: "U_BOB",
+    })
+  ).result.request;
+  const { task } = (
+    await t.caller.requests.makeTask({
+      id: r.id,
+      expectedUpdatedAt: r.updatedAt,
+    })
+  ).result;
+  const found = {
+    requestId: r.id,
+    source: "slack",
+    fromOwner: false,
+    sourceHandle: "U_BOB",
+  };
+  expect(await t.caller.requests.madeFrom({ taskId: task.id })).toEqual(found);
+  await setDeleted(t.deps, r.id);
+  expect(await t.caller.requests.madeFrom({ taskId: task.id })).toEqual(found);
+
+  const plain = (await t.caller.tasks.create({ title: "Plain" })).result;
+  expect(await t.caller.requests.madeFrom({ taskId: plain.id })).toBeNull();
+  await t.close();
+});
+
+test("madeFrom also reads a request the caller names, and puts a coworker's first", async () => {
+  const t = await setup();
+  const mine = (
+    await t.caller.requests.file({
+      title: "Mine",
+      source: "slack",
+      sourceHandle: "U_ME",
+      fromOwner: true,
+    })
+  ).result.request;
+  const { task } = (
+    await t.caller.requests.makeTask({
+      id: mine.id,
+      expectedUpdatedAt: mine.updatedAt,
+    })
+  ).result;
+  const bob = (
+    await t.caller.requests.file({
+      title: "Bob's",
+      source: "slack",
+      sourceHandle: "U_BOB",
+    })
+  ).result.request;
+  // Resolved as the same task: the coworker's decides.
+  await t.caller.requests.resolve({
+    id: bob.id,
+    expectedUpdatedAt: bob.updatedAt,
+    outcome: "task",
+    taskId: task.id,
+  });
+  expect(await t.caller.requests.madeFrom({ taskId: task.id })).toMatchObject({
+    requestId: bob.id,
+  });
+
+  // A request no longer linked (reopened) is still read when named.
+  const plain = (await t.caller.tasks.create({ title: "Plain" })).result;
+  expect(
+    await t.caller.requests.madeFrom({ taskId: plain.id, requestId: bob.id }),
+  ).toMatchObject({ requestId: bob.id, fromOwner: false });
+  await t.close();
+});
