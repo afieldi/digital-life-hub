@@ -5,8 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./audience": "./src/audience.ts",
     "./capture": "./src/capture.ts",
     "./fixture": "./src/fixture.ts",
+    "./hash": "./src/hash.ts",
     "./testing": "./src/ai/suite.ts"
   },
   "scripts": {

@@ -19,11 +19,13 @@ export function runStart(overrides: Partial<RunStart> = {}): RunStart {
       notes: "It loops on Safari.",
     },
     request: {
+      id: "00000000-0000-4000-8000-000000000002",
       sender: "Dana",
       body: "Login keeps bouncing me back.",
       source: "slack",
       sourceUrl: "https://acme.slack.com/archives/C024BE91L/p1700000000000100",
     },
+    audience: null,
     instructions: "Be brief.",
     connections: [
       {

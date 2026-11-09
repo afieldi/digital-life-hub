@@ -69,10 +69,21 @@ export const runStart = obj({
     notes: z.string().nullable(),
   }),
   request: obj({
+    id: z.string(),
     sender: z.string().nullable(),
     body: z.string().nullable(),
     source: z.string(),
     sourceUrl: z.string().nullable(),
+  }).nullable(),
+  /**
+   * The agent module's `audience`: the coworker a run from their Slack
+   * request answers to, or null for a run of yours.
+   */
+  audience: obj({
+    asker: obj({
+      slackUserId: z.string().min(1),
+      githubLogin: z.string().nullable(),
+    }),
   }).nullable(),
   instructions: z.string(),
   /** Every live connection, granted or not. */

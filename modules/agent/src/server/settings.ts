@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { agentSettings } from "../db/schema";
 import { agentOps } from "../operations";
 import { type Settings, type SettingsView, settings } from "../schema";
+import { liveConnections } from "./connections";
 
 type SettingsTableRow = typeof agentSettings.$inferSelect;
 
@@ -10,6 +11,7 @@ type SettingsTableRow = typeof agentSettings.$inferSelect;
 function toSettings(row: SettingsTableRow): Settings {
   return settings.parse({
     defaultConnectionIds: row.defaultConnectionIds,
+    coworkerConnectionIds: row.coworkerConnectionIds,
     maxParallel: row.maxParallel,
     maxRunningMinutes: row.maxRunningMinutes,
     maxCostUsd: Number(row.maxCostUsd),
@@ -63,7 +65,17 @@ export const settingsQuery = implementOperation(agentOps.settings, {
 export const setSettings = implementOperation(agentOps.setSettings, {
   async run(w, input) {
     const before = await readSettings(w.tx, { lock: true });
-    const result = await writeSettings(w.tx, input);
+    const result = await writeSettings(w.tx, {
+      ...input,
+      ...(input.coworkerConnectionIds
+        ? {
+            coworkerConnectionIds: await liveConnections(
+              w.tx,
+              input.coworkerConnectionIds,
+            ),
+          }
+        : {}),
+    });
     return { result, undo: before };
   },
   async undo(w, before) {

@@ -27,6 +27,7 @@ export {
   createVercelGateway,
   unwrapCliOutput,
 } from "./ai/providers";
+export { RequestUsedError, requestOrigin } from "./ai/requests";
 export {
   type AiRunner,
   collectAiRunners,
@@ -66,6 +67,7 @@ export {
   type RawSummaryRow,
   summaryFromRaw,
 } from "./items/read";
+export { searchItems } from "./items/search";
 export { type ItemWriter, writeItems } from "./items/writer";
 export { migrationsRoot, moduleMigrations } from "./migrations";
 export {
@@ -82,6 +84,7 @@ export {
   moduleRouter,
   type ServerModule,
   ServerModuleError,
+  UNGUARDED_CALLS,
 } from "./modules";
 export {
   type ImplementedMutation,
@@ -115,6 +118,7 @@ export {
   type Principal,
   protectedProcedure,
   publicProcedure,
+  type RunGuard,
   router,
   type Session,
   type Tx,

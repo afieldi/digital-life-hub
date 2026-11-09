@@ -225,6 +225,7 @@ test("settings returns the defaults; setSettings changes only what it is given",
   const s = await setup();
   expect(await s.caller.agent.settings({})).toEqual({
     defaultConnectionIds: [],
+    coworkerConnectionIds: [],
     maxParallel: 3,
     maxRunningMinutes: 240,
     maxCostUsd: 10,

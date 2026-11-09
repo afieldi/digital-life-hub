@@ -1,3 +1,4 @@
+import { askerInput } from "@dlh/core";
 import { z } from "zod";
 
 export const runStatus = z.enum([
@@ -57,6 +58,21 @@ export const decision = z.object({
 });
 export type Decision = z.infer<typeof decision>;
 
+/**
+ * Whom a run answers to when it isn't you: the coworker whose Slack request
+ * it works on. Its run guard keeps it to what involves them.
+ */
+export const audience = z.object({ asker: askerInput });
+export type Audience = z.infer<typeof audience>;
+
+/** A hub call you approved for a run; `usedAt` once its guard let it through. */
+export const hubApproval = z.object({
+  tool: z.string(),
+  inputHash: z.string(),
+  usedAt: z.iso.datetime().nullable(),
+});
+export type HubApproval = z.infer<typeof hubApproval>;
+
 export const report = z.object({
   summary: z.string(),
   links: z.array(z.object({ label: z.string(), url: z.string() })),
@@ -76,6 +92,8 @@ function isTimeZone(zone: string): boolean {
 
 export const settings = z.object({
   defaultConnectionIds: z.array(z.uuid()),
+  /** What a run for a coworker's request starts with, in place of the defaults. */
+  coworkerConnectionIds: z.array(z.uuid()),
   maxParallel: z.number().int().min(1),
   maxRunningMinutes: z.number().int().min(1),
   // `max_cost_usd` keeps cents, so less than one would store as 0.
@@ -113,5 +131,6 @@ export const runRow = z.object({
   outputTokens: z.number().int(),
   costUsd: z.number(),
   image: z.string().nullable(),
+  audience: audience.nullable(),
 });
 export type RunRow = z.infer<typeof runRow>;

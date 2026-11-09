@@ -35,24 +35,43 @@ export type HubOperation = {
   id: string;
   description: string;
   input: OperationDescription["input"];
+  /** `asker` for an operation that answers for one person. */
+  audience: OperationDescription["audience"];
+  subject: OperationDescription["subject"];
+  /** Whether its input names a run, which the worker fills with this one. */
+  takesRunId: boolean;
 };
 
 /**
  * The hub operations a run may call: every operation of the module
  * descriptions whose access is `everyone` (D6). An `ai: false` operation is
- * `user` unless it says otherwise, and one that does is left out too.
+ * `user` unless it says otherwise, and one that does is left out too, unless
+ * it is `hub: true` (a tool for runs only).
  */
 export function hubOperations(): HubOperation[] {
   return moduleDescriptions.flatMap((m) =>
     Object.entries(m.operations as Record<string, OperationDescription>)
-      .filter(([, op]) => accessOf(op) === "everyone" && op.ai !== false)
+      .filter(
+        ([, op]) =>
+          accessOf(op) === "everyone" && (op.ai !== false || op.hub === true),
+      )
       .map(([key, op]) => ({
         name: `hub__${m.id}_${key}`,
         id: op.id,
         description: op.description,
         input: op.input,
+        audience: op.audience,
+        subject: op.subject,
+        takesRunId: "runId" in op.input.shape,
       })),
   );
+}
+
+/** The input the model gives a hub tool: the operation's, but for a runId. */
+function modelShape(op: HubOperation): OperationDescription["input"]["shape"] {
+  if (!op.takesRunId) return op.input.shape;
+  const { runId: _, ...rest } = op.input.shape;
+  return rest;
 }
 
 /**
@@ -105,7 +124,8 @@ export function createTools(deps: {
   const { host, control } = deps;
 
   const hub = hubOperations().map((op) =>
-    tool(op.name, op.description, op.input.shape, async (input) => {
+    // The model isn't asked for a runId: the worker fills in the run's own.
+    tool(op.name, op.description, modelShape(op), async (input) => {
       try {
         const r = await host.hub({ operation: op.id, input });
         return r.ok

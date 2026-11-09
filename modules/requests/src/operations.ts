@@ -232,16 +232,41 @@ const fromSender = describeOperation({
   description:
     "One Slack user's own requests, newest first, for answering whether the person saw them.",
   appliesTo: "none",
+  // An agent run may call it; the agent module's run guard allows only the
+  // run's own asker without an approval.
   audience: "asker",
-  access: "slack",
+  access: "everyone",
   input: z.object({
     asker: askerInput,
     openOnly: z.boolean().optional(),
-    since: z.coerce.date().optional(),
+    // A string, not a Date: as a hub tool and AI action its input is JSON Schema.
+    since: z.iso.datetime().optional(),
   }),
   subject: () => null,
   effects: [],
   summary: () => "Requests from a sender",
+  palette: false,
+  // The dev fake can't guess an asker from field names.
+  devFake: { asker: { slackUserId: "U_DEV", githubLogin: null } },
+});
+
+const madeFrom = describeOperation({
+  id: "requests.madeFrom",
+  kind: "query",
+  label: "Request a task was made from",
+  description:
+    "The request a task was made from (resolved as it), deleted or not, with where it came from. Reached only through operation calls (the agent decides a run's audience by it).",
+  appliesTo: "none",
+  input: z.object({
+    taskId: id,
+    // A request the caller already ties to the task (the agent's own record of
+    // the request it was given from), read even if no longer linked to it.
+    requestId: id.optional(),
+  }),
+  subject: (input) => input.taskId,
+  effects: [],
+  summary: () => "Request a task was made from",
+  access: "user",
   palette: false,
   ai: false,
 });
@@ -256,4 +281,5 @@ export const requestOps = {
   get,
   append,
   fromSender,
+  madeFrom,
 };

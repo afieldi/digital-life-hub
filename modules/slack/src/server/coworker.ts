@@ -63,6 +63,29 @@ export function threadOf(r: Pick<SenderRequest, "sourceUrl">): string | null {
   }
 }
 
+/** Whether a Slack channel id is a DM's: DM ids start with `D`. */
+export const isDmChannel = (channelId: string) => channelId.startsWith("D");
+
+/**
+ * Where a reply about a request filed from Slack goes: the message's channel
+ * and `ts` (its `externalId`, `<channel>:<ts>`), in the thread it was asked
+ * in, or else under the message itself. Null for a request not from Slack.
+ */
+export function replyPlaceOf(r: {
+  source: string;
+  externalId: string | null;
+  sourceUrl: string | null;
+}): { channelId: string; ts: string; threadTs: string } | null {
+  const at = r.externalId?.indexOf(":") ?? -1;
+  if (r.source !== "slack" || !r.externalId || at < 0) return null;
+  const ts = r.externalId.slice(at + 1);
+  return {
+    channelId: r.externalId.slice(0, at),
+    ts,
+    threadTs: threadOf(r) ?? ts,
+  };
+}
+
 /** The open request this message follows on from: same DM or thread, and recent enough. */
 export function recentIn(
   open: SenderRequest[],
@@ -123,6 +146,7 @@ async function file(
       sourceUrl: m.event.permalink,
       sourceHandle: m.sender.slackUserId,
       fromName: m.sender.name,
+      fromOwner: m.sender.isOwner,
       actions,
     }),
   );

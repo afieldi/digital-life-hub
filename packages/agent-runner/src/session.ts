@@ -259,11 +259,15 @@ export async function runSession(
   });
 
   const canUseTool = createCanUseTool({
+    runId: start.runId,
     ctx: {
       connections: start.connections,
       sourceUrl: start.request?.sourceUrl ?? null,
       cwd: workspace,
       currentBranch: deps.currentBranch ?? gitCurrentBranch,
+      audience: start.audience,
+      taskId: start.task.id,
+      requestId: start.request?.id ?? null,
     },
     approvals,
     control,

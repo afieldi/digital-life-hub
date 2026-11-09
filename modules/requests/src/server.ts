@@ -1,6 +1,6 @@
 import { defineServerModule, type OperationsRouter } from "@dlh/server";
 import { requestsModule } from "./module";
-import { fromSender, get, open, resolved } from "./server/reads";
+import { fromSender, get, madeFrom, open, resolved } from "./server/reads";
 import { seed } from "./server/seed";
 import { append, file, makeTask, reopen, resolve } from "./server/writes";
 
@@ -17,6 +17,7 @@ const requestsServer = defineServerModule(requestsModule, {
     get,
     append,
     fromSender,
+    madeFrom,
   },
 });
 

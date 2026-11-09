@@ -24,6 +24,8 @@ export const fileInput = z
     title: itemTitle.describe("Title"),
     body: fields.longText().optional().describe("Details"),
     fromName: z.string().trim().min(1).optional().describe("From"),
+    /** A message you sent yourself, which the agent reads to decide a run's audience. */
+    fromOwner: z.boolean().optional(),
     source: source.optional(),
     sourceHandle: z.string().optional(),
     // Detail opens it: only a web link, never `javascript:` or `file:`.
@@ -55,6 +57,7 @@ export const requestRow = itemSummary.extend({
   updatedAt: z.string(),
   body: z.string().nullable(),
   fromName: z.string().nullable(),
+  fromOwner: z.boolean(),
   source,
   sourceHandle: z.string().nullable(),
   sourceUrl: z.string().nullable(),

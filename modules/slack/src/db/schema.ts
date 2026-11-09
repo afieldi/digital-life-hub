@@ -5,6 +5,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -33,6 +34,8 @@ export const slackSettings = pgTable(
     coworkerAi: boolean("coworker_ai").notNull().default(true),
     /** When `slack.syncRuns` last looked at ended runs. */
     runsSyncedAt: at("runs_synced_at"),
+    /** When the bot last heard from you; null until it first does. */
+    seenAt: at("seen_at"),
   },
   (t) => [
     check("slack_settings_single_row_check", sql`${t.id} = 1`),
@@ -73,20 +76,19 @@ export const slackOutbox = pgTable(
   "slack_outbox",
   {
     id: uuid("id").primaryKey().default(sql`uuidv7()`),
-    /** Makes every insert idempotent: `report:<runId>`, `draft:<requestId>`… */
+    /** Makes every insert idempotent: `report:<runId>`, `escalation:<requestId>`… */
     key: text("key").notNull(),
     origin: text("origin").notNull(),
-    as: text("as").notNull(),
     channelId: text("channel_id").notNull(),
     threadTs: text("thread_ts"),
     text: text("text").notNull(),
-    status: text("status").notNull().default("pending"),
+    status: text("status").notNull().default("approved"),
     requestId: uuid("request_id"),
     runId: uuid("run_id"),
     error: text("error"),
     sentTs: text("sent_ts"),
     createdAt: at("created_at").notNull().defaultNow(),
-    approvedAt: at("approved_at"),
+    approvedAt: at("approved_at").notNull().defaultNow(),
     sentAt: at("sent_at"),
   },
   (t) => [
@@ -94,16 +96,26 @@ export const slackOutbox = pgTable(
     index("slack_outbox_status_idx").on(t.status),
     check(
       "slack_outbox_origin_check",
-      sql`${t.origin} in ('draft', 'agent', 'report', 'review_ping', 'escalation')`,
+      sql`${t.origin} in ('agent', 'report', 'review_ping', 'escalation')`,
     ),
-    check("slack_outbox_as_check", sql`${t.as} in ('bot', 'me')`),
     check(
       "slack_outbox_status_check",
-      sql`${t.status} in ('pending', 'approved', 'sent', 'failed', 'discarded')`,
-    ),
-    check(
-      "slack_outbox_as_me_draft_check",
-      sql`${t.as} = 'bot' or ${t.origin} = 'draft'`,
+      sql`${t.status} in ('approved', 'sent', 'failed')`,
     ),
   ],
 );
+
+/**
+ * Undo for operations the bot runs outside the gateway. A button names a row
+ * here, never a raw token; `used_at` makes Undo single use. Nothing keys a row
+ * to an item.
+ */
+export const slackActions = pgTable("slack_actions", {
+  id: uuid("id").primaryKey().default(sql`uuidv7()`),
+  operation: text("operation").notNull(),
+  token: jsonb("token").notNull(),
+  /** The task whose run a handoff started. */
+  runTaskId: uuid("run_task_id"),
+  createdAt: at("created_at").notNull().defaultNow(),
+  usedAt: at("used_at"),
+});

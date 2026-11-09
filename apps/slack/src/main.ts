@@ -1,10 +1,15 @@
 import { App, LogLevel } from "@slack/bolt";
+import { type BlockActionBody, handleBlockAction } from "./actions";
 import { createApi } from "./api";
 import type { SlackMessageEvent } from "./classify";
 import { loadConfig } from "./config";
 import type { SlackWeb } from "./context";
 import { serialByUser } from "./events";
 import { withIdentity } from "./identity";
+import { createOutbox } from "./outbox";
+
+/** How often the outbox is checked, whatever `/changes` says. */
+const OUTBOX_INTERVAL_MS = 30_000;
 
 /** How long the owner, team and bot ids are kept before the hub is asked again. */
 const SETTINGS_TTL_MS = 30_000;
@@ -38,12 +43,13 @@ const settings = () => {
   return (cached as NonNullable<typeof cached>).value;
 };
 
-const handle = serialByUser({
+const deps = {
   web,
   api,
   settings,
-  log: (line) => console.log(line),
-});
+  log: (line: string) => console.log(line),
+};
+const handle = serialByUser(deps);
 
 /** Handles in the background: the listener returns at once, so Bolt acknowledges the event. */
 const accept = (event: SlackMessageEvent) => {
@@ -58,6 +64,12 @@ app.event("app_mention", async ({ event }) => {
   accept(event as unknown as SlackMessageEvent);
 });
 
+// Acknowledged at once; only the owner's clicks act (checked in `handleBlockAction`).
+app.action(/^dlh_/, async ({ ack, body }) => {
+  await ack();
+  void handleBlockAction(deps, body as unknown as BlockActionBody);
+});
+
 await app.start();
 try {
   const ready = await settings();
@@ -66,3 +78,23 @@ try {
   // Each event reads the settings again, so the service carries on.
   console.warn("Slack bot started, but the hub could not be reached yet");
 }
+
+const outbox = createOutbox({
+  api,
+  bot: web,
+  log: (line) => console.log(line),
+});
+// On start, on every change in the hub, and on a timer in case a change was missed.
+void outbox.tick();
+const stopChanges = api.onChanges(() => {
+  void outbox.tick();
+});
+const timer = setInterval(() => void outbox.tick(), OUTBOX_INTERVAL_MS);
+
+const shutdown = () => {
+  clearInterval(timer);
+  stopChanges();
+  void app.stop().finally(() => process.exit(0));
+};
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);

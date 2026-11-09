@@ -37,23 +37,21 @@ export function mountModules<const Mods extends readonly ServerModule[]>(
 
 /**
  * Everything the server derives from its modules: the CoreDeps fields
- * (item types, deleteWith, operations, AI runners) and the routers to mount,
+ * (item types, deleteWith, operations, AI runners, run guards) and the routers to mount,
  * Core's and each module's. Throws on a duplicate id or item type, or an id
  * that clashes with a core router.
  */
 export function composeServer<const Mods extends readonly ServerModule[]>(
   mods: Mods,
 ) {
-  const { itemTypes, deleteWith, operations, aiRunners } = collectServerModules(
-    [...mods],
-    [...CORE_ROUTER_IDS],
-    coreAi,
-  );
+  const { itemTypes, deleteWith, operations, aiRunners, runGuards } =
+    collectServerModules([...mods], [...CORE_ROUTER_IDS], coreAi);
   return {
     itemTypes,
     deleteWith,
     operations,
     aiRunners,
+    runGuards,
     routers: { ...coreRouters, ...mountModules(mods) },
   };
 }
@@ -79,6 +77,7 @@ export function createCoreDeps(
     itemTypes: composed.itemTypes,
     deleteWith: composed.deleteWith,
     operations: composed.operations,
+    runGuards: composed.runGuards,
     moduleConfig: opts.moduleConfig ?? new Map(),
     now: opts.now ?? (() => new Date()),
     devErrors: opts.devErrors ?? false,

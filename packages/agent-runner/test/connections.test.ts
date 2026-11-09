@@ -213,6 +213,9 @@ describe("wireConnections", () => {
           sourceUrl: null,
           cwd: workspace,
           currentBranch: () => null,
+          audience: null,
+          taskId: "task-1",
+          requestId: null,
         },
       ),
     ).toBe("ask");

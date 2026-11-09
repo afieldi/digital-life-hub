@@ -15,6 +15,20 @@
       "when": 1793997947024,
       "tag": "0001_outgoing_bucky",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794009372808,
+      "tag": "0002_friendly_captain_cross",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794246868852,
+      "tag": "0003_made_tasks",
+      "breakpoints": true
     }
   ]
 }

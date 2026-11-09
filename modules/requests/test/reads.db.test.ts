@@ -227,11 +227,12 @@ test("get on a deleted request is NOT_FOUND", async () => {
 });
 
 /** The sender's own Slack requests, read as the Slack service does. */
-async function slackSetup() {
+/** `setup`, and a caller signed in as an agent run, which `fromSender` lets in. */
+async function runSetup() {
   const t = await setup();
-  const { caller: slack } = testServer(t.db, [requestsServer, tasksServer], {
+  const { caller: run } = testServer(t.db, [requestsServer, tasksServer], {
     now: () => NOW,
-    principal: { kind: "slack", tokenId: "t" },
+    principal: { kind: "run", tokenId: "t", runId: "r1" },
   });
   const fileFrom = async (
     handle: string,
@@ -248,13 +249,13 @@ async function slackSetup() {
         ...extra,
       })
     ).result.request;
-  return { ...t, slack, fileFrom };
+  return { ...t, run, fileFrom };
 }
 
 const asker = (slackUserId: string) => ({ slackUserId, githubLogin: null });
 
 test("fromSender returns only that sender's slack requests, newest first", async () => {
-  const { slack, fileFrom, file, close } = await slackSetup();
+  const { run, fileFrom, file, close } = await runSetup();
   const old = await fileFrom("U1", "old", ago(3), {
     externalId: "a",
     body: "b",
@@ -262,7 +263,7 @@ test("fromSender returns only that sender's slack requests, newest first", async
   const recent = await fileFrom("U1", "recent", ago(1));
   await fileFrom("U2", "theirs", ago(2));
   await file("manual one");
-  const rows = await slack.requests.fromSender({ asker: asker("U1") });
+  const rows = await run.requests.fromSender({ asker: asker("U1") });
   expect(rows.map((r) => r.title)).toEqual(["recent", "old"]);
   expect(rows[1]).toEqual({
     id: old.id,
@@ -280,11 +281,11 @@ test("fromSender returns only that sender's slack requests, newest first", async
 });
 
 test("fromSender returns nothing for another sender", async () => {
-  const { slack, fileFrom, close } = await slackSetup();
+  const { run, fileFrom, close } = await runSetup();
   await expectAskerScoped(
     (_, input) =>
-      slack.requests.fromSender(
-        input as Parameters<typeof slack.requests.fromSender>[0],
+      run.requests.fromSender(
+        input as Parameters<typeof run.requests.fromSender>[0],
       ),
     "requests.fromSender",
     {},
@@ -294,7 +295,7 @@ test("fromSender returns nothing for another sender", async () => {
 });
 
 test("fromSender openOnly leaves out resolved requests, since leaves out older", async () => {
-  const { slack, caller, fileFrom, close } = await slackSetup();
+  const { run, caller, fileFrom, close } = await runSetup();
   const done = await fileFrom("U1", "done", ago(2));
   await fileFrom("U1", "open", ago(1));
   await caller.requests.resolve({
@@ -302,18 +303,115 @@ test("fromSender openOnly leaves out resolved requests, since leaves out older",
     expectedUpdatedAt: done.updatedAt,
     outcome: "handled",
   });
-  const all = await slack.requests.fromSender({ asker: asker("U1") });
+  const all = await run.requests.fromSender({ asker: asker("U1") });
   expect(all.map((r) => r.title)).toEqual(["open", "done"]);
   expect(all[1]?.outcome).toBe("handled");
-  const open = await slack.requests.fromSender({
+  const open = await run.requests.fromSender({
     asker: asker("U1"),
     openOnly: true,
   });
   expect(open.map((r) => r.title)).toEqual(["open"]);
-  const since = await slack.requests.fromSender({
+  const since = await run.requests.fromSender({
     asker: asker("U1"),
-    since: ago(1.5),
+    since: ago(1.5).toISOString(),
   });
   expect(since.map((r) => r.title)).toEqual(["open"]);
   await close();
+});
+
+test("madeFrom finds the request a task was made from, deleted or not", async () => {
+  const t = await setup();
+  const r = (
+    await t.caller.requests.file({
+      title: "Check my PR",
+      source: "slack",
+      sourceHandle: "U_BOB",
+    })
+  ).result.request;
+  const { task } = (
+    await t.caller.requests.makeTask({
+      id: r.id,
+      expectedUpdatedAt: r.updatedAt,
+    })
+  ).result;
+  const found = {
+    requestId: r.id,
+    source: "slack",
+    fromOwner: false,
+    sourceHandle: "U_BOB",
+  };
+  expect(await t.caller.requests.madeFrom({ taskId: task.id })).toEqual(found);
+  await setDeleted(t.deps, r.id);
+  expect(await t.caller.requests.madeFrom({ taskId: task.id })).toEqual(found);
+
+  const plain = (await t.caller.tasks.create({ title: "Plain" })).result;
+  expect(await t.caller.requests.madeFrom({ taskId: plain.id })).toBeNull();
+  await t.close();
+});
+
+test("madeFrom still finds the request after it is reopened", async () => {
+  const t = await setup();
+  const r = (
+    await t.caller.requests.file({
+      title: "Check my PR",
+      source: "slack",
+      sourceHandle: "U_BOB",
+    })
+  ).result.request;
+  const made = (
+    await t.caller.requests.makeTask({
+      id: r.id,
+      expectedUpdatedAt: r.updatedAt,
+    })
+  ).result;
+  await t.caller.requests.reopen({
+    id: r.id,
+    expectedUpdatedAt: made.request.updatedAt,
+  });
+  expect(
+    await t.caller.requests.madeFrom({ taskId: made.task.id }),
+  ).toMatchObject({ requestId: r.id, fromOwner: false });
+  await t.close();
+});
+
+test("madeFrom also reads a request the caller names, and puts a coworker's first", async () => {
+  const t = await setup();
+  const mine = (
+    await t.caller.requests.file({
+      title: "Mine",
+      source: "slack",
+      sourceHandle: "U_ME",
+      fromOwner: true,
+    })
+  ).result.request;
+  const { task } = (
+    await t.caller.requests.makeTask({
+      id: mine.id,
+      expectedUpdatedAt: mine.updatedAt,
+    })
+  ).result;
+  const bob = (
+    await t.caller.requests.file({
+      title: "Bob's",
+      source: "slack",
+      sourceHandle: "U_BOB",
+    })
+  ).result.request;
+  // Resolved as the same task: the coworker's decides.
+  await t.caller.requests.resolve({
+    id: bob.id,
+    expectedUpdatedAt: bob.updatedAt,
+    outcome: "task",
+    taskId: task.id,
+  });
+  expect(await t.caller.requests.madeFrom({ taskId: task.id })).toMatchObject({
+    requestId: bob.id,
+  });
+
+  // A request no longer linked (reopened) is still read when named.
+  const plain = (await t.caller.tasks.create({ title: "Plain" })).result;
+  expect(
+    await t.caller.requests.madeFrom({ taskId: plain.id, requestId: bob.id }),
+  ).toMatchObject({ requestId: bob.id, fromOwner: false });
+  await t.close();
 });

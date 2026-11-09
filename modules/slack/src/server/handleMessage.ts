@@ -1,5 +1,7 @@
 import { AiError, implementOperation } from "@dlh/server";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { slackPeople } from "../db/schema";
 import { slackOps } from "../operations";
 import type { HandleMessageResult } from "../schema";
 import type { CoworkerCommand } from "./commands";
@@ -15,6 +17,7 @@ import {
   withdraw,
 } from "./coworker";
 import { interpretMessage } from "./interpret";
+import { handleOwner } from "./owner";
 import { readSettings } from "./settings";
 
 /** How long Jev has before the message is handled by rule. */
@@ -27,10 +30,18 @@ export const handleMessage = implementOperation(slackOps.handleMessage, {
     if (settings.ownerSlackId === null)
       return done({ reply: "Not set up yet." });
     if (input.sender.isOwner) {
-      return done({ reply: "I can't do that from Slack yet." });
+      return done(await handleOwner(deps, input, settings));
     }
-    const m: CoworkerMessage = input;
-    const all = await sendersRequests(w, input.sender);
+    // The login Slack sent is only a claim; the hub's own record (a manual login wins) is what counts.
+    const [person] = await w.tx
+      .select({ githubLogin: slackPeople.githubLogin })
+      .from(slackPeople)
+      .where(eq(slackPeople.slackUserId, input.sender.slackUserId));
+    const m: CoworkerMessage = {
+      ...input,
+      sender: { ...input.sender, githubLogin: person?.githubLogin ?? null },
+    };
+    const all = await sendersRequests(w, m.sender);
     const open = all.filter((r) => r.resolvedAt === null);
     // The same event again (whatever became of its request): say what was said.
     const key = keyOf(input.event);

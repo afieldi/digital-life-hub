@@ -73,8 +73,14 @@ const assign = describeOperation({
   subject: (input) => input.id,
   // Sets the AI cap (suggest, you confirm), and touches the task when setAssignee changed nothing.
   effects: ["touchItems"],
-  // `requests.*` resolve the failed run's open "Needs you".
-  calls: [taskOps.setAssignee, requestOps.get, requestOps.resolve],
+  // `requests.get` and `resolve` resolve the failed run's open "Needs you";
+  // `madeFrom` finds the request the task came from, for its audience.
+  calls: [
+    taskOps.setAssignee,
+    requestOps.get,
+    requestOps.resolve,
+    requestOps.madeFrom,
+  ],
   access: "user",
   summary: () => "Make AI task",
   palette: (ctx) => {
@@ -283,6 +289,37 @@ const runs = describeOperation({
   palette: false,
   ai: false,
   summary: () => "Agent runs",
+});
+
+const recentRuns = describeOperation({
+  id: "agent.recentRuns",
+  kind: "query",
+  label: "Recent runs",
+  description:
+    "The runs that ended (done or failed) after a time, oldest first, at most 100, with their task title and request. For other modules to report them.",
+  appliesTo: ["none"],
+  input: z.object({ since: z.coerce.date() }),
+  subject: () => null,
+  effects: [],
+  access: "user",
+  palette: false,
+  ai: false,
+  summary: () => "Recent runs",
+});
+
+const runSource = describeOperation({
+  id: "agent.runSource",
+  kind: "query",
+  label: "Run source",
+  description: "The task and the request a run's task was given from, if any.",
+  appliesTo: ["none"],
+  input: z.object({ runId }),
+  subject: () => null,
+  effects: [],
+  access: "user",
+  palette: false,
+  ai: false,
+  summary: () => "Run source",
 });
 
 const events = describeOperation({
@@ -552,6 +589,8 @@ export const agentOps = {
   decide,
   run,
   runs,
+  recentRuns,
+  runSource,
   events,
   connections: connectionsQuery,
   setDefaultConnections,

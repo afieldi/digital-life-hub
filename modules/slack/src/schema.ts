@@ -72,9 +72,45 @@ export const handleMessageInput = z.object({
 });
 export type HandleMessageInput = z.infer<typeof handleMessageInput>;
 
+/** What a button under an owner reply asks for: one of the bot's own AI requests or runs. */
+export const handleActionInput = z.discriminatedUnion("do", [
+  z.object({
+    do: z.literal("apply"),
+    aiRequestId: z.uuid(),
+    option: z.number().int().min(0),
+  }),
+  z.object({ do: z.literal("discard"), aiRequestId: z.uuid() }),
+  z.object({ do: z.literal("undo"), aiRequestId: z.uuid() }),
+  z.object({ do: z.literal("undoAction"), slackActionId: z.uuid() }),
+  z.object({ do: z.literal("cancelRun"), taskId: z.uuid() }),
+]);
+export type HandleActionInput = z.infer<typeof handleActionInput>;
+
+/**
+ * `handleActionInput` as the operation takes it: an operation's input is one
+ * object, so the fields are all here and the handler parses the exact variant.
+ */
+export const handleActionWire = z.object({
+  do: z.enum(["apply", "discard", "undo", "undoAction", "cancelRun"]),
+  aiRequestId: z.uuid().optional(),
+  option: z.number().int().min(0).optional(),
+  slackActionId: z.uuid().optional(),
+  taskId: z.uuid().optional(),
+});
+
+/** What a button press answers: a reply, and buttons under it. */
+export type HandleActionResult = {
+  reply: string;
+  buttons?: { label: string; value: string }[];
+};
+
 /** What `apps/slack` posts: a reply, or a reaction on the message. */
 export const handleMessageResult = z.object({
   reply: z.string().optional(),
+  /** Buttons under the reply; each `value` is the JSON of a `handleActionInput`. */
+  buttons: z
+    .array(z.object({ label: z.string(), value: z.string() }))
+    .optional(),
   react: z.literal("eyes").optional(),
   filedRequestId: z.uuid().optional(),
 });

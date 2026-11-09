@@ -240,6 +240,20 @@ test("file writes item and row in one transaction", async () => {
     receivedAt: new Date("2026-10-29T09:00:00.000Z"),
   });
 
+  // fromOwner is stored, and false unless said.
+  expect(request.fromOwner).toBe(false);
+  const mine = (
+    await caller.requests.file({ title: "From me", fromOwner: true })
+  ).result.request;
+  expect(mine.fromOwner).toBe(true);
+  expect(await requestRow(deps, mine.id)).toMatchObject({ fromOwner: true });
+  expect(await requestRow(deps, request.id)).toMatchObject({
+    fromOwner: false,
+  });
+  expect((await caller.requests.get({ id: mine.id })).request.fromOwner).toBe(
+    true,
+  );
+
   // No source is an AI filing; received_at defaults to now; no text, no search_text.
   const plain = (await caller.requests.file({ title: "Look at later" })).result
     .request;

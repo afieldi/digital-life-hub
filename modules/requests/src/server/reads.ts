@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requestOps } from "../operations";
-import type { RequestRow } from "../schema";
+import { type RequestRow, source } from "../schema";
 import { requestTask, requestTasks } from "./links";
 import { toRequestRow } from "./writes";
 
@@ -20,6 +20,7 @@ type RawRow = {
   updated_at: string | Date;
   body: string | null;
   from_name: string | null;
+  from_owner: boolean;
   source: string;
   source_handle: string | null;
   source_url: string | null;
@@ -37,7 +38,7 @@ const iso = (v: string | Date) => new Date(v).toISOString();
 function rowsQuery(where: SQL, tail: SQL): SQL {
   return sql`
     select i.id, i.type, i.title, i.archived_at, i.updated_at,
-      r.body, r.from_name, r.source, r.source_handle, r.source_url,
+      r.body, r.from_name, r.from_owner, r.source, r.source_handle, r.source_url,
       r.external_id, r.received_at, r.actions, r.resolved_at, r.outcome, r.appended_ids
     from requests r
     join items i on i.id = r.item_id and i.deleted_at is null
@@ -60,6 +61,7 @@ function toRow(r: RawRow): RequestRow {
       itemId: r.id,
       body: r.body,
       fromName: r.from_name,
+      fromOwner: r.from_owner,
       source: r.source,
       sourceHandle: r.source_handle,
       sourceUrl: r.source_url,
@@ -172,7 +174,7 @@ export const fromSender = implementOperation(requestOps.fromSender, {
   async run(deps, input) {
     const open = input.openOnly ? sql`and r.resolved_at is null` : sql``;
     const since = input.since
-      ? sql`and r.received_at >= ${input.since.toISOString()}::timestamptz`
+      ? sql`and r.received_at >= ${input.since}::timestamptz`
       : sql``;
     const raw = await deps.db.execute<RawRow>(
       rowsQuery(
@@ -194,5 +196,45 @@ export const fromSender = implementOperation(requestOps.fromSender, {
         appendedIds: rawRow.appended_ids,
       };
     });
+  },
+});
+
+/**
+ * Where the request a task was made from came from: a request resolved as the
+ * task (its outcome link, or a `relates` link when its outcome is `task`), one
+ * `makeTask` made it from (kept through a reopen), or `requestId` when given. Deleted requests count, so deleting one can't make
+ * its task look like yours. When several apply, a coworker's Slack request
+ * (not one you sent) comes first, so the task answers to them; then the
+ * outcome link, then the oldest.
+ */
+export const madeFrom = implementOperation(requestOps.madeFrom, {
+  async run(deps, input) {
+    const named = input.requestId
+      ? sql`or r.item_id = ${input.requestId}::uuid`
+      : sql``;
+    const made = sql`or exists (select 1 from request_made_tasks m
+      where m.request_id = r.item_id and m.task_id = ${input.taskId}::uuid)`;
+    const [row] = await deps.db.execute<{
+      item_id: string;
+      source: string;
+      from_owner: boolean;
+      source_handle: string | null;
+    }>(sql`
+      select r.item_id, r.source, r.from_owner, r.source_handle
+      from requests r
+      left join links l on l.from_id = r.item_id and l.to_id = ${input.taskId}::uuid
+        and l.kind = 'relates' and (l.context = 'outcome' or r.outcome = 'task')
+      where l.id is not null ${made} ${named}
+      order by (r.source = 'slack' and not r.from_owner) desc,
+        (l.context is not distinct from 'outcome') desc,
+        r.received_at, r.item_id
+      limit 1`);
+    if (!row) return null;
+    return {
+      requestId: row.item_id,
+      source: source.parse(row.source),
+      fromOwner: row.from_owner,
+      sourceHandle: row.source_handle,
+    };
   },
 });

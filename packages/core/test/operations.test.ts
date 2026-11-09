@@ -307,6 +307,32 @@ describe("describeOperation", () => {
       describeOperation({ ...worker, palette: false, ai: false }),
     ).not.toThrow();
   });
+  test("hub: true needs access everyone", () => {
+    const run: OperationDescription = {
+      id: "slack.post",
+      kind: "mutation",
+      label: "Post",
+      description: "x",
+      appliesTo: "none",
+      input: z.object({}),
+      subject: () => null,
+      effects: [],
+      summary: () => "Post",
+      palette: false,
+      ai: false,
+      hub: true,
+    };
+    // `ai: false` alone defaults to access user.
+    expect(() => describeOperation(run)).toThrow(
+      'Operation "slack.post" has hub: true but not access: "everyone"',
+    );
+    expect(() => describeOperation({ ...run, access: "user" })).toThrow(
+      OperationError,
+    );
+    expect(() =>
+      describeOperation({ ...run, access: "everyone" }),
+    ).not.toThrow();
+  });
   test("access slack needs palette false and ai false", () => {
     const slack: OperationDescription = {
       id: "slack.check",
@@ -364,11 +390,32 @@ describe("describeOperation", () => {
         ),
       ).toThrow(OperationError);
     });
-    test("audience asker needs access slack", () => {
+    test("an asker input that accepts undefined is refused", () => {
+      const withAsker = (a: z.ZodType) =>
+        describeOperation({
+          ...asker,
+          input: z.object({ asker: a }) as z.ZodObject,
+        });
+      expect(() => withAsker(askerInput.optional())).toThrow(OperationError);
+      expect(() => withAsker(askerInput.nullable())).toThrow(OperationError);
+      expect(() => withAsker(askerInput.nullish())).toThrow(OperationError);
+    });
+    test("asker operations may be everyone", () => {
+      expect(() =>
+        describeOperation({ ...asker, access: "everyone" }),
+      ).not.toThrow();
+      expect(() =>
+        describeOperation({ ...asker, access: "everyone", ai: true }),
+      ).not.toThrow();
+    });
+    test("audience asker needs access slack or everyone", () => {
       const { access: _, ...noAccess } = asker;
       expect(() => describeOperation(noAccess)).toThrow(OperationError);
       expect(() => describeOperation({ ...asker, access: "worker" })).toThrow(
-        'access: "slack"',
+        'access: "slack" or "everyone"',
+      );
+      expect(() => describeOperation({ ...asker, access: "user" })).toThrow(
+        OperationError,
       );
     });
   });

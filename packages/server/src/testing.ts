@@ -28,6 +28,7 @@ import {
   type CoreDeps,
   type DeleteWith,
   type Principal,
+  type RunGuard,
   router,
 } from "./trpc";
 
@@ -100,6 +101,7 @@ export function testDeps(
     ai?: Partial<AiDeps>;
     deleteWith?: Record<string, DeleteWith> | ReadonlyMap<string, DeleteWith>;
     operations?: ReadonlyMap<string, ImplementedOperation>;
+    runGuards?: readonly RunGuard[];
   } = {},
 ): TestDeps {
   let clock = opts.now?.() ?? new Date("2026-10-30T12:00:00.000Z");
@@ -117,6 +119,7 @@ export function testDeps(
         : Object.entries(opts.deleteWith ?? {}),
     ),
     operations: opts.operations ?? new Map(),
+    runGuards: opts.runGuards ?? [],
     moduleConfig: new Map(),
     fakeProvider,
     setNow(date) {
@@ -130,7 +133,7 @@ export const TEST_SESSION = { id: "s", email: "arek@example.com" };
 
 /**
  * `testDeps` wired to `modules` as the API composes them (their item types,
- * operations, deleteWith and AI runners, with Core's), and a caller over
+ * operations, deleteWith, run guards and AI runners, with Core's), and a caller over
  * Core's and the modules' routers, signed in as you, or as `principal` when
  * given (`null` for no one). `itemTypes` adds more types, e.g. one a test
  * links to.
@@ -154,6 +157,7 @@ export function testServer<const Mods extends readonly ServerModule[]>(
     ...(opts.now ? { now: opts.now } : {}),
     deleteWith: composed.deleteWith,
     operations: composed.operations,
+    runGuards: composed.runGuards,
     ai: { runners: composed.aiRunners },
   });
   const caller = router(composed.routers).createCaller({

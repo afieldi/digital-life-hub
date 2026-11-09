@@ -1,44 +1,14 @@
-import { createHash } from "node:crypto";
+import { canonical, inputHash } from "@dlh/core/hash";
+
+export { inputHash };
 
 /**
  * How an approval is worded and matched, shared by the runner (which matches
  * a tool call against an approval) and the worker (which words the ask and
  * hashes it from the same input), so what the owner reads is always what
- * gets allowed.
+ * gets allowed. `canonical` and `inputHash` live in `@dlh/core/hash`, which
+ * the hub's run guards share.
  */
-
-/** JSON with every object's keys sorted, so equal inputs hash equal. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-/**
- * The part of a tool's input that says what it does. A model re-issuing an
- * approved Bash call words its `description` (and may pick a `timeout`)
- * anew, so only the command and whether it runs in the background count.
- */
-function whatItDoes(tool: string, input: unknown): unknown {
-  if (tool !== "Bash" || !input || typeof input !== "object") return input;
-  const { command, run_in_background } = input as Record<string, unknown>;
-  return {
-    command,
-    ...(run_in_background === true ? { run_in_background } : {}),
-  };
-}
-
-/** sha256 of the tool's name and what its input does, as canonical JSON. */
-export function inputHash(tool: string, input: unknown): string {
-  return createHash("sha256")
-    .update(`${tool}\n${canonical(whatItDoes(tool, input))}`)
-    .digest("hex");
-}
 
 const MAX_ACTION = 500;
 const MAX_TITLE_ACTION = 120;

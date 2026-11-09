@@ -86,15 +86,15 @@ network with its own service token.
      `channels:history`, `groups:history`, `chat:write`, `reactions:write`,
      `users:read`, `users.profile:read`.
    - App-level token: `connections:write`.
-   - User token: `chat:write` (it sends as you; the outbox uses it in Part 2).
 3. Subscribe to the bot events `message.im` and `app_mention`. Turn on
-   **Interactivity** (no request URL is needed in Socket Mode; the escalation
-   flow posts buttons in Part 2). Under App Home -> Messages tab, enable
+   **Interactivity** (Interactivity & Shortcuts in the app config; it is
+   required, because the reply, Undo and escalation buttons only reach the bot
+   once it is on. No request URL is needed in Socket Mode). Under App Home -> Messages tab, enable
    "Allow users to send messages to your app": DMs need it.
 4. Have a workspace admin install the app.
-5. Copy the three tokens into `deploy/vps/.env`: the app-level token
+5. Copy the two tokens into `deploy/vps/.env`: the app-level token
    (`xapp-...`) as `SLACK_APP_TOKEN`, the bot token (`xoxb-...`) as
-   `SLACK_BOT_TOKEN`, the user token (`xoxp-...`) as `SLACK_USER_TOKEN`.
+   `SLACK_BOT_TOKEN`.
 6. Mint the bot's hub token the way step 9 mints the worker's (the API image
    holds no CLI, so run it from the checkout against the database; `$DB` is as
    in step 9):
@@ -110,10 +110,26 @@ network with its own service token.
    them from Slack (`auth.test`) at start and whenever it refreshes the
    settings, and they win over any value typed there. They are what tells your
    workspace's people from Slack Connect guests, whom the bot ignores.
+9. In Settings → Agent, choose the "Connections for coworkers' requests": the
+   connections an agent run may use when it works on a coworker's request. Until
+   you choose some, those runs have none.
 
 To map a coworker to GitHub, the bot reads the user profile field labelled
 "GitHub" (needs `users.profile:read`). Add that field to the workspace's
 profiles and have people fill it in; the bot takes their login from it.
+
+### Manual checks
+
+After the bot is running, check these in the real workspace:
+
+- DM the bot "remind me to chase Dana Friday": a task is made, and Undo removes it.
+- DM "what's due today?": it answers.
+- DM "have the agent do X": a run starts with no further confirm, and its
+  report lands in your DM.
+- Give a coworker's request to the agent: it replies in that coworker's DM, and
+  a read outside the coworker's audience files an approval instead.
+- Restart `apps/slack` (`docker compose -f deploy/vps/docker-compose.yml restart slack`):
+  queued escalation replies and agent posts are sent once, with no duplicates.
 
 ## AI Gateway key and budget
 

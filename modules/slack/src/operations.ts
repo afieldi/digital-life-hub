@@ -1,7 +1,13 @@
 import { describeOperation } from "@dlh/core";
+import { agentOps } from "@dlh/module-agent/operations";
 import { requestOps } from "@dlh/module-requests/operations";
 import { z } from "zod";
-import { escalatable, handleMessageInput, slackSettings } from "./schema";
+import {
+  escalatable,
+  handleActionWire,
+  handleMessageInput,
+  slackSettings,
+} from "./schema";
 
 /** Settings → Slack's calls: yours only, and out of ⌘K and AI. */
 const mine = { access: "user", palette: false, ai: false } as const;
@@ -114,6 +120,63 @@ const handleMessage = describeOperation({
   ...bot,
 });
 
+const handleAction = describeOperation({
+  id: "slack.handleAction",
+  kind: "mutation",
+  label: "Handle a Slack button",
+  description:
+    "What a button under a bot reply asks for: apply, discard or undo one of its requests, undo an action it made, or cancel a run.",
+  appliesTo: ["none"],
+  input: handleActionWire,
+  subject: () => null,
+  effects: [],
+  calls: [],
+  summary: () => "Handle a Slack button",
+  ...bot,
+});
+
+const pendingSends = describeOperation({
+  id: "slack.pendingSends",
+  kind: "mutation",
+  label: "Pending Slack sends",
+  description:
+    "Notes the bot is alive, fails approved messages older than a day, and returns the next approved ones to post.",
+  appliesTo: ["none"],
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  summary: () => "Pending Slack sends",
+  ...bot,
+});
+
+const markSent = describeOperation({
+  id: "slack.markSent",
+  kind: "mutation",
+  label: "Mark a Slack message sent",
+  description:
+    "Records that an approved outbox message was posted; a repeat changes nothing.",
+  appliesTo: ["none"],
+  input: z.object({ id: z.uuid(), ts: z.string().min(1) }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Mark a Slack message sent",
+  ...bot,
+});
+
+const markFailed = describeOperation({
+  id: "slack.markFailed",
+  kind: "mutation",
+  label: "Mark a Slack message failed",
+  description:
+    "Records that posting an approved outbox message failed; a repeat changes nothing.",
+  appliesTo: ["none"],
+  input: z.object({ id: z.uuid(), error: z.string().min(1) }),
+  subject: () => null,
+  effects: [],
+  summary: () => "Mark a Slack message failed",
+  ...bot,
+});
+
 /** Which escalation: the message it was filed for, as the request's `sourceHandle` and `externalId`. */
 const message = {
   slackUserId: z.string().min(1),
@@ -156,6 +219,43 @@ const dismissEscalation = describeOperation({
   ...mine,
 });
 
+const syncRuns = describeOperation({
+  id: "slack.syncRuns",
+  kind: "mutation",
+  label: "Report agent runs",
+  description:
+    "Queues a report in your DM (or its thread) for each agent run that ended since the last sync and came from a message you sent there. The first call only starts the clock.",
+  appliesTo: ["none"],
+  input: z.object({}),
+  subject: () => null,
+  effects: [],
+  calls: [agentOps.recentRuns, requestOps.get],
+  summary: () => "Report agent runs",
+  ...bot,
+});
+
+const postToSource = describeOperation({
+  id: "slack.postToSource",
+  kind: "mutation",
+  label: "Post to the Slack thread",
+  description:
+    "For an agent run whose task came from a Slack message: posts text as the bot in that message's thread, at most five times a run.",
+  appliesTo: ["none"],
+  input: z.object({
+    runId: z.uuid(),
+    text: z.string().trim().min(1).max(2000),
+  }),
+  subject: () => null,
+  effects: [],
+  calls: [agentOps.runSource, requestOps.get],
+  // A hub tool for agent runs only: not in ⌘K, the in-app AI or Slack's.
+  access: "everyone",
+  palette: false,
+  ai: false,
+  hub: true,
+  summary: () => "Post to the Slack thread",
+});
+
 export const slackOps = {
   settings,
   setSettings,
@@ -164,6 +264,12 @@ export const slackOps = {
   botSettings: botSettingsQuery,
   upsertPerson,
   handleMessage,
+  handleAction,
+  pendingSends,
+  markSent,
+  markFailed,
   runEscalated,
   dismissEscalation,
+  syncRuns,
+  postToSource,
 };

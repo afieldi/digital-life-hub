@@ -98,12 +98,25 @@ describe("the VPS compose file", () => {
     expect(env.HUB_API_URL).toBe("http://api:8787");
     // Empty is allowed: the runbook starts the API before the token exists.
     expect(env.HUB_SLACK_TOKEN).toBe("${HUB_SLACK_TOKEN:-}");
-    for (const name of [
-      "SLACK_APP_TOKEN",
-      "SLACK_BOT_TOKEN",
-      "SLACK_USER_TOKEN",
-    ]) {
+    for (const name of ["SLACK_APP_TOKEN", "SLACK_BOT_TOKEN"]) {
       expect(env[name], name).toBe(`\${${name}:-}`);
     }
+  });
+
+  it(".env.example lists the slack service's settings and no user token", () => {
+    const example = readFileSync(join(root, "deploy/vps/.env.example"), "utf8");
+    const slack = compose.services.slack?.environment ?? {};
+    // Each value the service takes from .env, by name, and the count said.
+    const fromEnv = Object.values(slack).flatMap(
+      (v) => /^\$\{(\w+):-\}$/.exec(v)?.[1] ?? [],
+    );
+    for (const name of fromEnv) {
+      expect(example, name).toMatch(new RegExp(`^${name}=`, "m"));
+    }
+    expect(example).not.toMatch(/user token|SLACK_USER_TOKEN/i);
+    const words = ["", "one", "two", "three", "four", "five"];
+    expect(example).toContain(
+      `once the ${words[fromEnv.length]} Slack values above are set`,
+    );
   });
 });

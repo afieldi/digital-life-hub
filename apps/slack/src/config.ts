@@ -5,8 +5,6 @@ const config = z.object({
   appToken: z.string().min(1),
   /** Posts and reads as the bot (`xoxb-…`). */
   botToken: z.string().min(1),
-  /** Sends as the owner (`xoxp-…`); used by the outbox in Part 2. */
-  userToken: z.string().min(1),
   apiUrl: z.url(),
   /** What the hub knows this service by: the slack service token. */
   hubToken: z.string().min(1),
@@ -16,7 +14,6 @@ export type Config = z.output<typeof config>;
 const names: Record<keyof Config, string> = {
   appToken: "SLACK_APP_TOKEN",
   botToken: "SLACK_BOT_TOKEN",
-  userToken: "SLACK_USER_TOKEN",
   apiUrl: "HUB_API_URL",
   hubToken: "HUB_SLACK_TOKEN",
 };
@@ -26,7 +23,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   const parsed = config.safeParse({
     appToken: env[names.appToken],
     botToken: env[names.botToken],
-    userToken: env[names.userToken],
     apiUrl: env[names.apiUrl],
     hubToken: env[names.hubToken],
   });

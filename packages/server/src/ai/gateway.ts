@@ -154,6 +154,7 @@ async function itemOrNotFound(
 export async function prepare(
   deps: CoreDeps,
   input: AiPrepareInput,
+  opts?: { origin?: "app" | "slack" },
 ): Promise<AiResult> {
   const runner = runnerFor(deps, input.actionId);
   const settings = await getSettings(deps.db);
@@ -199,6 +200,7 @@ export async function prepare(
       model,
       itemId,
       itemVersion: version ? new Date(version) : null,
+      origin: opts?.origin ?? "app",
       status: "pending",
       output: pendingFor(input.timeZone, runner.list ? ctx.listed : undefined),
     })

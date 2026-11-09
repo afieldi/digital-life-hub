@@ -16,6 +16,8 @@ import { moduleAiActions } from "../packages/server/src/modules";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const PASS_THRESHOLD = 0.9;
+/** The owner suite's bar is lower: its subject decisions are held to the 0.6 threshold. */
+export const OWNER_PASS_THRESHOLD = 0.85;
 
 type Miss = Awaited<ReturnType<typeof runInterpreterSuite>>["misses"][number];
 
@@ -101,9 +103,50 @@ async function runSlackCoworkerSuite(): Promise<void> {
   }
 }
 
+/** `--suite=slack-owner`: the owner's interpreter over the real gateway actions, live through the Gateway. */
+async function runSlackOwnerSuite(): Promise<void> {
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: a secret, not a turbo input
+  const apiKey = process.env.AI_GATEWAY_API_KEY;
+  if (!apiKey) {
+    console.error("The slack-owner suite needs AI_GATEWAY_API_KEY.");
+    process.exit(2);
+  }
+  const { createVercelGateway } = await import("../packages/server/src/index");
+  const { DEFAULT_INTERPRETER } = await import("../modules/slack/src/schema");
+  const { ownerPhrasings } = await import(
+    "../modules/slack/test/owner-phrasings"
+  );
+  const { runOwnerSuite } = await import("../modules/slack/test/owner-suite");
+  const { setup } = await import("../modules/slack/test/setup");
+  const model =
+    process.argv
+      .find((a) => a.startsWith("--model="))
+      ?.slice("--model=".length) ?? DEFAULT_INTERPRETER;
+  const s = await setup();
+  try {
+    s.deps.ai.providers.vercel = createVercelGateway({ apiKey });
+    const { accuracy, misses } = await runOwnerSuite(s, ownerPhrasings, model);
+    console.log(
+      `Suite: slack-owner; model ${model}; ${ownerPhrasings.length} phrasings`,
+    );
+    for (const m of misses) {
+      console.log(
+        `  expected ${m.phrasing.expected}, got ${m.got}: "${m.phrasing.text}"`,
+      );
+    }
+    console.log(`Accuracy: ${(accuracy * 100).toFixed(1)}%`);
+    if (accuracy < OWNER_PASS_THRESHOLD) process.exitCode = 1;
+  } finally {
+    await s.close();
+  }
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--suite=slack-coworker")) {
     return runSlackCoworkerSuite();
+  }
+  if (process.argv.includes("--suite=slack-owner")) {
+    return runSlackOwnerSuite();
   }
   const arg = process.argv.find((a) => a.startsWith("--interpreter="));
   const which = interpreterId.safeParse(

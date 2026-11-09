@@ -1,11 +1,17 @@
 import { findServiceToken, mintSlackToken, type Principal } from "@dlh/server";
 import { freshModuleDb, testServer } from "@dlh/server/testing";
+import agentServer from "../../agent/src/server";
 import requestsServer from "../../requests/src/server";
 import tasksServer from "../../tasks/src/server";
 import slackServer from "../src/server";
 
-// Slack's calls reach Requests, whose operations in turn reach Tasks.
-const modules = [tasksServer, requestsServer, slackServer] as const;
+// Slack's calls reach Requests, whose operations in turn reach Tasks; a button can cancel an Agent run.
+const modules = [
+  tasksServer,
+  requestsServer,
+  agentServer,
+  slackServer,
+] as const;
 
 /** A database with Slack, Requests and Tasks, a caller signed in as you, and one that holds a slack token. */
 export async function setup() {
@@ -19,5 +25,10 @@ export async function setup() {
   const asSlack = (p: Principal = slackPrincipal) =>
     testServer(t.db, modules, { principal: p });
   const { caller: slack, deps: slackDeps } = asSlack();
-  return { ...t, caller, deps, slack, slackDeps };
+  /** A caller as agent run `runId`, as the runner reaches the hub. */
+  const asRun = (runId: string) =>
+    testServer(t.db, modules, {
+      principal: { kind: "run", tokenId: "t", runId },
+    }).caller;
+  return { ...t, caller, deps, slack, slackDeps, asRun };
 }

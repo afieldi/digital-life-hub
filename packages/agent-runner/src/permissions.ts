@@ -2,9 +2,12 @@ import type {
   CanUseTool,
   PermissionResult,
 } from "@anthropic-ai/claude-agent-sdk";
-import { describeAction, inputHash } from "@dlh/agent-protocol";
+import { describeAction, inputHash, type RunStart } from "@dlh/agent-protocol";
+import { audienceAllows } from "@dlh/core/audience";
+import { hubCallInput } from "@dlh/core/hash";
 import type { RunControl } from "./control";
 import type { EventSink } from "./events";
+import { type HubOperation, hubOperations } from "./tools";
 
 export type Verdict = "alone" | "ask";
 
@@ -17,6 +20,11 @@ export type ClassifyContext = {
   cwd: string;
   /** The checked-out branch in a directory; null when it can't be told. */
   currentBranch: (cwd: string) => string | null;
+  /** The coworker a run from their request answers to; null for a run of yours. */
+  audience: RunStart["audience"];
+  /** The run's task, and the request it was given from, if any. */
+  taskId: string;
+  requestId: string | null;
 };
 
 /** The runner's own in-process MCP server. */
@@ -80,7 +88,8 @@ export function classify(
   const own = tool.startsWith(`mcp__${RUNNER_SERVER}__`)
     ? tool.slice(`mcp__${RUNNER_SERVER}__`.length)
     : tool;
-  if (own.startsWith("hub__") || RUNNER_TOOLS.has(own)) return "alone";
+  if (own.startsWith("hub__")) return classifyHub(tool, input, ctx);
+  if (RUNNER_TOOLS.has(own)) return "alone";
   if (tool === "Bash") {
     return typeof input.command === "string" && bashAsks(input.command, ctx)
       ? "ask"
@@ -90,6 +99,27 @@ export function classify(
   const mcp = /^mcp__(.+?)__(.+)$/.exec(tool);
   if (mcp) return classifyMcp(mcp[1] ?? "", mcp[2] ?? "", input, ctx);
   return "ask";
+}
+
+/**
+ * A hub tool is alone, but with an audience only for what `audienceAllows`
+ * (the hub's own rule): what involves the coworker. Anything else asks you,
+ * since the hub refuses it without your approval.
+ */
+function classifyHub(
+  tool: string,
+  input: Record<string, unknown>,
+  ctx: ClassifyContext,
+): Verdict {
+  if (ctx.audience === null) return "alone";
+  const op = hubOperation(tool);
+  if (!op) return "ask";
+  const run = {
+    asker: ctx.audience.asker,
+    taskId: ctx.taskId,
+    requestId: ctx.requestId,
+  };
+  return audienceAllows(op, input, run) ? "alone" : "ask";
 }
 
 /** `slack_post_message`, `postMessage` → `["slack", "post", "message"]`. */
@@ -421,6 +451,37 @@ function ghAsks(args: string[]): boolean {
 
 // ---------------------------------------------------------------- approvals
 
+let hubByTool: Map<string, HubOperation> | undefined;
+
+/** The hub operation a tool calls, if it is a hub tool. */
+function hubOperation(tool: string): HubOperation | undefined {
+  hubByTool ??= new Map(
+    hubOperations().map((op) => [`mcp__${RUNNER_SERVER}__${op.name}`, op]),
+  );
+  return hubByTool.get(tool);
+}
+
+/**
+ * What a call asks for: a hub tool's input as the hub will see it, with
+ * `runId` set to this run's as the worker sets it, then parsed by its
+ * operation (as the hub's run guard hashes it, so an approval of it matches
+ * there); any other tool's as sent.
+ */
+export function askedInput(
+  tool: string,
+  input: Record<string, unknown>,
+  runId?: string,
+): Record<string, unknown> {
+  const op = hubOperation(tool);
+  if (!op) return input;
+  const sent =
+    op.takesRunId && runId !== undefined ? { ...input, runId } : input;
+  const asked = hubCallInput(op, sent);
+  return asked && typeof asked === "object"
+    ? (asked as Record<string, unknown>)
+    : sent;
+}
+
 /** Actions the owner approved, each allowed once, matched on tool and input hash. */
 export class Approvals {
   private readonly allowed = new Set<string>();
@@ -441,6 +502,7 @@ export class Approvals {
  * container stops and the owner's answer resumes it.
  */
 export function createCanUseTool(deps: {
+  runId: string;
   ctx: ClassifyContext;
   approvals: Approvals;
   control: RunControl;
@@ -448,10 +510,12 @@ export function createCanUseTool(deps: {
   log: (line: string) => void;
 }): CanUseTool {
   return async (tool, input): Promise<PermissionResult> => {
-    if (classify(tool, input, deps.ctx) === "alone") {
+    // Classified, hashed and quoted as the hub will see it.
+    const asked = askedInput(tool, input, deps.runId);
+    if (classify(tool, asked, deps.ctx) === "alone") {
       return { behavior: "allow", updatedInput: input };
     }
-    const hash = inputHash(tool, input);
+    const hash = inputHash(tool, asked);
     if (deps.approvals.take(tool, hash)) {
       return { behavior: "allow", updatedInput: input };
     }
@@ -462,11 +526,16 @@ export function createCanUseTool(deps: {
         interrupt: true,
       };
     }
-    const action = describeAction(tool, input);
+    const action = describeAction(tool, asked);
     deps.events.add("permission", { tool, action });
     try {
       // The worker words the ask and hashes it from this input.
-      await deps.control.suspend({ kind: "approval", tool, input, action });
+      await deps.control.suspend({
+        kind: "approval",
+        tool,
+        input: asked,
+        action,
+      });
     } catch (e) {
       deps.log(`suspend failed: ${e instanceof Error ? e.message : String(e)}`);
       return {

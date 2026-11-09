@@ -5,7 +5,7 @@ import {
   type TRPCQueryProcedure,
 } from "@trpc/server";
 import type { z } from "zod";
-import { type Principal, publicProcedure, router } from "../trpc";
+import { type Context, type Principal, publicProcedure, router } from "../trpc";
 import {
   type ImplementedOperation,
   type Operations,
@@ -53,8 +53,37 @@ function accessProcedure(access: OperationAccess) {
   });
 }
 
+/**
+ * For an agent run: an input with a `runId` must name the run itself
+ * (FORBIDDEN "Not this run"), then every run guard must let the call through.
+ * Only top-level calls get here; an operation's `w.call` callees run as their
+ * caller already ran.
+ */
+async function checkRun(
+  ctx: Context,
+  op: ImplementedOperation,
+  input: unknown,
+): Promise<void> {
+  const principal = ctx.principal;
+  if (principal?.kind !== "run") return;
+  if (
+    "runId" in op.desc.input.shape &&
+    (input as { runId?: unknown }).runId !== principal.runId
+  ) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not this run" });
+  }
+  for (const guard of ctx.deps.runGuards) {
+    await guard(ctx.deps, { runId: principal.runId, operation: op, input });
+  }
+}
+
 function procedureFor(op: ImplementedOperation) {
-  const p = accessProcedure(accessOf(op.desc)).input(op.desc.input);
+  const p = accessProcedure(accessOf(op.desc))
+    .input(op.desc.input)
+    .use(async ({ ctx, input, next }) => {
+      await checkRun(ctx, op, input);
+      return next();
+    });
   if (op.kind === "query") {
     return p.query(({ ctx, input }) => op.impl.run(ctx.deps, input));
   }

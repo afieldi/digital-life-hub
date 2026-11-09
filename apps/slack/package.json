@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@dlh/api-contract": "workspace:*",
     "@dlh/module-slack": "workspace:*",
     "@dlh/server": "workspace:*",
     "@slack/bolt": "5.1.0",

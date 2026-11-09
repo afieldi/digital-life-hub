@@ -117,6 +117,7 @@ async function readRequest(w: ScopedWriter, taskId: string) {
       await allowed(w.call)(requestOps.get, { id: assignment.requestId }),
     );
     return {
+      id: assignment.requestId,
       sender: request.fromName ?? request.sourceHandle,
       body: request.body,
       source: request.source,
@@ -225,6 +226,7 @@ export type ClaimResult =
       token: string;
       task: { id: string; title: string; notes: string | null };
       request: {
+        id: string;
         sender: string | null;
         body: string | null;
         source: string;

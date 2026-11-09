@@ -12,6 +12,7 @@ test("settings default to the spec's values", async () => {
     appendMinutes: 15,
     interpreter: "typesafe-ai/jev",
     coworkerAi: true,
+    seenAt: null,
   });
   await close();
 });

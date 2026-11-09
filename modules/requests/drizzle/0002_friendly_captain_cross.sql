@@ -1,0 +1,1 @@
+ALTER TABLE "requests" ADD COLUMN "from_owner" boolean DEFAULT false NOT NULL;

@@ -306,6 +306,7 @@ test("claim returns the request body for a task given from a request", async () 
   const out = await claimed(s);
   expect(out.run.id).toBe(given.result.run.id);
   expect(out.request).toEqual({
+    id: r.id,
     sender: "Ana",
     body: "All of them",
     source: "ai",
@@ -470,6 +471,7 @@ test("claim returns the request's source and link", async () => {
   const s = await setup();
   const r = await s.file("Update the deps", {
     source: "slack",
+    sourceHandle: "U1",
     sourceUrl: "https://example.slack.com/archives/C1/p1",
   });
   await s.caller.agent.assignRequest({
