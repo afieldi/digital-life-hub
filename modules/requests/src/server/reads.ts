@@ -201,8 +201,8 @@ export const fromSender = implementOperation(requestOps.fromSender, {
 
 /**
  * Where the request a task was made from came from: a request resolved as the
- * task (its outcome link, or a `relates` link when its outcome is `task`), or
- * `requestId` when given. Deleted requests count, so deleting one can't make
+ * task (its outcome link, or a `relates` link when its outcome is `task`), one
+ * `makeTask` made it from (kept through a reopen), or `requestId` when given. Deleted requests count, so deleting one can't make
  * its task look like yours. When several apply, a coworker's Slack request
  * (not one you sent) comes first, so the task answers to them; then the
  * outcome link, then the oldest.
@@ -212,6 +212,8 @@ export const madeFrom = implementOperation(requestOps.madeFrom, {
     const named = input.requestId
       ? sql`or r.item_id = ${input.requestId}::uuid`
       : sql``;
+    const made = sql`or exists (select 1 from request_made_tasks m
+      where m.request_id = r.item_id and m.task_id = ${input.taskId}::uuid)`;
     const [row] = await deps.db.execute<{
       item_id: string;
       source: string;
@@ -222,7 +224,7 @@ export const madeFrom = implementOperation(requestOps.madeFrom, {
       from requests r
       left join links l on l.from_id = r.item_id and l.to_id = ${input.taskId}::uuid
         and l.kind = 'relates' and (l.context = 'outcome' or r.outcome = 'task')
-      where l.id is not null ${named}
+      where l.id is not null ${made} ${named}
       order by (r.source = 'slack' and not r.from_owner) desc,
         (l.context is not distinct from 'outcome') desc,
         r.received_at, r.item_id

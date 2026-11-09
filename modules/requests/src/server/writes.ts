@@ -10,7 +10,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { requests } from "../db/schema";
+import { requestMadeTasks, requests } from "../db/schema";
 import { requestOps } from "../operations";
 import {
   type Outcome,
@@ -304,6 +304,11 @@ export const makeTask = implementOperation(requestOps.makeTask, {
     );
     const request = await setOutcome(w, input, "task", deps.now());
     await linkOutcome(w, input.id, task.id);
+    // Where the task came from, kept through a reopen (the link isn't).
+    await w.tx
+      .insert(requestMadeTasks)
+      .values({ requestId: input.id, taskId: task.id })
+      .onConflictDoNothing();
     return {
       result: { request, task },
       undo: { id: request.id, updatedAt: request.updatedAt },

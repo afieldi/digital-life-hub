@@ -5,6 +5,7 @@ import {
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -66,5 +67,23 @@ export const requests = pgTable(
     index("requests_resolved_idx")
       .on(t.resolvedAt.desc())
       .where(sql`${t.resolvedAt} is not null`),
+  ],
+);
+
+/**
+ * Which request each task was made from (`makeTask`), kept when the request
+ * is reopened and its outcome link goes: the agent decides a task's run
+ * audience by it (`madeFrom`). Both ids reference Core's `items(id) on delete
+ * cascade`, written by hand in the migration SQL.
+ */
+export const requestMadeTasks = pgTable(
+  "request_made_tasks",
+  {
+    requestId: uuid("request_id").notNull(),
+    taskId: uuid("task_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.requestId, t.taskId] }),
+    index("request_made_tasks_task_idx").on(t.taskId),
   ],
 );

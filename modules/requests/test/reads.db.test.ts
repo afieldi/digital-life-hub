@@ -349,6 +349,31 @@ test("madeFrom finds the request a task was made from, deleted or not", async ()
   await t.close();
 });
 
+test("madeFrom still finds the request after it is reopened", async () => {
+  const t = await setup();
+  const r = (
+    await t.caller.requests.file({
+      title: "Check my PR",
+      source: "slack",
+      sourceHandle: "U_BOB",
+    })
+  ).result.request;
+  const made = (
+    await t.caller.requests.makeTask({
+      id: r.id,
+      expectedUpdatedAt: r.updatedAt,
+    })
+  ).result;
+  await t.caller.requests.reopen({
+    id: r.id,
+    expectedUpdatedAt: made.request.updatedAt,
+  });
+  expect(
+    await t.caller.requests.madeFrom({ taskId: made.task.id }),
+  ).toMatchObject({ requestId: r.id, fromOwner: false });
+  await t.close();
+});
+
 test("madeFrom also reads a request the caller names, and puts a coworker's first", async () => {
   const t = await setup();
   const mine = (

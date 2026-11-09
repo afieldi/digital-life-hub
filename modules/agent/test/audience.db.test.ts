@@ -640,3 +640,35 @@ test("a coworker's task assigned again answers to the request, not past runs", a
   expect(again.result.run.audience).toEqual({ asker: BOB });
   await s.close();
 });
+
+test("a task made from a coworker's request keeps their audience after the request is reopened", async () => {
+  const s = await setup();
+  const r = await s.file("Can you check my PR?", {
+    source: "slack",
+    sourceHandle: BOB.slackUserId,
+    fromName: "Bob",
+  });
+  const made = (
+    await s.caller.requests.makeTask({
+      id: r.id,
+      expectedUpdatedAt: r.updatedAt,
+    })
+  ).result;
+  await s.caller.requests.reopen({
+    id: r.id,
+    expectedUpdatedAt: made.request.updatedAt,
+  });
+  // Given to the agent for the first time: no assignment remembers the request.
+  const task = (await s.caller.tasks.get({ id: made.task.id })).task;
+  const { run } = (
+    await s.caller.agent.assign({
+      id: task.id,
+      expectedUpdatedAt: task.updatedAt,
+    })
+  ).result;
+  expect(run.audience).toEqual({ asker: BOB });
+  const claimed = (await worker(s).agent.claim({})).result;
+  if (!claimed.run) throw new Error("nothing claimed");
+  expect(claimed.request).toMatchObject({ id: r.id });
+  await s.close();
+});
