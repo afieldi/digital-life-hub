@@ -39,6 +39,7 @@ async function harness(script: Script) {
   const run = (text: string) =>
     interpretOwner(s.deps, {
       text,
+      ownerName: "Arek",
       context: [],
       model: "typesafe-ai/jev",
       timeoutMs: 3000,
@@ -90,6 +91,17 @@ test("offers every action and kind, plus handOff, reply and escalate", async () 
   expect(text("tasks.due|ask")).toContain("answer only");
   expect(text("tasks.create|suggest")).toContain("offer options");
   expect(text("tasks.create|do")).toContain("do it");
+  await h.close();
+});
+
+test("Jev starts from the bot's profile: who it serves, its actions and the agent's", async () => {
+  const h = await harness({ action: { choice: "escalate" } });
+  await h.run("can you review PRs?");
+  const instructions = h.seen[0]?.question.instructions ?? "";
+  expect(instructions).toContain("You are Arek's Slack bot");
+  expect(instructions).toContain("Lists tasks due on a day");
+  expect(instructions).toContain("review a pull request");
+  expect(instructions).toContain("Pick the action that handles it");
   await h.close();
 });
 

@@ -83,12 +83,18 @@ export const ownerPhrasings: OwnerPhrasing[] = [
     "get the agent to go through the backlog and draft release notes",
     "slack.handOff|do",
   ),
+  p("review https://github.com/acme/app/pull/42", "slack.handOff|do"),
+  p(
+    "take a look at PR #456 in acme/api and tell me what you think",
+    "slack.handOff|do",
+  ),
   // reply in words
   p("hello", "slack.reply|do"),
   p("lol", "slack.reply|do"),
   p("thanks!", "slack.reply|do"),
   p("good morning", "slack.reply|do"),
   p("what can you do?", "slack.reply|do"),
+  p("Can you review PRs?", "slack.reply|do"),
   p("how many days are in a leap year?", "slack.reply|do"),
   // escalate
   p("asdf qwerty", "escalate"),

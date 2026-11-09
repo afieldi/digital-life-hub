@@ -50,6 +50,7 @@ export async function handleOwner(
   try {
     pick = await interpretOwner(deps, {
       text: input.event.text,
+      ownerName: input.sender.name,
       context: input.context.slice(-CONTEXT_TURNS),
       model: settings.interpreter,
       timeoutMs: JEV_TIMEOUT_MS,

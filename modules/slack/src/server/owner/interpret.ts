@@ -8,6 +8,7 @@ import {
 } from "@dlh/server";
 import type { Turn } from "../commands";
 import { layout } from "../interpret";
+import { botProfile } from "./profile";
 
 /** How many search hits are offered as the subject. */
 const SUBJECT_HITS = 5;
@@ -134,6 +135,8 @@ export async function interpretOwner(
   deps: CoreDeps,
   input: {
     text: string;
+    /** The owner's name, for the bot's profile. */
+    ownerName: string;
     context: Turn[];
     model: string;
     timeoutMs: number;
@@ -156,12 +159,12 @@ export async function interpretOwner(
   choices.push({
     value: `${HAND_OFF}|do`,
     description:
-      "Give the message's work to the agent, to carry out on its own in the background: research, a multi-step job, going through a backlog, writing something up, anything for the agent to go and do. Pick it whenever the message says the agent should do it (do it)",
+      "Give the message's work to the agent, to carry out on its own in the background: reviewing a pull request, looking into or fixing a bug in code, research, writing something up, a multi-step job, going through a backlog. Pick it whenever the message asks for work like this, even when it doesn't name the agent (do it)",
   });
   choices.push({
     value: REPLY,
     description:
-      "Just reply in words, looking nothing up and changing nothing: a greeting, thanks, small talk, a question about what this bot can do, or a general question common knowledge answers. Never for the owner's own tasks, requests or notes, and never for anything that needs current information such as weather, news or prices",
+      "Just reply in words, looking nothing up and changing nothing: a greeting, thanks, small talk, a question about what this bot or the agent can do (asking whether it can, not asking it to), or a general question common knowledge answers. Never for the owner's own tasks, requests or notes, and never for anything that needs current information such as weather, news or prices",
   });
   choices.push({
     value: "escalate",
@@ -173,7 +176,7 @@ export async function interpretOwner(
     purpose: "slack.ownerAction",
     question: {
       name: "action",
-      instructions: ACTION_INSTRUCTIONS,
+      instructions: `${botProfile(deps, input.ownerName)}\n\n${ACTION_INSTRUCTIONS}`,
       choices,
     },
     input: layout(input.text, input.context),

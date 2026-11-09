@@ -11,6 +11,7 @@ type Answer = { choice: string; confidence?: number };
 async function harness(action: Answer | "fail") {
   const s = await setup();
   const completions: string[] = [];
+  const systems: string[] = [];
   const provider: AiDecisionProvider = {
     id: "vercel",
     async decide(req) {
@@ -27,7 +28,8 @@ async function harness(action: Answer | "fail") {
         probabilities: { [action.choice]: confidence },
       };
     },
-    async complete() {
+    async complete(req) {
+      systems.push(req.system);
       const raw = completions.shift();
       if (raw === undefined) {
         throw new AiError("provider_unavailable", "The model is down");
@@ -64,7 +66,7 @@ async function harness(action: Answer | "fail") {
         sql`select i.title from items i join tasks t on t.item_id = i.id where i.deleted_at is null`,
       )
     ).map((r) => r.title);
-  return { ...s, completions, send, aiRows, taskTitles };
+  return { ...s, completions, systems, send, aiRows, taskTitles };
 }
 
 test("an owner Do runs through the gateway with origin slack and offers Undo", async () => {
@@ -123,6 +125,15 @@ test("small talk gets a reply in words and files nothing", async () => {
   expect(out.result).toEqual({ reply: "Hi Arek!" });
   expect((await h.caller.requests.open({})).items).toEqual([]);
   expect(await h.taskTitles()).toEqual([]);
+  await h.close();
+});
+
+test("the reply model starts from the bot's profile", async () => {
+  const h = await harness({ choice: "slack.reply|do" });
+  h.completions.push(JSON.stringify({ reply: "Yes, send me the link." }));
+  await h.send("can you review PRs?");
+  expect(h.systems[0]).toContain("You are Arek's Slack bot");
+  expect(h.systems[0]).toContain("review a pull request");
   await h.close();
 });
 
