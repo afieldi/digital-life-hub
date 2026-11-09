@@ -4,6 +4,7 @@ import { blocksFor } from "./blocks";
 import { classify, type SlackMessageEvent } from "./classify";
 import { fetchContext, type SlackWeb } from "./context";
 import { githubLogin } from "./profile";
+import { plainText } from "./text";
 
 /** How long to wait before each retry of a hub call that failed: 1, 4 and 15 s. */
 export const RETRY_DELAYS_MS = [1000, 4000, 15000];
@@ -122,7 +123,7 @@ export async function handleEvent(
           channel: event.channel,
           ts: event.ts,
           ...(event.thread_ts ? { threadTs: event.thread_ts } : {}),
-          text: withoutBotTag(event.text ?? "", settings.botUserId),
+          text: plainText(withoutBotTag(event.text ?? "", settings.botUserId)),
           permalink: link,
           isDm: event.channel_type === "im",
         },

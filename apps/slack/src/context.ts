@@ -1,5 +1,6 @@
 import type { BotSettings, Turn } from "./api";
 import type { SlackMessageEvent } from "./classify";
+import { plainText } from "./text";
 
 type Message = {
   ts?: string;
@@ -116,6 +117,6 @@ async function readContext(
           : m.user && m.user === settings.ownerSlackId
             ? "owner"
             : "sender",
-      text: m.text ?? "",
+      text: plainText(m.text ?? ""),
     }));
 }
