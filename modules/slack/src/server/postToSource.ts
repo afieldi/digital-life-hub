@@ -35,6 +35,10 @@ const notFromSlack = (): never => {
   });
 };
 
+const fivePosts = (): never => {
+  throw new TRPCError({ code: "CONFLICT", message: "Five posts per run" });
+};
+
 /**
  * Queues an agent run's post, as the bot, in the thread of the Slack message
  * its task came from. The run's identity check holds a run to its own
@@ -68,10 +72,8 @@ export const postToSource = implementOperation(slackOps.postToSource, {
         ),
       );
     const n = (row?.n ?? 0) + 1;
-    if (n > MAX_POSTS) {
-      throw new TRPCError({ code: "CONFLICT", message: "Five posts per run" });
-    }
-    await w.tx
+    if (n > MAX_POSTS) fivePosts();
+    const inserted = await w.tx
       .insert(slackOutbox)
       .values({
         key: `agent:${input.runId}:${n}`,
@@ -84,7 +86,10 @@ export const postToSource = implementOperation(slackOps.postToSource, {
         runId: input.runId,
         approvedAt: deps.now(),
       })
-      .onConflictDoNothing({ target: slackOutbox.key });
+      .onConflictDoNothing({ target: slackOutbox.key })
+      .returning({ id: slackOutbox.id });
+    // A key already taken is never reported as posted.
+    if (inserted.length === 0) fivePosts();
     return { result: { post: n }, undo: null };
   },
   async undo() {},

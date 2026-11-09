@@ -173,3 +173,16 @@ test("a run posts only for itself, and only 1 to 2000 characters", async () => {
   expect(await outbox(s)).toHaveLength(1);
   await s.close();
 });
+
+test("a post whose key is taken is refused, never reported as sent", async () => {
+  const s = await setup();
+  const { run } = await runFrom(s);
+  // A row that holds the first post's key but isn't counted as one of its posts.
+  await s.db.execute(
+    sql`insert into slack_outbox (key, origin, channel_id, text) values (${`agent:${run.id}:1`}, 'report', 'C9', 'x')`,
+  );
+  await expect(
+    s.asRun(run.id).slack.postToSource({ runId: run.id, text: "Hi" }),
+  ).rejects.toMatchObject({ code: "CONFLICT", message: "Five posts per run" });
+  await s.close();
+});
