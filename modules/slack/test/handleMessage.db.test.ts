@@ -2,7 +2,14 @@ import { type AiDecisionProvider, AiError } from "@dlh/server";
 import { sql } from "drizzle-orm";
 import { expect, test, vi } from "vitest";
 import type { HandleMessageInput } from "../src/schema";
+import * as coworker from "../src/server/coworker";
 import { setup } from "./setup";
+
+// A passthrough spy: the login a message is handled under is not stored anywhere else yet.
+vi.mock("../src/server/coworker", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/server/coworker")>();
+  return { ...real, sendersRequests: vi.fn(real.sendersRequests) };
+});
 
 type Pick = { choice: string; confidence: number } | "fail";
 
@@ -437,5 +444,28 @@ test("a reply in a thread appends to a request filed from another reply in that 
   );
   expect(second.result).toEqual({ react: "eyes" });
   expect(await h.requests()).toHaveLength(1);
+  await h.close();
+});
+
+test("a manual GitHub login wins over the one Slack sent", async () => {
+  const h = await harness([{ choice: "leaveRequest", confidence: 0.9 }]);
+  await h.slack.slack.upsertPerson({
+    slackUserId: "U1",
+    name: "Dana",
+    githubLogin: "dana-profile",
+  });
+  await h.caller.slack.setGithubLogin({
+    slackUserId: "U1",
+    githubLogin: "dana",
+  });
+  const spy = vi.mocked(coworker.sendersRequests);
+  spy.mockClear();
+  await h.slack.slack.handleMessage(
+    h.message("hi", { sender: { githubLogin: "someone-else" } }),
+  );
+  expect(spy.mock.calls[0]?.[1]).toMatchObject({
+    slackUserId: "U1",
+    githubLogin: "dana",
+  });
   await h.close();
 });
