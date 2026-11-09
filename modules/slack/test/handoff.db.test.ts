@@ -1,6 +1,6 @@
 import { type AiDecisionProvider, AiError } from "@dlh/server";
 import { eq, sql } from "drizzle-orm";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { agentRuns } from "../../agent/src/db/schema";
 import { slackActions } from "../src/db/schema";
 import type { HandleActionInput, HandleMessageInput } from "../src/schema";
@@ -133,10 +133,17 @@ test("an assign failure leaves the request in the queue and says so", async () =
   const h = await harness();
   // The run can't be queued, so assignRequest fails after the request is filed.
   await h.db.execute(sql`alter table agent_runs rename to agent_runs_gone`);
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
   const out = await h.send("have the agent tidy the docs");
   expect(out).toEqual({
     reply: "Filed it, but couldn't give it to the agent. It's in your queue.",
   });
+  // The failure is logged, not only told.
+  expect(logged).toHaveBeenCalledWith(
+    "slack: handOff couldn't give the request to the agent",
+    expect.anything(),
+  );
+  logged.mockRestore();
   const { items } = await h.caller.requests.open({});
   expect(items.map((r) => r.title)).toEqual(["have the agent tidy the docs"]);
   await h.close();

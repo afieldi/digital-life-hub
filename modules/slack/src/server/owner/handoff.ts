@@ -58,7 +58,9 @@ export async function handOff(
     if (e instanceof TRPCError && e.code === "CONFLICT") {
       return { reply: "Already handled." };
     }
-    // The request is filed and stays in the queue; the owner still gets an answer.
+    // The request is filed and stays in the queue; the owner still gets an
+    // answer, and the cause goes to the API's log.
+    console.error("slack: handOff couldn't give the request to the agent", e);
     return {
       reply: "Filed it, but couldn't give it to the agent. It's in your queue.",
     };
