@@ -63,6 +63,9 @@ export function threadOf(r: Pick<SenderRequest, "sourceUrl">): string | null {
   }
 }
 
+/** Whether a Slack channel id is a DM's: DM ids start with `D`. */
+export const isDmChannel = (channelId: string) => channelId.startsWith("D");
+
 /**
  * Where a reply about a request filed from Slack goes: the message's channel
  * and `ts` (its `externalId`, `<channel>:<ts>`), in the thread it was asked

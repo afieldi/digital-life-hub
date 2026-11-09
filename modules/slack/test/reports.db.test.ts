@@ -126,16 +126,34 @@ test("a report goes to the thread the message was in", async () => {
     finishedAt: t(10),
     request: {
       ...dm,
+      externalId: "D1:1700000009.000001",
+      sourceUrl:
+        "https://example.slack.com/archives/D1/p1700000009000001?thread_ts=1700000005.000001&cid=D1",
+    },
+  });
+  await s.slack.slack.syncRuns({});
+  expect((await outbox(s))[0]).toMatchObject({
+    channel_id: "D1",
+    thread_ts: "1700000005.000001",
+  });
+  await s.close();
+});
+
+test("a handoff from a channel thread gets no report", async () => {
+  const s = await setup();
+  await started(s, t(0));
+  await endedRun(s, {
+    finishedAt: t(10),
+    request: {
+      ...dm,
       externalId: "C9:1700000009.000001",
       sourceUrl:
         "https://example.slack.com/archives/C9/p1700000009000001?thread_ts=1700000005.000001&cid=C9",
     },
   });
   await s.slack.slack.syncRuns({});
-  expect((await outbox(s))[0]).toMatchObject({
-    channel_id: "C9",
-    thread_ts: "1700000005.000001",
-  });
+  expect(await outbox(s)).toHaveLength(0);
+  expect((await syncedAt(s))?.toISOString()).toBe(t(10).toISOString());
   await s.close();
 });
 

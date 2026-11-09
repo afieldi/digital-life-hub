@@ -15,6 +15,7 @@ import {
   answer,
   type CoworkerMessage,
   ESCALATED_PREFIX,
+  isDmChannel,
   keyOf,
   recentIn,
   replyPlaceOf,
@@ -109,7 +110,7 @@ function messageOf(
         // A click has no live conversation: the request's own text stands in.
         text: r.body ?? "",
         permalink: r.sourceUrl ?? "",
-        isDm: channel.startsWith("D"),
+        isDm: isDmChannel(channel),
       },
       sender: {
         slackUserId: r.sourceHandle,

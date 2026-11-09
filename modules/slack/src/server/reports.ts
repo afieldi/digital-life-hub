@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { slackOutbox, slackSettings } from "../db/schema";
 import { slackOps } from "../operations";
-import { replyPlaceOf } from "./coworker";
+import { isDmChannel, replyPlaceOf } from "./coworker";
 
 /** What `agent.recentRuns` returns, as far as a report needs it. */
 const recent = z.object({
@@ -93,8 +93,12 @@ export const syncRuns = implementOperation(slackOps.syncRuns, {
         if (e instanceof TRPCError && e.code === "NOT_FOUND") continue;
         throw e;
       }
+      // Only your own handoffs, and only from your DM: a report in a
+      // channel thread would tell everyone in it.
       const place = replyPlaceOf(request);
-      if (!place || !request.fromOwner) continue;
+      if (!place || !request.fromOwner || !isDmChannel(place.channelId)) {
+        continue;
+      }
       const inserted = await w.tx
         .insert(slackOutbox)
         .values({

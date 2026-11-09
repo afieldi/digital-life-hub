@@ -224,7 +224,7 @@ const syncRuns = describeOperation({
   kind: "mutation",
   label: "Report agent runs",
   description:
-    "Queues a report in your DM or thread for each agent run that ended since the last sync and came from a message you sent. The first call only starts the clock.",
+    "Queues a report in your DM (or its thread) for each agent run that ended since the last sync and came from a message you sent there. The first call only starts the clock.",
   appliesTo: ["none"],
   input: z.object({}),
   subject: () => null,
