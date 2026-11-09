@@ -1,5 +1,5 @@
 import type { AiKind } from "@dlh/core";
-import { AiError, type CoreDeps, prepare } from "@dlh/server";
+import { AiError, type CoreDeps, cancel, prepare } from "@dlh/server";
 import { TRPCError } from "@trpc/server";
 import type {
   HandleActionInput,
@@ -81,7 +81,9 @@ export async function runOwnerAction(
       case "applied":
         return doneReply(out.requestId, out.summary);
       case "run":
-        // The server provider is what answers from Slack; a CLI run needs the app.
+        // The server provider is what answers from Slack; a CLI run needs the
+        // app. Nothing will run it, so the pending request is cancelled.
+        await cancel(deps, { requestId: out.requestId });
         return { reply: "That needs the app to run." };
     }
   } catch (e) {

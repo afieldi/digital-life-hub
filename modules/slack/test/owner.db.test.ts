@@ -158,3 +158,16 @@ test("Jev failing replies with its message", async () => {
   expect(out.result.reply).toMatch(/\S/);
   await h.close();
 });
+
+test("a request only the app can run is cancelled, not left pending", async () => {
+  const h = await harness({ choice: "tasks.create|do" });
+  await h.db.execute(
+    sql`insert into ai_settings (id, default_provider) values (1, 'claude-cli')
+      on conflict (id) do update set default_provider = 'claude-cli'`,
+  );
+  const out = await h.send("add a task to chase Dana");
+  expect(out.result).toEqual({ reply: "That needs the app to run." });
+  expect(await h.aiRows()).toEqual([{ origin: "slack", status: "cancelled" }]);
+  expect(await h.taskTitles()).toEqual([]);
+  await h.close();
+});
