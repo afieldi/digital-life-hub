@@ -125,7 +125,6 @@ test("an action that applies to none asks one question", async () => {
     aiKind: "do",
     subjectId: null,
     confidence: 0.95,
-    alternatives: [],
   });
   await h.close();
 });
@@ -205,13 +204,13 @@ test("an unsure subject escalates", async () => {
   await h.close();
 });
 
-test("an unsure action escalates, with the likeliest actions as alternatives", async () => {
+test("an unsure action escalates", async () => {
   const h = await harness({
     action: { choice: "tasks.create|do", confidence: 0.3 },
   });
   const pick = await h.run("something vague");
   expect(h.seen).toHaveLength(1);
-  expect(pick.kind).toBe("escalate");
+  expect(pick).toEqual({ kind: "escalate", confidence: 0.3 });
   await h.close();
 });
 

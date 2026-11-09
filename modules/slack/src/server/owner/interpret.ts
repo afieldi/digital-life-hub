@@ -15,8 +15,6 @@ const SUBJECT_HITS = 5;
 const MAX_WORDS = 8;
 /** Puts items found by the whole message ahead of any found word by word. */
 const WHOLE_BONUS = 1000;
-/** How many other actions an escalation carries as alternatives. */
-const ALTERNATIVES = 2;
 
 type ActionChoice = { actionId: string; aiKind: AiKind };
 
@@ -27,14 +25,13 @@ export type OwnerPick =
       aiKind: AiKind;
       subjectId: string | null;
       confidence: number;
-      alternatives: ActionChoice[];
     }
   | {
       kind: "handOff";
       subjectId: null;
       confidence: number;
     }
-  | { kind: "escalate"; confidence: number; alternatives: ActionChoice[] };
+  | { kind: "escalate"; confidence: number };
 
 const HAND_OFF = "slack.handOff";
 
@@ -176,24 +173,9 @@ export async function interpretOwner(
     model: input.model,
     timeoutMs: input.timeoutMs,
   });
-  const alternatives = (except?: string): ActionChoice[] =>
-    [...offered.entries()]
-      .filter(
-        (e): e is [string, ActionChoice] =>
-          typeof e[1] !== "string" &&
-          e[0] !== except &&
-          (first.probabilities[e[0]] ?? 0) > 0,
-      )
-      .sort(
-        (a, b) =>
-          (first.probabilities[b[0]] ?? 0) - (first.probabilities[a[0]] ?? 0),
-      )
-      .slice(0, ALTERNATIVES)
-      .map(([, c]) => c);
   const escalate = (confidence: number): OwnerPick => ({
     kind: "escalate",
     confidence,
-    alternatives: alternatives(),
   });
 
   const picked = offered.get(first.choice);
@@ -216,7 +198,6 @@ export async function interpretOwner(
       ...picked,
       subjectId: null,
       confidence: first.confidence,
-      alternatives: alternatives(first.choice),
     };
   }
 
@@ -228,7 +209,6 @@ export async function interpretOwner(
           ...picked,
           subjectId: null,
           confidence,
-          alternatives: alternatives(first.choice),
         }
       : escalate(confidence);
   if (hits.length === 0) return noItem(first.confidence);
@@ -266,6 +246,5 @@ export async function interpretOwner(
     ...picked,
     subjectId: hit.id,
     confidence,
-    alternatives: alternatives(first.choice),
   };
 }
