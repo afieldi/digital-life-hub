@@ -320,8 +320,8 @@ The hub keeps no copy of Slack conversations. `requests.from_owner` and `agent_r
 1. Prerequisites: the Vercel AI Gateway provider (its own small change), and a throwaway Jev check: its latency and accuracy on the phrasing suites, through the Gateway.
 2. Core: the slack principal and access, `/changes`, `audience: "asker"`, the model interpreter.
 3. Base and coworkers: the Slack app, `apps/slack`, `modules/slack` settings and people, `requests.append` and `fromSender`, the coworker command set, escalation, the compose service.
-4. You: your command set, replies, Undo, escalation of your messages.
-5. Outbox: `handOff`, reports, and the Agent hub changes (run audience, `postToSource`, hub-call approvals).
+4. You: your command set, replies, Undo, escalation of your messages. (built)
+5. Outbox: `handOff`, reports, and the Agent hub changes (run audience, `postToSource`, hub-call approvals). (built)
 6. Reviews and PR lookups, once GitHub v1 exists.
 7. End to end, docs, and the manual Done check.
 
