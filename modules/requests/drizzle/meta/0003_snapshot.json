@@ -42,10 +42,7 @@
       "compositePrimaryKeys": {
         "request_made_tasks_request_id_task_id_pk": {
           "name": "request_made_tasks_request_id_task_id_pk",
-          "columns": [
-            "request_id",
-            "task_id"
-          ]
+          "columns": ["request_id", "task_id"]
         }
       },
       "uniqueConstraints": {},

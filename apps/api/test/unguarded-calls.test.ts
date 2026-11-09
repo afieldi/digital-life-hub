@@ -6,7 +6,9 @@ test("every call UNGUARDED_CALLS lists is made by an operation the app has", () 
   const calls = new Set(
     serverModules.flatMap((m) =>
       Object.values(m.operations ?? {}).flatMap((op) =>
-        (op.desc.calls ?? []).map((c) => `${op.desc.id} -> ${c.id}`),
+        (op.desc.calls ?? []).map(
+          (c: { id: string }) => `${op.desc.id} -> ${c.id}`,
+        ),
       ),
     ),
   );
