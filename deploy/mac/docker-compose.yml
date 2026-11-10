@@ -1,0 +1,32 @@
+# The agent worker on a Mac, in Docker Desktop, for trying agent runs against
+# a local `pnpm dev`. Start it with `pnpm agent:mac` (deploy/mac/agent.sh),
+# which builds the images, sets up the run firewall and network, and sets
+# AGENT_HUB_URL. See deploy/mac/README.md.
+name: dlh-mac
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
+    image: dlh-agent-worker
+    restart: unless-stopped
+    stop_grace_period: 30s
+    # The worker's settings, as for `pnpm --filter @dlh/agent dev`; the two
+    # below replace that file's.
+    env_file: ../../apps/agent/.env
+    environment:
+      API_URL: ${AGENT_HUB_URL:?run deploy/mac/agent.sh, which sets AGENT_HUB_URL}
+      AGENT_DATA_DIR: /var/lib/dlh-agent
+    # Docker Desktop drops the VM's firewall rules when it restarts, and this
+    # container comes back with it, so it sets them again before each start.
+    command:
+      - sh
+      - -c
+      - docker run --rm --privileged --network host dlh-runs-firewall --rules-only && exec pnpm exec tsx src/main.ts
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # A path inside Docker's VM, not on the Mac: a Unix socket in a Mac
+      # folder can't be connected to across the VM, so each run's socket dir
+      # must live here. Same path inside and out, as on the VPS.
+      - /var/lib/dlh-agent:/var/lib/dlh-agent
