@@ -146,15 +146,14 @@ Both are `choice` questions to Jev. The interpreter's result has `subjectId: str
 
 ## Escalation
 
-An escalated message files a request, through `requests.file` called by `slack.handleMessage`:
+A coworker's escalated message files a request, through `requests.file` called by `slack.handleMessage`:
 
 - `source: "slack"`, `externalId` `<channel>:<ts>`, `sourceUrl` the message's permalink, `fromName` and `sourceHandle` the sender's
 - Title "Bot wasn't sure: \<first line\>", body the message
 - **A coworker's** escalation carries up to 2 actions from Jev's top candidates in the coworker command set, each labelled with what it does: "Keep as a request", "Add to their request", "Reply with their status", "Withdraw their request" or "Answer their question". Each runs `slack.runEscalated({ slackUserId, externalId, command })`, which runs the action as you, resolves the request as `handled`, and puts the reply into the outbox for the source thread. The message is named by its sender and `<channel>:<ts>`, which exist before the request does
 - A coworker's last action, Neither, runs `slack.dismissEscalation({ slackUserId, externalId })`: it resolves the request as `not_for_me`, kept for tuning the threshold. Actions replace the three outcomes on screen (Queue spec), so this stands in for them
-- **Your** escalation carries no actions, so Make task, Handled and Not for me stay on the request
 
-In Slack, you get "Not sure what you meant, so I put it in your queue" with a link. A coworker gets the normal acknowledgement and never sees the bot's uncertainty.
+**Your** escalation files nothing: you are already in the DM, and filing your own message back to you loses the conversation that gives it meaning. The bot asks you there instead: "Not sure what you meant. Could you say it another way? If it's work for the agent, say \"give it to the agent\"." A coworker gets the normal acknowledgement and never sees the bot's uncertainty.
 
 ## Message flows
 

@@ -1,40 +1,25 @@
-import { requestOps } from "@dlh/module-requests/operations";
-import { AiError, type CoreDeps, runMutation } from "@dlh/server";
+import { AiError, type CoreDeps } from "@dlh/server";
 import type {
   HandleMessageInput,
   HandleMessageResult,
   SlackSettings,
 } from "../../schema";
-import { ESCALATED_PREFIX, firstLine, keyOf } from "../coworker";
 import { handOff } from "./handoff";
 import { interpretOwner, type OwnerPick } from "./interpret";
 import { replyToOwner } from "./reply";
 import { runOwnerAction } from "./run";
 
-/** How long Jev has before the owner's message is escalated. */
+/** How long Jev has to pick before the owner is told it timed out. */
 const JEV_TIMEOUT_MS = 3000;
 /** How many earlier messages Jev sees. */
 const CONTEXT_TURNS = 10;
 
-/** Files the message for you, with no actions, so the request keeps its usual outcomes. */
-async function escalateOwner(
-  deps: CoreDeps,
-  input: HandleMessageInput,
-): Promise<HandleMessageResult> {
-  const file = deps.operations.get(requestOps.file.id);
-  if (file?.kind !== "mutation") throw new Error("requests.file is missing");
-  await runMutation(deps, file, {
-    title: `${ESCALATED_PREFIX}${firstLine(input.event.text)}`,
-    body: input.event.text,
-    source: "slack",
-    externalId: keyOf(input.event),
-    sourceUrl: input.event.permalink,
-    sourceHandle: input.sender.slackUserId,
-    fromName: input.sender.name,
-    fromOwner: true,
-  });
-  return { reply: "Not sure what you meant, so I put it in your queue." };
-}
+/**
+ * Said when Jev can't tell what your message means. You are already in the
+ * DM, so the bot asks you there instead of filing your own message to you.
+ */
+export const UNSURE_REPLY =
+  'Not sure what you meant. Could you say it another way? If it\'s work for the agent, say "give it to the agent".';
 
 /**
  * Handles a message from you: Jev picks what it means, and the gateway runs
@@ -72,7 +57,7 @@ export async function handleOwner(
     case "reply":
       return replyToOwner(deps, input);
     case "escalate":
-      return escalateOwner(deps, input);
+      return { reply: UNSURE_REPLY };
     case "handOff":
       return handOff(deps, input, pick.subjectId);
   }
