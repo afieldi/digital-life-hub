@@ -28,12 +28,12 @@ the VPS, and keeps its data in `/var/lib/dlh-agent` inside the VM.
 Docker Desktop forgets the firewall rules when it restarts. The worker comes
 back with it and sets them again before it starts.
 
-| Command                           | Does                                             |
-| --------------------------------- | ------------------------------------------------ |
-| `pnpm agent:mac`                  | Builds and (re)starts the worker                 |
-| `pnpm agent:mac logs`             | Follows the worker's log                         |
-| `pnpm agent:mac connection <...>` | The connection CLI, such as `add github GitHub`  |
-| `pnpm agent:mac down`             | Stops the worker                                 |
+| Command                           | Does                                            |
+| --------------------------------- | ----------------------------------------------- |
+| `pnpm agent:mac`                  | Builds and (re)starts the worker                |
+| `pnpm agent:mac logs`             | Follows the worker's log                        |
+| `pnpm agent:mac connection <...>` | The connection CLI, such as `add github GitHub` |
+| `pnpm agent:mac down`             | Stops the worker                                |
 
 The worker runs from its image, so it doesn't reload on code changes: run
 `pnpm agent:mac` again after one.
