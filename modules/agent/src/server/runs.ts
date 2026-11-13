@@ -306,6 +306,21 @@ const taskView = z.object({
   task: z.object({ assignee: z.enum(["me", "agent"]) }),
 });
 
+/**
+ * Resolves the failed run's "Needs you" as handled and leaves the run failed,
+ * so Retry or Back to me still work from the task. Undo reopens the request
+ * through `requests.resolve`'s own undo.
+ */
+export const dismiss = implementOperation(agentOps.dismiss, {
+  async run(w, input) {
+    await resolveFailure(w, input.id);
+    await allowed(w.touchItem)(input.id);
+    return { result: null, undo: null };
+  },
+  async undo() {},
+  undoRecord: z.null(),
+});
+
 export const retry = implementOperation(agentOps.retry, {
   async run(w, input) {
     const run = await latestRun(w.tx, input.id);

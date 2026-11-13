@@ -149,11 +149,16 @@ const unassign = describeOperation({
     "my task again",
     "don't let the agent",
   ],
-  input: z.object({ id: taskId, expectedUpdatedAt }),
+  // Without `expectedUpdatedAt` the task's current version is read: a failed
+  // run's "Back to me" action is filed before later touches bump the task.
+  input: z.object({
+    id: taskId,
+    expectedUpdatedAt: expectedUpdatedAt.optional(),
+  }),
   subject: (input) => input.id,
   effects: ["touchItems"],
   // `requests.*` resolve the approval or grant a waiting run asked for, or a failed run's "Needs you".
-  calls: [taskOps.setAssignee, requestOps.get, requestOps.resolve],
+  calls: [taskOps.get, taskOps.setAssignee, requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Back to me",
   palette: (ctx) => {
@@ -237,6 +242,24 @@ const retry = describeOperation({
   calls: [taskOps.get, requestOps.get, requestOps.resolve],
   access: "user",
   summary: () => "Retry run",
+});
+
+const dismiss = describeOperation({
+  id: "agent.dismiss",
+  kind: "mutation",
+  label: "Dismiss",
+  description:
+    'Clears a failed run\'s "Needs you" without retrying: the task stays with the agent and its run stays failed. Behind the Dismiss action.',
+  appliesTo: ["request"],
+  input: z.object({ id: taskId }),
+  subject: (input) => input.id,
+  effects: ["touchItems"],
+  // `requests.get` reads the failure request's version to resolve it.
+  calls: [requestOps.get, requestOps.resolve],
+  access: "user",
+  palette: false,
+  ai: false,
+  summary: () => "Dismiss",
 });
 
 const decide = describeOperation({
@@ -586,6 +609,7 @@ export const agentOps = {
   message,
   cancel,
   retry,
+  dismiss,
   decide,
   run,
   runs,

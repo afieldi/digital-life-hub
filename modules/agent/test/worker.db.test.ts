@@ -735,7 +735,7 @@ test('"Needs you" is cut to the title limit with a trailing "…"', async () => 
   await s.close();
 });
 
-test('fail files "Needs you" with a Retry action', async () => {
+test('fail files "Needs you" with Retry, Dismiss and Back to me', async () => {
   const s = await setup();
   const { task, run } = await withRun(s);
   await worker(s).agent.fail({
@@ -748,6 +748,12 @@ test('fail files "Needs you" with a Retry action', async () => {
   expect(req.body).toBe("I can't find the config");
   expect(req.actions).toEqual([
     { label: "Retry", operation: "agent.retry", input: { id: task.id } },
+    { label: "Dismiss", operation: "agent.dismiss", input: { id: task.id } },
+    {
+      label: "Back to me",
+      operation: "agent.unassign",
+      input: { id: task.id },
+    },
   ]);
   const titles = await s.deps.db.execute<{ title: string }>(
     sql`select title from items where id = ${req.itemId}`,
@@ -765,6 +771,45 @@ test('fail files "Needs you" with a Retry action', async () => {
   const retry = actionsOf(req)[0];
   await s.caller.agent.retry(agentOps.retry.input.parse(retry?.input));
   expect((await runById(s, run.id))?.status).toBe("queued");
+  expect((await requestById(s, req.itemId))?.outcome).toBe("handled");
+  await s.close();
+});
+
+test("the Dismiss action resolves the failure and leaves the run failed", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s);
+  await worker(s).agent.fail({ runId: run.id, code: "stuck", message: "x" });
+  const [req] = await requestsFiledAs(s, `${run.id}:fail:1`);
+  if (!req) throw new Error("no request filed");
+  const dismiss = actionsOf(req)[1];
+  const out = await s.caller.agent.dismiss(
+    agentOps.dismiss.input.parse(dismiss?.input),
+  );
+  expect((await requestById(s, req.itemId))?.outcome).toBe("handled");
+  expect((await runById(s, run.id))?.status).toBe("failed");
+  // Undo reopens it; Retry still works from the task.
+  await s.caller.ops.undo({ id: "agent.dismiss", token: out.undo });
+  expect((await requestById(s, req.itemId))?.outcome).toBeNull();
+  await s.caller.agent.retry({ id: task.id });
+  expect((await runById(s, run.id))?.status).toBe("queued");
+  await s.close();
+});
+
+test("the Back to me action works after the task has moved on", async () => {
+  const s = await setup();
+  const { task, run } = await withRun(s);
+  await worker(s).agent.fail({ runId: run.id, code: "stuck", message: "x" });
+  const [req] = await requestsFiledAs(s, `${run.id}:fail:1`);
+  if (!req) throw new Error("no request filed");
+  const back = actionsOf(req)[2];
+  const out = await s.caller.agent.unassign(
+    agentOps.unassign.input.parse(back?.input),
+  );
+  expect(out.result.task.id).toBe(task.id);
+  const [row] = await s.deps.db.execute<{ assignee: string }>(
+    sql`select assignee from tasks where item_id = ${task.id}`,
+  );
+  expect(row?.assignee).toBe("me");
   expect((await requestById(s, req.itemId))?.outcome).toBe("handled");
   await s.close();
 });
