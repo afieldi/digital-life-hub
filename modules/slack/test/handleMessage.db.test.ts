@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { expect, test, vi } from "vitest";
 import type { HandleMessageInput } from "../src/schema";
 import * as coworker from "../src/server/coworker";
+import { UNSURE_REPLY } from "../src/server/owner";
 import { setup } from "./setup";
 
 // A passthrough spy: the login a message is handled under is not stored anywhere else yet.
@@ -97,9 +98,7 @@ test("the owner's message goes to the owner path, not the coworker one", async (
   const out = await h.slack.slack.handleMessage(
     h.message("hi", { sender: { slackUserId: "UOWNER", isOwner: true } }),
   );
-  expect(out.result.reply).toBe(
-    "Not sure what you meant, so I put it in your queue.",
-  );
+  expect(out.result.reply).toBe(UNSURE_REPLY);
   await h.close();
 });
 

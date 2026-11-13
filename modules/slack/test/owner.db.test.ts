@@ -2,6 +2,7 @@ import { type AiDecisionProvider, AiError } from "@dlh/server";
 import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 import type { HandleMessageInput } from "../src/schema";
+import { UNSURE_REPLY } from "../src/server/owner";
 import { HELP_REPLY } from "../src/server/owner/reply";
 import { setup } from "./setup";
 
@@ -145,21 +146,19 @@ test("a reply the model can't write is the help text, and files nothing", async 
   await h.close();
 });
 
-test("an owner message that is unsure escalates to the queue", async () => {
+test("an owner message that is unsure is asked about in the DM, and files nothing", async () => {
   const h = await harness({ choice: "escalate" });
   const out = await h.send("hmm\nsecond line");
-  expect(out.result).toEqual({
-    reply: "Not sure what you meant, so I put it in your queue.",
-  });
-  const { items } = await h.caller.requests.open({});
-  expect(items.map((r) => r.title)).toEqual(["Bot wasn't sure: hmm"]);
-  const { request } = await h.caller.requests.get({ id: items[0]?.id ?? "" });
-  expect(request.actions).toBeNull();
-  expect(request).toMatchObject({
-    source: "slack",
-    sourceHandle: "UOWNER",
-    fromOwner: true,
-  });
+  expect(out.result).toEqual({ reply: UNSURE_REPLY });
+  expect((await h.caller.requests.open({})).items).toEqual([]);
+  await h.close();
+});
+
+test("an owner message below the threshold is asked about too", async () => {
+  const h = await harness({ choice: "slack.reply|do", confidence: 0.1 });
+  const out = await h.send("Sure ask the agent?");
+  expect(out.result).toEqual({ reply: UNSURE_REPLY });
+  expect((await h.caller.requests.open({})).items).toEqual([]);
   await h.close();
 });
 
