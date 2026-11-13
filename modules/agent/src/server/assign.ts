@@ -242,14 +242,27 @@ export const assignRequest = implementOperation(agentOps.assignRequest, {
   undoRecord: assignRecord,
 });
 
+/** What unassign needs of `tasks.get`'s result. */
+const versionView = z.object({ task: z.object({ updatedAt: z.string() }) });
+
+/** The task's version now, for a Back to me filed without one. */
+async function currentVersion(w: ScopedWriter, id: string): Promise<string> {
+  const { task } = versionView.parse(
+    await allowed(w.call)(taskOps.get, { id }),
+  );
+  return task.updatedAt;
+}
+
 export const unassign = implementOperation(agentOps.unassign, {
   async run(w, input, deps) {
     // The run is locked before the task, as claim and heartbeat lock them.
     const live = await liveRun(w.tx, input.id);
+    const expectedUpdatedAt =
+      input.expectedUpdatedAt ?? (await currentVersion(w, input.id));
     const task = itemSchema.parse(
       await allowed(w.call)(taskOps.setAssignee, {
         id: input.id,
-        expectedUpdatedAt: input.expectedUpdatedAt,
+        expectedUpdatedAt,
         assignee: "me",
       }),
     );
@@ -258,7 +271,7 @@ export const unassign = implementOperation(agentOps.unassign, {
     // setAssignee's bump publishes the task. Only when it changed nothing (the
     // task was already yours) is touching safe, and needed to show the run;
     // the undo touches on the same terms, so setAssignee's undo can't conflict.
-    const touch = task.updatedAt === input.expectedUpdatedAt;
+    const touch = task.updatedAt === expectedUpdatedAt;
     if (run && touch) await allowed(w.touchItem)(input.id);
     return {
       result: { task, run: run && toRunRow(run) },

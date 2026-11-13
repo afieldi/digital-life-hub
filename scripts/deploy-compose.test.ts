@@ -10,13 +10,14 @@ type Service = {
   image?: string;
   build?: { context: string; dockerfile: string };
   environment?: Record<string, string>;
-  env_file?: string[];
+  env_file?: string | string[];
   volumes?: string[];
   networks?: string[];
   stop_grace_period?: string;
   restart?: string;
   depends_on?: string[];
   profiles?: string[];
+  command?: string[];
 };
 type Compose = {
   services: Record<string, Service>;
@@ -118,5 +119,41 @@ describe("the VPS compose file", () => {
     expect(example).toContain(
       `once the ${words[fromEnv.length]} Slack values above are set`,
     );
+  });
+});
+
+describe("the Mac compose file", () => {
+  const mac = parse(
+    readFileSync(join(root, "deploy/mac/docker-compose.yml"), "utf8"),
+  ) as Compose;
+  const agent = mac.services.agent;
+
+  it("runs only the worker, from the worker's image, with the Docker socket", () => {
+    expect(Object.keys(mac.services)).toEqual(["agent"]);
+    expect(agent?.build?.dockerfile).toBe("apps/agent/Dockerfile");
+    expect(agent?.volumes).toContain(`${SOCKET}:${SOCKET}`);
+    expect(agent?.stop_grace_period).toBe("30s");
+  });
+
+  it("keeps its data at a path inside Docker's VM, the same inside and out, so run sockets connect", () => {
+    expect(agent?.volumes).toContain("/var/lib/dlh-agent:/var/lib/dlh-agent");
+    expect(agent?.environment?.AGENT_DATA_DIR).toBe("/var/lib/dlh-agent");
+    // Never a Mac folder: Docker Desktop can't connect a socket across the VM.
+    for (const v of agent?.volumes ?? [])
+      expect(v).not.toMatch(/^(\.|~|\/Users)/);
+  });
+
+  it("sets the run firewall before every start of the worker", () => {
+    const script = agent?.command?.at(-1) ?? "";
+    expect(agent?.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(script).toMatch(
+      /^docker run --rm --privileged --network host dlh-runs-firewall --rules-only && exec /,
+    );
+    expect(script).toMatch(/src\/main\.ts$/);
+  });
+
+  it("reads the worker's own .env and needs the hub URL the script sets", () => {
+    expect(agent?.env_file).toBe("../../apps/agent/.env");
+    expect(agent?.environment?.API_URL).toMatch(/^\$\{AGENT_HUB_URL:\?/);
   });
 });

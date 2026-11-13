@@ -42,13 +42,20 @@ test("operations are keyed as they are mounted", () => {
   }
 });
 
-test("decide and retry declare requests.resolve", () => {
+test("decide, retry and dismiss declare requests.resolve", () => {
   expect(agentOps.decide.calls).toContain(requestOps.resolve);
   expect(agentOps.retry.calls).toContain(requestOps.resolve);
+  expect(agentOps.dismiss.calls).toContain(requestOps.resolve);
 });
 
 test("run actions and assignments declare touchItems", () => {
-  for (const key of ["unassign", "cancel", "retry", "decide"] as const) {
+  for (const key of [
+    "unassign",
+    "cancel",
+    "retry",
+    "dismiss",
+    "decide",
+  ] as const) {
     expect(agentOps[key].effects).toEqual(["touchItems"]);
   }
   for (const key of ["assign", "assignRequest"] as const) {
@@ -93,6 +100,7 @@ test("assign, assignRequest and unassign declare the calls they make", () => {
     requestOps.resolve,
   ]);
   expect(agentOps.unassign.calls).toEqual([
+    taskOps.get,
     taskOps.setAssignee,
     requestOps.get,
     requestOps.resolve,

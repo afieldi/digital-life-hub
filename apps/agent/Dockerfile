@@ -10,7 +10,9 @@ WORKDIR /repo
 COPY . .
 # Like the API image, but the worker runs from source with tsx (a dev
 # dependency, so install them too): its workspace packages ship TypeScript.
-RUN pnpm install --frozen-lockfile --filter "@dlh/agent..."
+# Every module's too, as in the runner image: @dlh/agent-protocol imports each
+# module's description by path, not as a dependency.
+RUN pnpm install --frozen-lockfile --filter "@dlh/agent..." --filter "./modules/*..."
 ENV NODE_ENV=production
 WORKDIR /repo/apps/agent
 # Root on purpose: the worker chowns each run's socket dir to the run

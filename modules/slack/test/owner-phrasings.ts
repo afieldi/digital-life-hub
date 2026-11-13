@@ -1,3 +1,5 @@
+import type { Turn } from "../src/server/commands";
+
 export type OwnerSubject =
   | "invoice"
   | "roadmap"
@@ -11,6 +13,8 @@ export type OwnerPhrasing = {
   expected: string;
   /** The seeded item it is about, when the pick needs one. */
   subject?: OwnerSubject;
+  /** Earlier turns of the DM, when the message only makes sense after them. */
+  context?: Turn[];
 };
 
 const p = (
@@ -96,6 +100,22 @@ export const ownerPhrasings: OwnerPhrasing[] = [
   p("what can you do?", "slack.reply|do"),
   p("Can you review PRs?", "slack.reply|do"),
   p("how many days are in a leap year?", "slack.reply|do"),
+  p("can you give me a random number between 1 and 20?", "slack.reply|do"),
+  // follow-ups to the bot's last message
+  {
+    text: "Sure ask the agent?",
+    expected: "slack.handOff|do",
+    context: [
+      {
+        from: "owner",
+        text: "can you look into why the nightly export is slow?",
+      },
+      {
+        from: "bot",
+        text: "I can't check that myself, but I can ask the agent to look into it if you'd like.",
+      },
+    ],
+  },
   // escalate
   p("asdf qwerty", "escalate"),
   p("what's the weather like in Lisbon?", "escalate"),

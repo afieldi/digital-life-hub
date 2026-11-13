@@ -57,7 +57,8 @@ export function ItemRow({
         )}
         {meta || chips ? (
           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-tertiary">
-            {meta ? <span>{meta}</span> : null}
+            {/* min-w-0 + max-w-full: the meta can shrink to the row, so a truncating meta truncates instead of overflowing. */}
+            {meta ? <span className="min-w-0 max-w-full">{meta}</span> : null}
             {chips ? (
               <span className="relative z-10 flex flex-wrap items-center gap-1.5">
                 {chips}

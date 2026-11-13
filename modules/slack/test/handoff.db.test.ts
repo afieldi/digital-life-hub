@@ -6,9 +6,13 @@ import { slackActions } from "../src/db/schema";
 import type { HandleActionInput, HandleMessageInput } from "../src/schema";
 import { setup } from "./setup";
 
-/** Jev picks `slack.handOff`; the owner sends one DM. Plain fakes, not vi.fn. */
+/**
+ * Jev picks `slack.handOff`; the owner sends one DM. `briefs` are the model's
+ * answers, in order; with none left it is down. Plain fakes, not vi.fn.
+ */
 async function harness() {
   const s = await setup();
+  const briefs: string[] = [];
   const provider: AiDecisionProvider = {
     id: "vercel",
     async decide() {
@@ -19,12 +23,19 @@ async function harness() {
       };
     },
     async complete() {
-      throw new AiError("provider_unavailable", "The model is down");
+      const raw = briefs.shift();
+      if (raw === undefined) {
+        throw new AiError("provider_unavailable", "The model is down");
+      }
+      return { raw };
     },
   };
   s.slackDeps.ai.providers.vercel = provider;
   await s.caller.slack.setSettings({ ownerSlackId: "UOWNER" });
-  const message = (text: string): HandleMessageInput => ({
+  const message = (
+    text: string,
+    context: HandleMessageInput["context"] = [],
+  ): HandleMessageInput => ({
     event: {
       channel: "D9",
       ts: "1700000000.000001",
@@ -38,10 +49,10 @@ async function harness() {
       githubLogin: null,
       isOwner: true,
     },
-    context: [],
+    context,
   });
-  const send = async (text: string) =>
-    (await s.slack.slack.handleMessage(message(text))).result;
+  const send = async (text: string, context?: HandleMessageInput["context"]) =>
+    (await s.slack.slack.handleMessage(message(text, context))).result;
   const act = async (input: HandleActionInput) =>
     (await s.slack.slack.handleAction(input)).result;
   const live = async (table: "items" | "agent_runs") =>
@@ -54,7 +65,7 @@ async function harness() {
         )
       )[0]?.n,
     );
-  return { ...s, send, act, live };
+  return { ...s, briefs, send, act, live };
 }
 
 const input = (b: { value: string } | undefined): HandleActionInput =>
@@ -93,6 +104,38 @@ test("handOff files, assigns and offers Undo and Cancel run", async () => {
     .from(agentRuns)
     .where(eq(agentRuns.taskId, row?.runTaskId ?? ""));
   expect(run?.status).toBe("queued");
+  await h.close();
+});
+
+const offer: HandleMessageInput["context"] = [
+  { from: "owner", text: "can you give me a random number between 1 and 20?" },
+  { from: "bot", text: "I can ask the agent to pick one, if you'd like." },
+];
+
+test("a yes to the bot's offer hands over the work the conversation names", async () => {
+  const h = await harness();
+  h.briefs.push(
+    JSON.stringify({
+      title: "Pick a random number between 1 and 20",
+      body: "Pick a random number between 1 and 20 and reply with it.",
+    }),
+  );
+  const out = await h.send("Sure ask the agent?", offer);
+  expect(out.reply).toBe(
+    "Given to the agent: Pick a random number between 1 and 20",
+  );
+  const { rows } = await h.caller.requests.resolved({});
+  expect(rows[0]).toMatchObject({
+    title: "Pick a random number between 1 and 20",
+    body: "Pick a random number between 1 and 20 and reply with it.",
+  });
+  await h.close();
+});
+
+test("a brief the model can't write hands over the message as sent", async () => {
+  const h = await harness();
+  const out = await h.send("Sure ask the agent?", offer);
+  expect(out.reply).toBe("Given to the agent: Sure ask the agent?");
   await h.close();
 });
 

@@ -47,7 +47,7 @@ export async function runOwnerSuite(
     const pick = await interpretOwner(s.deps as CoreDeps, {
       text: phrasing.text,
       ownerName: "Arek",
-      context: [],
+      context: phrasing.context ?? [],
       model,
       timeoutMs: 10_000,
       threshold,

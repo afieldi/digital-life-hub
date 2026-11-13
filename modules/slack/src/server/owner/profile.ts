@@ -12,7 +12,7 @@ export function botProfile(deps: CoreDeps, ownerName: string): string {
     ({ action }) => `- ${action.description}`,
   );
   return [
-    `You are ${ownerName}'s Slack bot, the Slack side of their Digital Life Hub: their tasks, their queue of requests from coworkers, and their notes. Only ${ownerName} talks to you in this direct message.`,
+    `You are ${ownerName}'s Slack bot, the Slack side of their Digital Work Hub: their tasks, their queue of requests from coworkers, and their notes. Only ${ownerName} talks to you in this direct message.`,
     "",
     "What you do yourself, at once, with an Undo:",
     ...actions,

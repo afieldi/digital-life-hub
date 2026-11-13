@@ -380,10 +380,17 @@ function filed(result: unknown) {
   return out;
 }
 
+/** A failure's buttons: try again, clear it, or take the task back. */
+const failureActions = (taskId: string) => [
+  { label: "Retry", operation: "agent.retry", input: { id: taskId } },
+  { label: "Dismiss", operation: "agent.dismiss", input: { id: taskId } },
+  { label: "Back to me", operation: "agent.unassign", input: { id: taskId } },
+];
+
 /**
  * Ends a running run as failed: files "Needs you: <task>" with the message
- * and a Retry action (once per failure, by `externalId`), keeps that request
- * as the run's pending one, revokes its tokens and touches its task.
+ * and `failureActions` (once per failure, by `externalId`), keeps that
+ * request as the run's pending one, revokes its tokens and touches its task.
  */
 async function failRun(
   w: ScopedWriter,
@@ -400,9 +407,7 @@ async function failRun(
       body: failure.message,
       source: "agent",
       externalId: `${run.id}:fail:${attempt}`,
-      actions: [
-        { label: "Retry", operation: "agent.retry", input: { id: task.id } },
-      ],
+      actions: failureActions(task.id),
     }),
   );
   const [row] = await w.tx

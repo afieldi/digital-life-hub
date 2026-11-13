@@ -8,7 +8,7 @@ import {
 } from "./server/connections";
 import { runGuard } from "./server/guard";
 import { events, recentRuns, run, runSource, runs } from "./server/reads";
-import { cancel, decide, message, retry } from "./server/runs";
+import { cancel, decide, dismiss, message, retry } from "./server/runs";
 import { setSettings, settingsQuery } from "./server/settings";
 import {
   appendEvents,
@@ -31,6 +31,7 @@ const agentServer = defineServerModule(agentModule, {
     message,
     cancel,
     retry,
+    dismiss,
     decide,
     run,
     runs,
